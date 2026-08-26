@@ -1,23 +1,115 @@
 {
-  "meta": { "name": "Magic City 1929", "units": "meters", "origin": "Heaviest Corner" },
-  "bounds": { "minX": -400, "maxX": 400, "minZ": -400, "maxZ": 400 },
-  "spawn": { "position": [0, -30], "yawDeg": 0 },
+  "meta": {"name": "Magic City 1929", "units": "meters", "origin": "Heaviest Corner"},
+  "bounds": {"minX": -1200, "maxX": 1200, "minZ": -1200, "maxZ": 1200},
+  "spawn": {"position": [0, 55], "yawDeg": 180},
   "districts": [
     {
-      "slug": "test-block",
-      "name": "Test Block",
-      "polygon": [[-150, -150], [150, -150], [150, 150], [-150, 150]],
-      "character": "Placeholder proof-of-engine block of setback towers.",
-      "ambience": "Quiet streets, a few lit windows at dusk."
+      "slug": "furnace-row-sloss-flats",
+      "name": "Furnace Row / Sloss Flats",
+      "polygon": [[-1200, -1200], [620, -1200], [620, -320], [-1200, -320]],
+      "character": "Industrial north valley floor: Sloss Furnaces, foundries, casting sheds under a permanent low orange dome.",
+      "ambience": "Blowing-engine heartbeat, whistle shifts, crane bells, hiss of quench, coal smoke."
+    },
+    {
+      "slug": "terminal-quarter",
+      "name": "Terminal Quarter",
+      "polygon": [[-1200, -320], [-160, -320], [-160, 60], [-1200, 60]],
+      "character": "Rail gateway around the domed 1909 Terminal Station: hotels, ticket agencies, freight exchange.",
+      "ambience": "Steam whistles on the quarter-hour, porters' calls, taxi horns, Wurlitzer drifting from the Alabama."
+    },
+    {
+      "slug": "heaviest-corner",
+      "name": "The Heaviest Corner",
+      "polygon": [[-160, -320], [220, -320], [220, 220], [-160, 220]],
+      "character": "Downtown deco canyon of 20–35 story banks and offices grown outward from 20th & 1st Ave N.",
+      "ambience": "Below-grade streetcars, bank chimes, ticker tape, shoe leather on terrazzo."
+    },
+    {
+      "slug": "alabama-way",
+      "name": "The Alabama Way",
+      "polygon": [[220, -320], [620, -320], [620, 220], [220, 220]],
+      "character": "Second Avenue North entertainment strip: movie palaces, vaudeville, radio studios, nightclubs.",
+      "ambience": "Marquee bulbs buzzing, intermission sing-alongs, big-band rehearsal through propped doors."
+    },
+    {
+      "slug": "avondale-boulevard",
+      "name": "Avondale & The Boulevard",
+      "polygon": [[620, -1200], [1200, -1200], [1200, 700], [620, 700]],
+      "character": "Streetcar-suburb belt of bungalows and merchant homes around Avondale Park; the union aristocracy's quarter.",
+      "ambience": "Lawnmowers, porch radios, church bells, kids playing under elms."
+    },
+    {
+      "slug": "ensley-works-mercato",
+      "name": "Ensley Works & Mercato",
+      "polygon": [[-1200, 60], [-160, 60], [-160, 700], [-1200, 700]],
+      "character": "Southwest industrial-port quarter: the great TCI South Works beside Italian, Greek, Polish and Black neighborhoods.",
+      "ambience": "Shift sirens, market vendors in four languages, accordion and bottleneck guitar from open windows."
+    },
+    {
+      "slug": "southside-highlands",
+      "name": "Southside Highlands",
+      "polygon": [[-160, 220], [620, 220], [620, 700], [-160, 700]],
+      "character": "Genteel foothill slope below Red Mountain: Highland Avenue mansions, shaded boulevards, boarding houses.",
+      "ambience": "Wind through oaks, distant mill whistles, carriage tires on macadam."
+    },
+    {
+      "slug": "red-mountain-crest-vulcan-park",
+      "name": "Red Mountain Crest & Vulcan Park",
+      "polygon": [[-1200, 700], [1200, 700], [1200, 1200], [-1200, 1200]],
+      "character": "The ore ridge itself: funicular, parkway, overlooks, and the iron god watching the valley smoke.",
+      "ambience": "Wind, cable-car gears, the hum of six hundred thousand people below."
     }
   ],
   "streets": [
-    { "name": "20th Street", "class": "avenue", "width": 18, "path": [[0, -300], [0, 300]] },
-    { "name": "1st Avenue North", "class": "street", "width": 14, "path": [[-300, 0], [300, 0]] }
+    {"name": "20th Street North", "class": "avenue", "width": 22, "path": [[0, -1200], [0, 700]]},
+    {"name": "24th Street North", "class": "street", "width": 16, "path": [[-480, -1200], [-480, 60]]},
+    {"name": "23rd Street North", "class": "street", "width": 16, "path": [[-360, -1200], [-360, 60]]},
+    {"name": "22nd Street North", "class": "street", "width": 16, "path": [[-240, -1200], [-240, 220]]},
+    {"name": "21st Street North", "class": "street", "width": 16, "path": [[-120, -320], [-120, 220]]},
+    {"name": "19th Street North", "class": "street", "width": 16, "path": [[120, -320], [120, 700]]},
+    {"name": "18th Street North", "class": "street", "width": 16, "path": [[240, -320], [240, 700]]},
+    {"name": "17th Street North", "class": "street", "width": 16, "path": [[360, -320], [360, 220]]},
+    {"name": "16th Street North", "class": "street", "width": 16, "path": [[480, -320], [480, 220]]},
+    {"name": "15th Street North", "class": "street", "width": 16, "path": [[600, -320], [600, 700]]},
+    {"name": "1st Avenue North", "class": "avenue", "width": 20, "path": [[-160, 0], [620, 0]]},
+    {"name": "2nd Avenue North", "class": "avenue", "width": 18, "path": [[-1200, -140], [1200, -140]]},
+    {"name": "3rd Avenue North", "class": "avenue", "width": 18, "path": [[-1200, -280], [620, -280]]},
+    {"name": "1st Avenue South", "class": "avenue", "width": 18, "path": [[-1200, 140], [1200, 140]]},
+    {"name": "2nd Avenue South", "class": "avenue", "width": 18, "path": [[-1200, 290], [1200, 290]]},
+    {"name": "Highland Avenue", "class": "avenue", "width": 20, "path": [[-160, 440], [1200, 440]]},
+    {"name": "5th Avenue South", "class": "street", "width": 16, "path": [[-1200, 580], [1200, 580]]},
+    {"name": "Morris Avenue", "class": "alley", "width": 10, "path": [[-160, -210], [620, -210]]},
+    {"name": "Red Mountain Crest Road", "class": "avenue", "width": 14, "path": [[-1150, 1050], [-800, 1120], [-400, 1160], [0, 1140], [400, 1090], [800, 1030], [1150, 1070]]},
+    {"name": "Vulcan Trail", "class": "street", "width": 10, "path": [[-300, 980], [-100, 1040], [0, 1100], [150, 1050], [400, 990]]}
   ],
   "landmarks": [
-    { "id": "heaviest-corner-tower", "name": "Heaviest Corner Tower", "district": "test-block", "position": [-40, -40], "rotationYDeg": 45, "footprint": [24, 24], "height": 120, "kind": "tower", "real": true, "description": "Placeholder ziggurat tower marking the Heaviest Corner." },
-    { "id": "north-gate-building", "name": "North Gate Building", "district": "test-block", "position": [60, -60], "rotationYDeg": 20, "footprint": [28, 20], "height": 90, "kind": "tower", "real": false, "description": "Stepped deco tower placeholder." },
-    { "id": "south-vulcan-block", "name": "South Vulcan Block", "district": "test-block", "position": [-70, 70], "rotationYDeg": -15, "footprint": [22, 22], "height": 75, "kind": "block", "real": false, "description": "Setback block placeholder with crown." }
+    {"id": "jefferson-trust-tower", "name": "Jefferson Trust Tower", "district": "heaviest-corner", "position": [10, -10], "rotationYDeg": 0, "footprint": [34, 34], "height": 125, "kind": "tower", "real": false, "description": "Ziggurat-crowned 34-story deco bank with a gold-lit crown, tallest thing on the Corner."},
+    {"id": "first-national-hand-tower", "name": "First National–Hand Tower", "district": "heaviest-corner", "position": [-42, 18], "rotationYDeg": 0, "footprint": [26, 26], "height": 86, "kind": "tower", "real": true, "description": "Neoclassical granite shaft, 21 stories of quiet banking money."},
+    {"id": "brown-marx-building", "name": "Brown-Marx Building", "district": "heaviest-corner", "position": [40, 28], "rotationYDeg": 0, "footprint": [28, 28], "height": 49, "kind": "tower", "real": true, "description": "Brick-and-terracotta office anchor of the southeast corner."},
+    {"id": "empire-building", "name": "Empire Building", "district": "heaviest-corner", "position": [46, -16], "rotationYDeg": 0, "footprint": [24, 24], "height": 49, "kind": "tower", "real": true, "description": "White terra-cotta wedding-cake corner with stacked cornices."},
+    {"id": "tci-building", "name": "TCI Building", "district": "heaviest-corner", "position": [-48, -34], "rotationYDeg": 0, "footprint": [32, 32], "height": 116, "kind": "tower", "real": false, "description": "31-story steel-frame HQ of independent TCI, blast-furnace relief frieze over the bronze doors."},
+    {"id": "birmingham-belt-elevated-loop", "name": "Birmingham Belt Elevated Loop", "district": "heaviest-corner", "position": [0, -50], "rotationYDeg": 0, "footprint": [520, 580], "height": 9, "kind": "block", "real": false, "description": "30-foot steel viaduct deck ringing the core, carrying six streetcar lines above the roofs of the low blocks."},
+    {"id": "terminal-station", "name": "Terminal Station", "district": "terminal-quarter", "position": [-420, -180], "rotationYDeg": 0, "footprint": [96, 64], "height": 40, "kind": "station", "real": true, "description": "Byzantine-domed gateway over ten tracks, twin 130-foot towers flanking the arrival hall."},
+    {"id": "hotel-tutwiler-grand", "name": "Hotel Tutwiler Grand", "district": "terminal-quarter", "position": [-320, -110], "rotationYDeg": 0, "footprint": [26, 30], "height": 46, "kind": "tower", "real": true, "description": "Twelve stories over a marble lobby, rooftop ballroom where the territory bands play."},
+    {"id": "welcome-to-birmingham-sign", "name": "WELCOME TO BIRMINGHAM Sign", "district": "terminal-quarter", "position": [-420, -240], "rotationYDeg": 180, "footprint": [52, 6], "height": 18, "kind": "block", "real": true, "description": "Sixty-foot neon gantry over the arrival tracks: STEEL CAPITAL OF THE SOUTH."},
+    {"id": "sloss-furnaces", "name": "Sloss Furnaces", "district": "furnace-row-sloss-flats", "position": [150, -750], "rotationYDeg": 0, "footprint": [230, 130], "height": 62, "kind": "furnace", "real": true, "description": "Cast-iron cathedral of four stacks, pipes and catwalks, pouring Sloss No. 2 since 1882."},
+    {"id": "slag-glass-works", "name": "Slag Glass Works", "district": "furnace-row-sloss-flats", "position": [-110, -860], "rotationYDeg": 0, "footprint": [64, 42], "height": 27, "kind": "block", "real": false, "description": "Low shed and 90-foot chimney turning furnace slag into amber glassware sold nationwide."},
+    {"id": "alabama-theatre", "name": "Alabama Theatre", "district": "alabama-way", "position": [380, -70], "rotationYDeg": 0, "footprint": [42, 72], "height": 24, "kind": "theater", "real": true, "description": "Publix movie palace for 2,500, starlit ceiling and a Mighty Wurlitzer, cooled to seventy degrees."},
+    {"id": "club-savoy", "name": "Club Savoy", "district": "alabama-way", "position": [300, 30], "rotationYDeg": 0, "footprint": [22, 26], "height": 12, "kind": "block", "real": false, "description": "Three stories under a neon saxophone sign; after-hours jazz till the first car home."},
+    {"id": "vulcan-monument", "name": "Vulcan Monument", "district": "red-mountain-crest-vulcan-park", "position": [0, 1125], "rotationYDeg": 0, "footprint": [22, 22], "height": 54, "kind": "statue", "real": true, "description": "56 feet of Sloss pig iron on a 120-foot sandstone-and-steel tower, spear tipped in red neon."},
+    {"id": "sentinel-observation-deck", "name": "Sentinel Observation Deck", "district": "red-mountain-crest-vulcan-park", "position": [-95, 1090], "rotationYDeg": 0, "footprint": [26, 14], "height": 43, "kind": "block", "real": false, "description": "Cantilevered overlook facing the valley smoke, raised by the people's Sentinel Fund."},
+    {"id": "valley-federation-of-labor-temple", "name": "Valley Federation of Labor Temple", "district": "avondale-boulevard", "position": [760, 130], "rotationYDeg": 0, "footprint": [32, 44], "height": 18, "kind": "block", "real": false, "description": "Six-story limestone hall with bronze furnace-door reliefs, dedicated to the Accord of 1921."},
+    {"id": "avondale-park-and-spring", "name": "Avondale Park & Spring", "district": "avondale-boulevard", "position": [950, 330], "rotationYDeg": 0, "footprint": [200, 170], "height": 5, "kind": "block", "real": true, "description": "Forty acres of spring-fed pool, amphitheater and grotto under the elms."},
+    {"id": "delancey-mansion", "name": "DeLancey Mansion", "district": "southside-highlands", "position": [210, 565], "rotationYDeg": 0, "footprint": [46, 32], "height": 13, "kind": "block", "real": false, "description": "Columned baronial pile, forty rooms, crowning Highland Avenue above the TCI chairman's valley."},
+    {"id": "ensley-blast-furnace-row", "name": "Ensley Blast Furnace Row", "district": "ensley-works-mercato", "position": [-900, 430], "rotationYDeg": 0, "footprint": [270, 110], "height": 58, "kind": "furnace", "real": true, "description": "Wall of six stacks, fire visible from the Belt Line — the TCI South Works never sleeps."},
+    {"id": "mercato-public-market", "name": "Mercato Public Market", "district": "ensley-works-mercato", "position": [-620, 300], "rotationYDeg": 0, "footprint": [92, 42], "height": 15, "kind": "block", "real": false, "description": "Two-block vaulted skylight hall of forty-four stalls, vendors calling in four languages."
+    }
+  ],
+  "streetcarLines": [
+    {"name": "Red Line", "color": "#c0392b", "loop": true, "path": [[-420, -140], [-60, -140], [0, -100], [0, 200], [0, 500], [-40, 660], [-200, 690], [-420, 500], [-440, 200], [-430, -100], [-420, -140]]},
+    {"name": "Ensley Flyer", "color": "#e67e22", "loop": true, "path": [[-160, 140], [-500, 140], [-760, 240], [-980, 380], [-1080, 560], [-940, 650], [-700, 620], [-420, 480], [-220, 300], [-160, 140]]},
+    {"name": "Avondale Local", "color": "#27ae60", "loop": true, "path": [[0, 140], [300, 140], [620, 160], [900, 260], [1060, 420], [1000, 560], [780, 580], [520, 460], [260, 300], [0, 140]]},
+    {"name": "Belt Loop (Elevated)", "color": "#d9c27a", "loop": true, "path": [[-260, -340], [260, -340], [260, 240], [-260, 240], [-260, -340]]},
+    {"name": "Bessemer Limited", "color": "#2c5faa", "loop": true, "path": [[0, 140], [0, 420], [-60, 620], [-320, 680], [-640, 690], [-900, 660], [-1020, 540], [-940, 420], [-640, 360], [-320, 300], [-100, 220], [0, 140]]}
   ]
 }
