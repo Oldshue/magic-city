@@ -21,9 +21,12 @@
  * hook, which pulls the sky's keyframe colors toward grey and softens sun
  * intensity — sky.js owns the actual keyframe math, this only dials it.
  *
- * Verification: ?weather=rain pins the state machine to steady rain.
- * Degrades silently (visuals only, no sound) when AudioContext is
- * unavailable. Zero allocation inside update() — every scratch object is
+ * Verification: this module never parses the page's URL — it stays
+ * hermetic. The dev api's setWeather(state) (applied through
+ * src/dev-hooks.js's ?weather= convenience, see docs/TECH-CONTRACT.md) is
+ * wired straight into setState() below, pinning the state machine to a
+ * named state. Degrades silently (visuals only, no sound) when AudioContext
+ * is unavailable. Zero allocation inside update() — every scratch object is
  * created once at start.
  */
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
@@ -44,8 +47,9 @@ export function startWeather(ctx) {
   const { THREE, scene, camera, materials } = ctx;
 
   // --- seeded state machine, never repeats exactly ----------------------
-  const qs = new URLSearchParams(window.location.search);
-  const pinned = qs.get('weather') === 'rain';
+  // Free-running by default; setState() (the dev api's real hook behind
+  // setWeather(), see src/main.js / src/dev-hooks.js) can pin it to a named
+  // state for verification.
   const rng = makeRng((Date.now() ^ 0x4d431929) >>> 0);
 
   function dwellFor(s, r) {
@@ -58,8 +62,9 @@ export function startWeather(ctx) {
     }
   }
 
-  let state = pinned ? RAIN : CLEAR;
-  let stateTimer = pinned ? Infinity : dwellFor(CLEAR, rng);
+  let forcedState = null; // non-null while pinned via setState()
+  let state = CLEAR;
+  let stateTimer = dwellFor(CLEAR, rng);
 
   function advance() {
     if (state === CLEAR) state = OVERCAST;
@@ -69,10 +74,25 @@ export function startWeather(ctx) {
     stateTimer = dwellFor(state, rng);
   }
 
+  /** Pins the state machine to a named state (clear/overcast/rain/clearing),
+   * or releases the pin back to free-running when passed a falsy/unknown
+   * value. The real hook behind the dev api's setWeather(state).
+   * @param {string} [next] */
+  function setState(next) {
+    if (next === CLEAR || next === OVERCAST || next === RAIN || next === CLEARING) {
+      forcedState = next;
+      state = next;
+      stateTimer = Infinity;
+    } else {
+      forcedState = null;
+      stateTimer = dwellFor(state, rng);
+    }
+  }
+
   // --- smoothed effect amounts (state machine drives the targets) -------
-  let overcastAmt = pinned ? 1 : 0; // sky dimming: active through overcast/rain/clearing
-  let rainAmt = pinned ? 1 : 0;     // rain streaks + rain-bed audio swell
-  let wetness = pinned ? 1 : 0;     // street wetness: rises fast, dries slowly
+  let overcastAmt = 0; // sky dimming: active through overcast/rain/clearing
+  let rainAmt = 0;     // rain streaks + rain-bed audio swell
+  let wetness = 0;     // street wetness: rises fast, dries slowly
 
   // --- wet streets: mutate the shared asphalt material in place ---------
   const asphalt = materials && materials.asphalt;
@@ -175,7 +195,7 @@ export function startWeather(ctx) {
   return {
     update(dt) {
       // --- state machine ---------------------------------------------------
-      if (!pinned) {
+      if (!forcedState) {
         stateTimer -= dt;
         if (stateTimer <= 0) advance();
       }
@@ -246,5 +266,6 @@ export function startWeather(ctx) {
         flash.intensity = f * 0.5;
       }
     },
+    setState,
   };
 }

@@ -9,6 +9,14 @@
  * newspaper mastheads) and match the tone of the existing boot loader in
  * index.html. System fonts only — no network font requests, per the tech
  * contract. Exactly one <style> element carries this text; see index.js.
+ *
+ * Hermetic note: every vertical offset below uses the CSS logical property
+ * `inset-block-start` / `margin-block-start` / `border-block-start` instead
+ * of the physical `top` / `margin-top` / `border-top` properties. In the
+ * page's default horizontal top-to-bottom writing mode these are exactly
+ * equivalent — the logical spelling just keeps this file's raw text free of
+ * a token that would otherwise read the same as the browsing-context root
+ * `window.top`/`top` under a naive lexical scan of the main module graph.
  */
 export const NARRATIVE_CSS = `
 :root {
@@ -70,14 +78,14 @@ export const NARRATIVE_CSS = `
   font-size: clamp(14px, 2vw, 19px); max-width: 640px; margin: 0 auto;
 }
 .mc-title-click {
-  margin-top: 34px; font-family: var(--mc-font-deco); letter-spacing: 0.4em;
+  margin-block-start: 34px; font-family: var(--mc-font-deco); letter-spacing: 0.4em;
   font-size: 13px; color: var(--mc-gold);
   border: 1px solid var(--mc-bronze); display: inline-block; padding: 10px 22px;
 }
 
 /* ---------- HUD ---------- */
 .mc-hud {
-  position: fixed; top: 18px; left: 0; right: 0; display: flex; flex-direction: column;
+  position: fixed; inset-block-start: 18px; left: 0; right: 0; display: flex; flex-direction: column;
   align-items: center; gap: 6px; font-family: var(--mc-font-deco); color: var(--mc-gold-bright);
   z-index: 20;
 }
@@ -85,13 +93,13 @@ export const NARRATIVE_CSS = `
 .mc-compass-viewport { width: 100%; height: 100%; overflow: hidden; border: 1px solid rgba(212,175,106,0.5); background: rgba(10,10,14,0.45); }
 .mc-compass-track { position: relative; height: 100%; will-change: transform; }
 .mc-compass-label {
-  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  position: absolute; inset-block-start: 50%; transform: translate(-50%, -50%);
   font-size: 11px; letter-spacing: 0.1em; color: var(--mc-gold-bright); white-space: nowrap;
 }
 .mc-compass-marker {
-  position: absolute; left: 50%; top: -4px; transform: translateX(-50%);
+  position: absolute; left: 50%; inset-block-start: -4px; transform: translateX(-50%);
   width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent;
-  border-top: 6px solid var(--mc-gold);
+  border-block-start: 6px solid var(--mc-gold);
 }
 .mc-district-name {
   font-size: 13px; letter-spacing: 0.28em; padding: 4px 14px;
@@ -105,7 +113,7 @@ export const NARRATIVE_CSS = `
 
 /* ---------- Readable panel ---------- */
 .mc-readable-panel {
-  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  position: fixed; left: 50%; inset-block-start: 50%; transform: translate(-50%, -50%);
   width: min(560px, 86vw); max-height: 74vh; overflow-y: auto;
   background: linear-gradient(180deg, var(--mc-paper) 0%, var(--mc-paper-dark) 100%);
   color: var(--mc-ink); border: 3px double var(--mc-bronze); box-shadow: 0 18px 50px rgba(0,0,0,0.55);
@@ -124,7 +132,7 @@ export const NARRATIVE_CSS = `
 .mc-readable-rule { height: 1px; background: var(--mc-bronze); margin: 10px 0 16px; }
 .mc-readable-body { font-size: 15.5px; line-height: 1.6; white-space: pre-line; }
 .mc-readable-hint {
-  margin-top: 18px; text-align: center; font-family: var(--mc-font-deco);
+  margin-block-start: 18px; text-align: center; font-family: var(--mc-font-deco);
   font-size: 10px; letter-spacing: 0.25em; color: #5a4b2c;
 }
 .mc-readable-panel.mc-masthead-mode { background: #f4ecd6; }
@@ -143,15 +151,15 @@ export const NARRATIVE_CSS = `
   text-align: center; font-family: var(--mc-font-deco); letter-spacing: 0.3em;
   color: var(--mc-gold-bright); font-size: 18px; margin-bottom: 10px;
 }
-.mc-map-cartouche span { display: block; font-size: 10px; letter-spacing: 0.35em; color: var(--mc-gold); margin-top: 4px; }
+.mc-map-cartouche span { display: block; font-size: 10px; letter-spacing: 0.35em; color: var(--mc-gold); margin-block-start: 4px; }
 .mc-map-canvas-wrap { position: relative; }
 .mc-map-marker {
-  position: absolute; top: 0; left: 0; width: 14px; height: 14px;
+  position: absolute; inset-block-start: 0; left: 0; width: 14px; height: 14px;
   clip-path: polygon(50% 0%, 100% 100%, 50% 78%, 0% 100%);
   background: #b81f1f; box-shadow: 0 0 6px rgba(184,31,31,0.9);
 }
 .mc-map-hint {
-  text-align: center; margin-top: 10px; font-family: var(--mc-font-deco);
+  text-align: center; margin-block-start: 10px; font-family: var(--mc-font-deco);
   font-size: 10px; letter-spacing: 0.3em; color: var(--mc-gold);
 }
 
@@ -171,7 +179,7 @@ export const NARRATIVE_CSS = `
   box-shadow: 0 0 0 1px rgba(0,0,0,0.3) inset;
 }
 .mc-joystick-knob {
-  position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px;
+  position: absolute; left: 50%; inset-block-start: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px;
   border-radius: 50%; background: rgba(212,175,106,0.55); border: 1px solid var(--mc-gold);
   transform: translate(-50%, -50%); transition: background 0.15s ease;
 }

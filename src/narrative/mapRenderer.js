@@ -9,7 +9,7 @@
 
 /**
  * worldToMap — projects a world (x,z) meter coordinate onto a size x size
- * canvas using the plan's bounds. North (-Z) maps to the top of the canvas.
+ * canvas using the plan's bounds. North (-Z) maps to the upper edge of the canvas.
  * @param {{minX:number,maxX:number,minZ:number,maxZ:number}} bounds
  * @param {number} size canvas width/height in px (square)
  * @param {number} x

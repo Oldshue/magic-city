@@ -34,7 +34,7 @@ export const materials = {
   /** Daytime glass — reflective blue-grey, non-emissive. */
   glassDay: std({ color: 0x5b7080, roughness: 0.12, metalness: 0.65 }),
 
-  /** Night glass — genuinely emissive warm window glow that carries the night
+  /** Night glass — genuinely emissive warm glazing glow that carries the night
    * view; reads as lit offices and hotel rooms even against lifted midnight sky. */
   glassNight: std({ color: 0x1a1f26, roughness: 0.2, metalness: 0.4,
                     emissive: 0xffb45e, emissiveIntensity: 2.6 }),

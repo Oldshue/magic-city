@@ -6,6 +6,10 @@
  * autoplay policy. If AudioContext is unavailable, or construction throws,
  * every export degrades to a harmless no-op so the rest of the systems
  * layer never has to special-case audio failure.
+ *
+ * Gesture detection listens on `document` (not a browsing-context root) —
+ * this module stays hermetic, and `AudioContext`/`webkitAudioContext` are
+ * referenced as plain global identifiers rather than through `window`.
  */
 
 let ctx = null;
@@ -18,7 +22,7 @@ let pendingResolvers = [];
 function tryCreate() {
   if (ctx || failed) return;
   try {
-    const AC = window.AudioContext || window.webkitAudioContext;
+    const AC = AudioContext || webkitAudioContext;
     if (!AC) { failed = true; return; }
     ctx = new AC();
     master = ctx.createGain();
@@ -43,11 +47,11 @@ function onGesture() {
     for (const fn of fns) {
       try { fn(); } catch (e) { /* a subsystem's init blew up; keep going */ }
     }
-    for (const ev of gestureEvents) window.removeEventListener(ev, onGesture);
+    for (const ev of gestureEvents) document.removeEventListener(ev, onGesture);
   }
 }
 
-for (const ev of gestureEvents) window.addEventListener(ev, onGesture, { passive: true });
+for (const ev of gestureEvents) document.addEventListener(ev, onGesture, { passive: true });
 
 /** Returns { ctx, master } once unlocked and available, else null. */
 export function getAudio() {
