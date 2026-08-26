@@ -40,3 +40,11 @@ The technical law of this repository. Every agent honors it exactly.
 
 ## Look
 - Day-night cycle of 6 real minutes. Warm limestone daylight; at night, lit windows (glassNight emissive), marquee glow, and the furnace district burning orange on the southern horizon. Art deco means: vertical thrust, stepped setbacks, ziggurat crowns, sunburst and chevron ornament, bronze and terra cotta, uplit crowns at night.
+
+## Verification hooks
+Query parameters read once at boot by `src/main.js`, plus a global exposed once boot completes:
+
+- `?phase=0.42` — pins the day-night cycle phase (0..1). Every frame, the elapsed time fed to the sky system is forced to `phase * 360` (the cycle is 360 seconds) instead of the running clock, so `getDayPhase()` and lighting hold steady at the requested phase.
+- `?pos=x,z&yaw=deg` — overrides the plan's spawn position and yaw. `pos` takes two comma-separated meters (world X,Z); `yaw` takes degrees. Either may be supplied independently; unsupplied values fall back to `plan.spawn`.
+- `?fly=1` — multiplies movement speed 6x and enables two additional keys, both handled entirely in `src/main.js`: `R` moves the camera up, `F` moves it down. Fly mode never drops the camera below ground level.
+- `window.__MC` — exposed on `window` once boot completes: `{ scene, camera, plan, getDayPhase, drawCalls }`, where `drawCalls()` returns `renderer.info.render.calls` at call time.
