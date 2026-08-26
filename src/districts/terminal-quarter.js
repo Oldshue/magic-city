@@ -114,8 +114,9 @@ export async function build(ctx) {
     st.position.set(-420, 0, -180);
 
     // Main hall mass.
-    st.add(Object.assign(block(96, 44, 20, M.limestone), { position: new THREE.Vector3(0, 10, 6) }));
-    st.children[st.children.length - 1].position.set(0, 10, 6);
+    const hallMass = block(96, 44, 20, M.limestone);
+    hallMass.position.set(0, 10, 6);
+    st.add(hallMass);
     // Drum under the dome.
     const drum = new THREE.Mesh(new THREE.CylinderGeometry(17, 17, 6, 24), M.limestone);
     drum.position.set(0, 23, 6);
