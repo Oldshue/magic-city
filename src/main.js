@@ -107,9 +107,12 @@ async function boot() {
 
   // Shared context per TECH-CONTRACT v1:
   // { THREE, scene, plan, district, materials, deco, registerInteractive }
+  // `controls` is an additive field beyond the documented contract — systems that need to
+  // hand off camera control (driving, streetcar riding) call controls.setEnabled(false/true)
+  // and read controls.getColliderBoxes() for their own collision checks.
   const ctx = {
     THREE, scene, camera, renderer, plan,
-    materials, deco, registerInteractive,
+    materials, deco, registerInteractive, controls,
     getDayPhase: sky.getDayPhase,
     interactives,
   };
