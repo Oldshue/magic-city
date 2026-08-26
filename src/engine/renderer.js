@@ -24,6 +24,13 @@ export function createRenderer(container = document.body) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
 
+  // Shadow mapping: one soft-filtered shadow-casting light (the sun, wired
+  // up in sky.js) with a tight frustum kept near the camera by sky.js's
+  // update(). PCFSoftShadowMap trades a little cost for much softer,
+  // less "cardboard" shadow edges than the default PCF.
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 6000);
 
