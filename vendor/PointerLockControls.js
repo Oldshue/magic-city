@@ -44,17 +44,17 @@ class PointerLockControls extends Controls {
 
 	connect() {
 
-		this.domElement.ownerDocument.addEventListener( 'mousemove', this._onMouseMove );
-		this.domElement.ownerDocument.addEventListener( 'pointerlockchange', this._onPointerlockChange );
-		this.domElement.ownerDocument.addEventListener( 'pointerlockerror', this._onPointerlockError );
+		this.domElement.getRootNode().addEventListener( 'mousemove', this._onMouseMove );
+		this.domElement.getRootNode().addEventListener( 'pointerlockchange', this._onPointerlockChange );
+		this.domElement.getRootNode().addEventListener( 'pointerlockerror', this._onPointerlockError );
 
 	}
 
 	disconnect() {
 
-		this.domElement.ownerDocument.removeEventListener( 'mousemove', this._onMouseMove );
-		this.domElement.ownerDocument.removeEventListener( 'pointerlockchange', this._onPointerlockChange );
-		this.domElement.ownerDocument.removeEventListener( 'pointerlockerror', this._onPointerlockError );
+		this.domElement.getRootNode().removeEventListener( 'mousemove', this._onMouseMove );
+		this.domElement.getRootNode().removeEventListener( 'pointerlockchange', this._onPointerlockChange );
+		this.domElement.getRootNode().removeEventListener( 'pointerlockerror', this._onPointerlockError );
 
 	}
 
@@ -115,7 +115,7 @@ class PointerLockControls extends Controls {
 
 	unlock() {
 
-		this.domElement.ownerDocument.exitPointerLock();
+		this.domElement.getRootNode().exitPointerLock();
 
 	}
 
@@ -146,7 +146,7 @@ function onMouseMove( event ) {
 
 function onPointerlockChange() {
 
-	if ( this.domElement.ownerDocument.pointerLockElement === this.domElement ) {
+	if ( this.domElement.getRootNode().pointerLockElement === this.domElement ) {
 
 		this.dispatchEvent( _lockEvent );
 
