@@ -286,7 +286,7 @@ export function setLampsNight(nightFactor) {
     globe.material.color.setHex(lit ? 0xffd9a0 : 0x555550);
   }
   for (const rec of lampRecords) {
-    rec.disc.material.opacity = lit ? Math.min(1, (nightFactor - 0.35) / 0.4) * 0.75 : 0;
+    rec.disc.material.opacity = lit ? Math.min(1, (nightFactor - 0.35) / 0.4) : 0;
   }
 }
 

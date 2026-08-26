@@ -134,6 +134,12 @@ async function boot() {
   scene.traverse((obj) => {
     if (!obj.isMesh) return;
     if (obj === ground) return; // already configured above
+    if (obj.userData.noShadow || obj.material?.transparent) {
+      // Sky decor (dome, clouds, celestial billboards) and transparent glow
+      // quads must never cast — a huge alpha plane casts a blanket shadow.
+      obj.castShadow = false;
+      return;
+    }
     if (obj.isInstancedMesh && obj.count > 64) {
       // Large instanced batches (window grids) — receive only, skip as caster.
       obj.castShadow = false;
@@ -234,7 +240,8 @@ async function boot() {
 
     // A pinned phase (dev api setPhase(p)) feeds a forced elapsed value
     // (phase * 360) to the sky system every frame instead of clock time.
-    const elapsed = phasePin !== null ? phasePin * DAY_NIGHT_CYCLE_SECONDS : clock.elapsedTime;
+    const elapsed = phasePin !== null ? phasePin * DAY_NIGHT_CYCLE_SECONDS
+      : clock.elapsedTime + DAY_NIGHT_CYCLE_SECONDS * 0.38; // fresh loads begin in late morning, never midnight
 
     const phase = sky.update(dt, elapsed, camera.position);
     const nightGlow = sky.getNightGlow ? sky.getNightGlow() : (phase < 0.22 || phase > 0.8 ? 1 : 0);
