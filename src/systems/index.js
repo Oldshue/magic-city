@@ -1,7 +1,7 @@
 /**
  * systems/index.js — the living city. Wires together streetcars, period
  * automobiles, pedestrians, steel-district furnace life, WebAudio ambience,
- * the NOIR JAZZ score, and drivable cars/streetcar riding, per
+ * the NOIR JAZZ score, drivable cars/streetcar riding, and noir weather, per
  * docs/TECH-CONTRACT.md:
  *   export async/sync function startSystems(ctx) -> { update(dt, elapsed) }
  * Each subsystem is started defensively — a failure in one never prevents
@@ -14,6 +14,7 @@ import { startSteelLife } from './steelLife.js';
 import { startAmbience } from './ambience.js';
 import { startJazz } from './jazz.js';
 import { startDriving } from './driving.js';
+import { startWeather } from './weather.js';
 
 export function startSystems(ctx) {
   const streetcars = safeStart(startStreetcars, ctx, 'streetcars');
@@ -25,6 +26,7 @@ export function startSystems(ctx) {
   // driving.js coordinates streetcar boarding through streetcars.getCars() rather than
   // reaching into streetcars.js internals — ctx is only extended, never mutated upstream.
   const driving = safeStart((c) => startDriving({ ...c, streetcars }), ctx, 'driving');
+  const weather = safeStart(startWeather, ctx, 'weather');
 
   const carPositions = streetcars && streetcars.getCarPositions ? streetcars.getCarPositions() : [];
   const ambienceExtra = { carPositions };
@@ -38,6 +40,7 @@ export function startSystems(ctx) {
       if (ambience) ambience.update(dt, elapsed, ambienceExtra);
       if (jazz) jazz.update(dt, elapsed);
       if (driving) driving.update(dt, elapsed);
+      if (weather) weather.update(dt, elapsed);
     },
   };
 }
