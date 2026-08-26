@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { materials } from './materials.js';
 
 const lampGlobes = []; // registered by streetlamp(); toggled at night
+const lampRecords = []; // {group, globe, disc} — full lamp records for the point-light pool
 
 /**
  * setbackTower — classic stepped-setback deco skyscraper with cornices,
@@ -219,8 +220,31 @@ export function canvasSign(text, opts = {}) {
   return group;
 }
 
+// --- Warm radial-glow disc texture for the pavement pool under each lamp --
+let _glowDiscTexture = null;
+function glowDiscTexture() {
+  if (_glowDiscTexture) return _glowDiscTexture;
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0.0, 'rgba(255,214,150,0.9)');
+  g.addColorStop(0.5, 'rgba(255,190,110,0.35)');
+  g.addColorStop(1.0, 'rgba(255,180,100,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  _glowDiscTexture = new THREE.CanvasTexture(c);
+  _glowDiscTexture.colorSpace = THREE.SRGBColorSpace;
+  return _glowDiscTexture;
+}
+
 /**
  * streetlamp — period pole lamp with warm globe; globes auto-dim by day.
+ * Also lays a warm glow-pool disc on the pavement beneath the lamp (opacity
+ * driven by setLampsNight) and registers the lamp for the point-light pool
+ * (see initLampPool/updateLampPool below) so a handful of real PointLights
+ * follow the nearest lamps to the camera at night.
  * @returns {THREE.Group} base at y=0, ~5m tall
  */
 export function streetlamp() {
@@ -236,16 +260,105 @@ export function streetlamp() {
   globe.position.set(0.95, 4.5, 0);
   lampGlobes.push(globe);
   g.add(globe);
+
+  // Ground glow-pool disc, laid flat, additively blended, invisible by day.
+  const discMat = new THREE.MeshBasicMaterial({
+    map: glowDiscTexture(), transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending, color: 0xffffff,
+  });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(4.2, 20), discMat);
+  disc.rotation.x = -Math.PI / 2;
+  disc.position.set(0.95, 0.03, 0);
+  g.add(disc);
+
+  lampRecords.push({ group: g, globe, disc });
   return g;
 }
 
 /**
- * setLampsNight — toggle all registered lamp globes for night mode.
+ * setLampsNight — toggle all registered lamp globes (and their pavement
+ * glow-pool discs) for night mode.
  * @param {number} nightFactor 0 (day) .. 1 (night)
  */
 export function setLampsNight(nightFactor) {
+  const lit = nightFactor > 0.35;
   for (const globe of lampGlobes) {
-    globe.material.color.setHex(nightFactor > 0.35 ? 0xffd9a0 : 0x555550);
+    globe.material.color.setHex(lit ? 0xffd9a0 : 0x555550);
+  }
+  for (const rec of lampRecords) {
+    rec.disc.material.opacity = lit ? Math.min(1, (nightFactor - 0.35) / 0.4) * 0.75 : 0;
+  }
+}
+
+// --- Streetlamp PointLight pool: max ~8 real lights, recycled each frame to
+// the lamps nearest the camera (see docs/TECH-CONTRACT.md perf budget: "one
+// shadow-casting light, <=8 dynamic point lights"). Allocation-free per frame
+// aside from the fixed-size scratch arrays created once below. ------------
+const LAMP_POOL_SIZE = 8;
+let lampPool = null;
+const _poolWorldPos = new THREE.Vector3();
+const _poolDistScratch = new Float64Array(LAMP_POOL_SIZE);
+const _poolNearest = new Array(LAMP_POOL_SIZE).fill(null);
+
+/**
+ * initLampPool — create the recycled pool of streetlamp PointLights and add
+ * them to the scene once. Safe to call multiple times (no-op after first).
+ * @param {THREE.Scene} scene
+ * @returns {THREE.PointLight[]}
+ */
+export function initLampPool(scene) {
+  if (lampPool) return lampPool;
+  lampPool = [];
+  for (let i = 0; i < LAMP_POOL_SIZE; i++) {
+    const light = new THREE.PointLight(0xffb870, 0, 11, 2);
+    light.visible = false;
+    scene.add(light);
+    lampPool.push(light);
+  }
+  return lampPool;
+}
+
+/**
+ * updateLampPool — reassign the recycled PointLight pool to the streetlamps
+ * nearest cameraPosition, scaled by nightFactor (0 = all lights off). Call
+ * once per frame after initLampPool(scene) has run.
+ * @param {{x:number,z:number}} cameraPosition
+ * @param {number} nightFactor 0 (day) .. 1 (night)
+ */
+export function updateLampPool(cameraPosition, nightFactor) {
+  if (!lampPool || !cameraPosition) return;
+  if (nightFactor <= 0.05 || lampRecords.length === 0) {
+    for (const l of lampPool) l.visible = false;
+    return;
+  }
+  for (let i = 0; i < LAMP_POOL_SIZE; i++) { _poolDistScratch[i] = Infinity; _poolNearest[i] = null; }
+  for (let i = 0; i < lampRecords.length; i++) {
+    const rec = lampRecords[i];
+    rec.group.getWorldPosition(_poolWorldPos);
+    const dx = _poolWorldPos.x - cameraPosition.x;
+    const dz = _poolWorldPos.z - cameraPosition.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < _poolDistScratch[LAMP_POOL_SIZE - 1]) {
+      let idx = LAMP_POOL_SIZE - 1;
+      _poolDistScratch[idx] = d2;
+      _poolNearest[idx] = { x: _poolWorldPos.x, z: _poolWorldPos.z };
+      while (idx > 0 && _poolDistScratch[idx] < _poolDistScratch[idx - 1]) {
+        const dTmp = _poolDistScratch[idx]; _poolDistScratch[idx] = _poolDistScratch[idx - 1]; _poolDistScratch[idx - 1] = dTmp;
+        const nTmp = _poolNearest[idx]; _poolNearest[idx] = _poolNearest[idx - 1]; _poolNearest[idx - 1] = nTmp;
+        idx--;
+      }
+    }
+  }
+  for (let i = 0; i < LAMP_POOL_SIZE; i++) {
+    const light = lampPool[i];
+    const pos = _poolNearest[i];
+    if (pos) {
+      light.visible = true;
+      light.position.set(pos.x, 4.3, pos.z);
+      light.intensity = 7 * nightFactor;
+    } else {
+      light.visible = false;
+    }
   }
 }
 

@@ -49,6 +49,7 @@ async function boot() {
   );
   ground.material.color.setHex(0x6f6a5c);
   ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
   scene.add(ground);
 
   // --- Street ribbons: asphalt + sidewalk edges ----------------------
@@ -67,6 +68,7 @@ async function boot() {
     asphalt.rotation.x = -Math.PI / 2;
     asphalt.rotation.z = -angle;
     asphalt.position.set(mid.x, 0.02, mid.z);
+    asphalt.receiveShadow = true;
     scene.add(asphalt);
 
     const swW = 3;
@@ -82,6 +84,7 @@ async function boot() {
         0.04,
         mid.z - Math.sin(angle) * side * (st.width / 2 + swW / 2)
       );
+      sw.receiveShadow = true;
       scene.add(sw);
     }
   }
@@ -118,6 +121,33 @@ async function boot() {
       console.warn('[magic-city] skipping district', d.slug, err && err.message);
     }
   }
+
+  // --- Shadow pass: after every district has built its geometry, traverse
+  // the whole scene once turning on castShadow/receiveShadow for ordinary
+  // meshes. Ground and street ribbons already opted in above (receiveShadow
+  // set at creation). InstancedMesh window grids (potentially thousands of
+  // tiny planes per building) are skipped as *casters* for performance —
+  // they still receive shadow from other buildings and never block light
+  // in a way the eye would miss — but everything else (walls, cornices,
+  // pilasters, doorways, lamps, signs, statues, streetcars) casts and
+  // receives normally so buildings finally read as solid, grounded masses.
+  scene.traverse((obj) => {
+    if (!obj.isMesh) return;
+    if (obj === ground) return; // already configured above
+    if (obj.isInstancedMesh && obj.count > 64) {
+      // Large instanced batches (window grids) — receive only, skip as caster.
+      obj.castShadow = false;
+      obj.receiveShadow = true;
+      return;
+    }
+    obj.castShadow = true;
+    obj.receiveShadow = true;
+  });
+
+  // --- Streetlamp point-light pool: a recycled set of ≤8 real PointLights
+  // assigned each frame (in the frame loop below) to the lamps nearest the
+  // camera, so streets actually read as lit at night instead of black void.
+  deco.initLampPool(scene);
 
   // --- Systems & narrative (optional modules) --------------------------
   let systemsUpdate = null;
@@ -207,7 +237,9 @@ async function boot() {
     const elapsed = phasePin !== null ? phasePin * DAY_NIGHT_CYCLE_SECONDS : clock.elapsedTime;
 
     const phase = sky.update(dt, elapsed, camera.position);
-    deco.setLampsNight(phase < 0.22 || phase > 0.8 ? 1 : 0);
+    const nightGlow = sky.getNightGlow ? sky.getNightGlow() : (phase < 0.22 || phase > 0.8 ? 1 : 0);
+    deco.setLampsNight(nightGlow);
+    deco.updateLampPool(camera.position, nightGlow);
     if (systemsUpdate) systemsUpdate(dt, elapsed);
     renderer.render(scene, camera);
   }
