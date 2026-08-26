@@ -6,7 +6,9 @@
  * under a permanent low orange dome; blowing-engine heartbeat, whistle
  * shifts, crane bells, hiss of quench, coal smoke. City-plan notes call
  * for loose industrial parcels on a coarse grid with a rail belt along
- * the south edge feeding Sloss.
+ * the south edge feeding Sloss. Twin hot-blast stoves, drifting smoke
+ * columns, and molten underlighting near the cast sheds carry the furnace
+ * glow onto the north-east horizon after dark.
  *
  * Exports: export async function build(ctx)
  */
@@ -77,6 +79,63 @@ export async function build(ctx) {
     return obj;
   }
 
+  // Cached soft-round smoke sprite texture (one canvas, reused by every puff).
+  let _smokeTex = null;
+  function makeSmokeTexture() {
+    if (_smokeTex) return _smokeTex;
+    const size = 128;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, 'rgba(210,205,196,0.85)');
+    grad.addColorStop(0.55, 'rgba(180,175,168,0.35)');
+    grad.addColorStop(1, 'rgba(160,155,150,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, size, size);
+    _smokeTex = new THREE.CanvasTexture(c);
+    _smokeTex.colorSpace = THREE.SRGBColorSpace;
+    return _smokeTex;
+  }
+
+  /** A slow-drifting smoke column of camera-facing sprites (auto-billboard,
+   * no per-frame code needed). Transparent glow planes — always noShadow. */
+  function buildSmokeColumn(x, baseY, z, seed) {
+    const rng = mulberry32(seed);
+    const tex = makeSmokeTexture();
+    const group = new THREE.Group();
+    let dx = 0, dz = 0;
+    const puffCount = 5;
+    for (let i = 0; i < puffCount; i++) {
+      const t = i / (puffCount - 1);
+      const y = baseY + t * 50 + rng() * 4;
+      dx += (rng() - 0.15) * 7; // drifts downwind as it rises
+      dz += (rng() - 0.5) * 3;
+      const scale = 6 + t * 15 + rng() * 3;
+      const mat = new THREE.SpriteMaterial({
+        map: tex, transparent: true, depthWrite: false,
+        opacity: 0.3 * (1 - t * 0.5), color: 0xcac4b8,
+      });
+      const spr = new THREE.Sprite(mat);
+      spr.scale.set(scale, scale * 1.2, 1);
+      spr.position.set(x + dx, y, z + dz);
+      spr.userData.noShadow = true;
+      group.add(spr);
+    }
+    return group;
+  }
+
+  /** Orient a unit-height cylinder mesh (already scaled to length 1 along Y)
+   * between two local-space points, scaling and rotating it in place. */
+  function orientBetween(mesh, p0, p1) {
+    const dir = new THREE.Vector3(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+    const len = dir.length() || 0.001;
+    mesh.scale.y = len;
+    mesh.position.set((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    return mesh;
+  }
+
   // =====================================================================
   // 1. SLOSS FURNACES — law geometry from data/city-plan.json
   // =====================================================================
@@ -128,6 +187,50 @@ export async function build(ctx) {
     );
     g.add(glows);
 
+    // Twin Cowper-style hot-blast stoves flanking the shed — bulbous brick
+    // cylinders under domed steel caps, the paired "stoves" that give a
+    // blast-furnace plant its cathedral-like silhouette alongside the stacks.
+    const stoveR = fw * 0.05;
+    const stoveH = fh * 0.5;
+    const stovePositions = [
+      [-fw * 0.42, -fd * 0.3],
+      [fw * 0.42, -fd * 0.3],
+    ];
+    const stoveGroup = new THREE.Group();
+    for (const [sx, sz] of stovePositions) {
+      const stove = cyl(stoveR, stoveR * 1.1, stoveH, 14, materials.brick);
+      stove.position.set(sx, stoveH / 2, sz);
+      stoveGroup.add(stove);
+      const stoveDome = new THREE.Mesh(
+        new THREE.SphereGeometry(stoveR * 1.08, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        materials.steelDark
+      );
+      stoveDome.position.set(sx, stoveH, sz);
+      stoveGroup.add(stoveDome);
+      const stoveGlowRing = cyl(stoveR * 0.55, stoveR * 0.55, stoveH * 0.1, 12, materials.furnaceGlow);
+      stoveGlowRing.position.set(sx, stoveH * 0.14, sz);
+      stoveGroup.add(stoveGlowRing);
+    }
+    // Pipe bridge linking the two stoves across the shed roof.
+    const stoveBridge = cyl(0.5, 0.5, 1, 8, materials.steelDark);
+    orientBetween(stoveBridge,
+      [stovePositions[0][0] + stoveR, stoveH * 0.82, stovePositions[0][1]],
+      [stovePositions[1][0] - stoveR, stoveH * 0.82, stovePositions[1][1]]);
+    stoveGroup.add(stoveBridge);
+    // Diagonal risers tying each stove into the nearest stack — pipework bridges.
+    stovePositions.forEach(([sx, sz], i) => {
+      const targetX = stackXs[i === 0 ? 0 : stackXs.length - 1];
+      const riser = cyl(0.4, 0.4, 1, 8, materials.steelDark);
+      orientBetween(riser, [sx, stoveH * 0.75, sz], [targetX, stackH * 0.2, stackZ]);
+      stoveGroup.add(riser);
+    });
+    g.add(stoveGroup);
+
+    // Slow-drifting smoke columns atop each stack — billboard sprite puffs.
+    stackXs.forEach((x, i) => {
+      g.add(buildSmokeColumn(x, stackH + stackR, stackZ, 9001 + i * 77));
+    });
+
     // Horizontal pipe runs and catwalks knitting the stacks together.
     const pipeY = stackH * 0.62;
     const pipeTransforms = [];
@@ -155,6 +258,22 @@ export async function build(ctx) {
     doorway.position.set(fw * 0.36, 0, -fd * 0.28 + (fd * 0.18) / 2 + 0.05);
     g.add(doorway);
 
+    // Warm underlighting near the cast sheds — molten glow reads on the
+    // ground and on nearby structures after dark, beyond the stack bands.
+    const moltenLight1 = new THREE.PointLight(0xff5a1e, 2.4, 95, 2);
+    moltenLight1.position.set(-fw * 0.12, 3.2, fd * 0.22);
+    g.add(moltenLight1);
+    const moltenLight2 = new THREE.PointLight(0xff7a2e, 1.8, 75, 2);
+    moltenLight2.position.set(fw * 0.18, 2.6, fd * 0.3);
+    g.add(moltenLight2);
+    const moltenPool = new THREE.Mesh(new THREE.CircleGeometry(fw * 0.09, 16), materials.furnaceGlow);
+    moltenPool.rotation.x = -Math.PI / 2;
+    moltenPool.position.set(-fw * 0.12, 0.15, fd * 0.22);
+    moltenPool.userData.noShadow = true;
+    moltenPool.castShadow = false;
+    moltenPool.receiveShadow = false;
+    g.add(moltenPool);
+
     // Signature sign on the shed face.
     const sign = canvasSign('SLOSS — THE IRON THAT BUILT THE SOUTH SINCE 1882', { width: fw * 0.4 });
     sign.position.set(0, shedH * 0.72, fd * 0.7 / 2 + 0.15);
@@ -163,9 +282,23 @@ export async function build(ctx) {
     root.add(g);
 
     // Soft horizon glow behind the furnaces — the low orange dome of the Bible.
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff5a1e, transparent: true, opacity: 0.28, depthWrite: false });
-    const horizonGlow = new THREE.Mesh(new THREE.PlaneGeometry(900, 220), glowMat);
+    const glowCanvas = document.createElement('canvas');
+    glowCanvas.width = 256; glowCanvas.height = 128;
+    const gctx = glowCanvas.getContext('2d');
+    const grad = gctx.createRadialGradient(128, 118, 8, 128, 118, 120);
+    grad.addColorStop(0, 'rgba(255,120,40,0.85)');
+    grad.addColorStop(0.45, 'rgba(255,90,30,0.38)');
+    grad.addColorStop(1, 'rgba(255,90,30,0)');
+    gctx.fillStyle = grad; gctx.fillRect(0, 0, 256, 128);
+    const glowMat = new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(glowCanvas), transparent: true, opacity: 0.85,
+      depthWrite: false, fog: false,
+    });
+    const horizonGlow = new THREE.Mesh(new THREE.PlaneGeometry(1700, 340), glowMat);
     horizonGlow.position.set(lm.position[0] - 40, 90, B.minZ + 20);
+    horizonGlow.userData.noShadow = true;
+    horizonGlow.castShadow = false;
+    horizonGlow.receiveShadow = false;
     root.add(horizonGlow);
   }
 
@@ -198,6 +331,9 @@ export async function build(ctx) {
     const chimneyGlow = box(fw * 0.05, fh * 0.06, fw * 0.05, materials.furnaceGlow);
     chimneyGlow.position.set(fw * 0.32, fh + 0.2, -fd * 0.2);
     g.add(chimneyGlow);
+
+    // Wisp of smoke off the chimney — smaller than the main stacks.
+    g.add(buildSmokeColumn(fw * 0.32, fh + 1, -fd * 0.2, 4242));
 
     const grid = windowGrid({ rows: 2, cols: 5, spacingX: fw * 0.16, spacingY: shedH * 0.35, width: 1.8, height: 2.0, material: materials.glassNight });
     grid.position.set(-fw * 0.12, shedH * 0.55, fd / 2 + 0.06);
