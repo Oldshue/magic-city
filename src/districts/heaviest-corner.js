@@ -59,12 +59,14 @@ export async function build(ctx) {
     towerGroup.add(door);
   }
 
-  function facadeSign(towerGroup, text, y, worldWidth, face = 'south', inset = 0.4) {
+  function facadeSign(towerGroup, lm, text, y, worldWidth, face = 'south', inset = 0.4) {
     const s = deco.canvasSign(text, { width: worldWidth });
-    if (face === 'south') s.position.set(0, y, inset);
-    else if (face === 'north') { s.position.set(0, y, -inset); s.rotation.y = Math.PI; }
-    else if (face === 'east') { s.position.set(inset, y, 0); s.rotation.y = Math.PI / 2; }
-    else { s.position.set(-inset, y, 0); s.rotation.y = -Math.PI / 2; }
+    const hz = lm.footprint[1] / 2 + inset;
+    const hx = lm.footprint[0] / 2 + inset;
+    if (face === 'south') s.position.set(0, y, hz);
+    else if (face === 'north') { s.position.set(0, y, -hz); s.rotation.y = Math.PI; }
+    else if (face === 'east') { s.position.set(hx, y, 0); s.rotation.y = Math.PI / 2; }
+    else { s.position.set(-hx, y, 0); s.rotation.y = -Math.PI / 2; }
     towerGroup.add(s);
     return s;
   }
@@ -77,7 +79,7 @@ export async function build(ctx) {
       const lm = plan.landmarks.find(l => l.id === 'jefferson-trust-tower');
       entrance(g, lm, 'south');
       entrance(g, lm, 'west');
-      facadeSign(g, 'JEFFERSON TRUST', lm.height * 0.42, 16);
+      facadeSign(g, lm, 'JEFFERSON TRUST', lm.height * 0.42, 16);
       // Gold-lit ziggurat crown band (marquee glow).
       const crownBand = new THREE.Mesh(
         new THREE.BoxGeometry(lm.footprint[0] * 0.62 + 0.6, 1.4, lm.footprint[1] * 0.62 + 0.6),
@@ -86,7 +88,7 @@ export async function build(ctx) {
       crownBand.position.y = lm.height * 0.945;
       g.add(crownBand);
       // "THE HEAVIEST CORNER ON EARTH" etched over the corner bank entrance.
-      facadeSign(g, 'THE HEAVIEST CORNER ON EARTH', 8.5, 22);
+      facadeSign(g, lm, 'THE HEAVIEST CORNER ON EARTH', 8.5, 22);
     }
   );
 
@@ -103,7 +105,7 @@ export async function build(ctx) {
           material: materials.limestone, pilasterMaterial: materials.bronze });
         colo.position.set(0, 0, lm.footprint[1] / 2 + 0.25);
         g.add(colo);
-        facadeSign(g, 'FIRST NATIONAL', lm.height * 0.86, 14);
+        facadeSign(g, lm, 'FIRST NATIONAL', lm.height * 0.86, 14);
       }
     );
   }
@@ -116,7 +118,7 @@ export async function build(ctx) {
       { setbacks: 2, material: materials.brick, windowMaterial: materials.glassNight },
       g => {
         entrance(g, lm, 'west');
-        facadeSign(g, 'BROWN-MARX', lm.height * 0.92, 14, 'west');
+        facadeSign(g, lm, 'BROWN-MARX', lm.height * 0.92, 14, 'west');
       }
     );
   }
@@ -136,7 +138,7 @@ export async function build(ctx) {
           c.position.set(0, lm.height * (0.55 + i * 0.12), 0);
           g.add(c);
         }
-        facadeSign(g, 'EMPIRE', lm.height * 0.94, 12);
+        facadeSign(g, lm, 'EMPIRE', lm.height * 0.94, 12);
       }
     );
   }
@@ -158,8 +160,8 @@ export async function build(ctx) {
           stack.position.set(-6 + i * 4, 7.4, lm.footprint[0] / 2 + 0.62);
           g.add(stack);
         }
-        facadeSign(g, 'TENNESSEE COAL & IRON', lm.height * 0.88, 20, 'east');
-        facadeSign(g, 'MADE WHERE IT’S MINED — TC IRON', lm.height * 0.83, 18, 'east');
+        facadeSign(g, lm, 'TENNESSEE COAL & IRON', lm.height * 0.88, 20, 'east');
+        facadeSign(g, lm, 'MADE WHERE IT’S MINED — TC IRON', lm.height * 0.83, 18, 'east');
       }
     );
   }
@@ -189,7 +191,11 @@ export async function build(ctx) {
                      : new THREE.BoxGeometry(0.3, 0.25, len),
           materials.rail
         );
-        rail.position.set(horizontal ? off : 0, deckY + deckH / 2 + 0.12, horizontal ? 0 : off);
+        rail.position.set(
+          horizontal ? (x0 + x1) / 2 : x0 + off,
+          deckY + deckH / 2 + 0.12,
+          horizontal ? z0 + off : (z0 + z1) / 2
+        );
         group.add(rail);
       }
       // Columns every ~22 m.
