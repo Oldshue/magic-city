@@ -413,4 +413,11 @@ export async function build(ctx) {
     const canopyGeom = new THREE.SphereGeometry(0.5, 8, 6);
     group.add(makeInstanced(canopyMats, materials.foliage, canopyGeom));
   }
+
+  // Club Savoy interior (dynamic, optional; never edits other files)
+  try {
+    const savoy = await import('./alabama-way-savoy.js');
+    await savoy.build(ctx);
+    if (savoyLM) savoy.wireDoor(ctx, savoyLM, frontSignFor(savoyLM.position[1]));
+  } catch (err) { console.warn('[magic-city] club-savoy interior skipped', err && err.message); }
 }
