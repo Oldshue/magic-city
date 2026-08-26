@@ -8,14 +8,20 @@
  * across sessions and never loops within one.
  *
  * Rain: ~1500 instanced streak particles recycled inside a camera-relative
- * volume (never runs dry no matter how far the player walks), a filtered-
- * noise rain bed in WebAudio that swells with intensity, and occasional
- * distant thunder — a slow-attack low-passed rumble paired with a dim
- * point-light sky-flash.
+ * volume (never runs dry no matter how far the player walks, now drawn as
+ * longer, thinner streaks for a more atmospheric downpour), a filtered-
+ * noise rain bed in WebAudio that swells with intensity, occasional distant
+ * thunder — a slow-attack low-passed rumble paired with a dim point-light
+ * sky-flash — and a faint camera-following vignette quad that desaturates
+ * and darkens the whole view while rain is active (a plain transparent
+ * quad repositioned every frame to fill the camera's frustum; not a
+ * post-processing pass, not a new light).
  *
  * Wet streets: gently darkens/glosses the shared materials.asphalt in place
- * (never cloned) while it rains and for a while after, so lamp and marquee
- * light streaks on the road at night; restored as it dries.
+ * (never cloned) while it rains and for a while after — roughness drops and
+ * metalness/envMapIntensity rise so the road picks up whatever specular
+ * light is on it (streetlamps, marquees, headlamp glow quads) — restored
+ * as it dries.
  *
  * Overcast: reports an overcast amount to engine/sky.js's setWeatherDim()
  * hook, which pulls the sky's keyframe colors toward grey and softens sun
@@ -91,7 +97,7 @@ export function startWeather(ctx) {
 
   // --- smoothed effect amounts (state machine drives the targets) -------
   let overcastAmt = 0; // sky dimming: active through overcast/rain/clearing
-  let rainAmt = 0;     // rain streaks + rain-bed audio swell
+  let rainAmt = 0;     // rain streaks + rain-bed audio swell + screen vignette
   let wetness = 0;     // street wetness: rises fast, dries slowly
 
   // --- wet streets: mutate the shared asphalt material in place ---------
@@ -99,10 +105,14 @@ export function startWeather(ctx) {
   const dryColor = asphalt ? asphalt.color.clone() : null;
   const dryRoughness = asphalt ? asphalt.roughness : 0;
   const dryMetalness = asphalt ? asphalt.metalness : 0;
+  const dryEnvIntensity = asphalt && asphalt.envMapIntensity != null ? asphalt.envMapIntensity : 1;
   const _wetColor = new THREE.Color(0x14161a);
 
   // --- rain streaks: instanced, camera-relative, recycled ---------------
-  const streakGeo = new THREE.BoxGeometry(0.02, 0.6, 0.02);
+  // Longer + thinner than a plain drip so the streaks read as motion blur
+  // rather than static needles; falls faster-looking without changing
+  // RAIN_FALL_SPEED (the actual recycle/physics rate is untouched).
+  const streakGeo = new THREE.BoxGeometry(0.018, 1.05, 0.018);
   const streakMat = new THREE.MeshBasicMaterial({
     color: 0xb7c6d6, transparent: true, opacity: 0, depthWrite: false,
   });
@@ -130,7 +140,24 @@ export function startWeather(ctx) {
     new THREE.Euler(0, 0, -Math.atan2(WIND_SLANT, RAIN_FALL_SPEED))
   );
 
-  // --- thunder flash: a self-contained dim point light -------------------
+  // --- scene-wide rain vignette: a camera-following transparent quad -----
+  // Not a light, not a post-process pass: a single plane repositioned and
+  // rescaled every frame to exactly fill the camera frustum at a fixed
+  // depth, alpha-blended over the world. Cool, slightly desaturating tint
+  // that fades in with rainAmt and reads as overcast downpour gloom.
+  const vignetteTex = makeVignetteTexture(THREE);
+  const vignetteMat = new THREE.MeshBasicMaterial({
+    map: vignetteTex, color: 0x171b22, transparent: true, opacity: 0,
+    depthTest: false, depthWrite: false, toneMapped: false,
+  });
+  const vignette = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), vignetteMat);
+  vignette.renderOrder = 999;
+  vignette.frustumCulled = false;
+  scene.add(vignette);
+  const _vForward = new THREE.Vector3();
+  const VIGNETTE_DIST = 2.2;
+
+  // --- thunder flash: a self-contained dim point light --------------------
   const flash = new THREE.PointLight(0xaad0ff, 0, 3000, 2);
   flash.position.set(-150, 380, -300);
   scene.add(flash);
@@ -214,12 +241,13 @@ export function startWeather(ctx) {
       // --- wet streets: mutate the shared asphalt material in place -------
       if (asphalt && dryColor) {
         asphalt.color.copy(dryColor).lerp(_wetColor, wetness * 0.8);
-        asphalt.roughness = dryRoughness + (0.15 - dryRoughness) * wetness;
-        asphalt.metalness = dryMetalness + 0.15 * wetness;
+        asphalt.roughness = dryRoughness + (0.06 - dryRoughness) * wetness;
+        asphalt.metalness = dryMetalness + 0.28 * wetness;
+        asphalt.envMapIntensity = dryEnvIntensity + 1.6 * wetness;
       }
 
       // --- rain streak particles -------------------------------------------
-      streakMat.opacity = rainAmt * 0.55;
+      streakMat.opacity = rainAmt * 0.6;
       if (rainAmt > 0.01) {
         streaks.count = RAIN_COUNT;
         const camX = camera.position.x;
@@ -240,6 +268,20 @@ export function startWeather(ctx) {
         streaks.instanceMatrix.needsUpdate = true;
       } else {
         streaks.count = 0;
+      }
+
+      // --- scene-wide rain vignette: reposition + rescale to fill frustum --
+      if (rainAmt > 0.005) {
+        _vForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+        vignette.position.copy(camera.position).addScaledVector(_vForward, VIGNETTE_DIST);
+        vignette.quaternion.copy(camera.quaternion);
+        const vFov = THREE.MathUtils.degToRad(camera.fov || 70);
+        const h = 2 * Math.tan(vFov / 2) * VIGNETTE_DIST * 1.04;
+        const w = h * (camera.aspect || 1);
+        vignette.scale.set(w, h, 1);
+        vignetteMat.opacity = rainAmt * 0.5;
+      } else {
+        vignetteMat.opacity = 0;
       }
 
       // --- audio: rain bed swell + occasional distant thunder --------------
@@ -268,4 +310,22 @@ export function startWeather(ctx) {
     },
     setState,
   };
+}
+
+/** Soft radial-vignette texture (darker at edges, faint even at center) used
+ * by the scene-wide rain overlay quad. */
+function makeVignetteTexture(THREE) {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const c2d = canvas.getContext('2d');
+  const grad = c2d.createRadialGradient(size / 2, size / 2, size * 0.12, size / 2, size / 2, size * 0.72);
+  grad.addColorStop(0, 'rgba(20,24,32,0.55)');
+  grad.addColorStop(0.55, 'rgba(14,17,23,0.75)');
+  grad.addColorStop(1, 'rgba(8,10,14,0.95)');
+  c2d.fillStyle = grad;
+  c2d.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }

@@ -1,14 +1,20 @@
 /**
  * streetcars.js — one streetcar per city-plan.json streetcarLines entry,
- * gliding at constant speed along its path with the line's rollsign color,
- * a canvas destination sign, and interior glow that brightens at night.
+ * gliding at constant speed along its path with the line's rollsign color.
+ * Built to read as a proper 1929 trolley: rounded half-cylinder roof, a
+ * window band that lights up warm at night (emissive strip + faint flank
+ * spill), a route-number signboard next to the destination rollsign, a
+ * trolley pole reaching up toward the wire, and a cowcatcher grille on the
+ * leading end. Movement, routing, and the exported contract are unchanged.
  */
 export function startStreetcars(ctx) {
   const { THREE, scene, plan, materials, deco, getDayPhase } = ctx;
   const SPEED = 9; // m/s, period Birney/center-door car pace
 
   const cars = [];
+  const spillTex = makeSpillTexture(THREE);
 
+  let lineIndex = 0;
   for (const line of plan.streetcarLines || []) {
     const pts = line.path.map(([x, z]) => new THREE.Vector3(x, 0, z));
     let total = 0;
@@ -18,45 +24,112 @@ export function startStreetcars(ctx) {
       segLens.push(l);
       total += l;
     }
-    if (total <= 0 || pts.length < 2) continue;
+    if (total <= 0 || pts.length < 2) { lineIndex++; continue; }
 
     const group = new THREE.Group();
     const bodyColor = new THREE.Color(line.color || '#8a6d3a');
 
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(2.6, 3.1, 9.5),
+    // Underframe / chassis.
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.35, 9.6), materials.steelDark);
+    chassis.position.y = 0.32;
+    group.add(chassis);
+
+    // Lower body — the painted lacquer shell.
+    const lowerBody = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 2.0, 9.5),
       new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.55, metalness: 0.2 })
     );
-    body.position.y = 1.7;
-    group.add(body);
+    lowerBody.position.y = 1.15;
+    group.add(lowerBody);
 
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.35, 9.6), materials.steelDark);
-    roof.position.y = 3.4;
-    group.add(roof);
+    // Window band — the actual glazing strip; emissive warmth at night.
+    const windowMat = new THREE.MeshStandardMaterial({
+      color: 0x1a1f26, roughness: 0.25, metalness: 0.3,
+      emissive: 0xffb45e, emissiveIntensity: 0,
+    });
+    const windowBand = new THREE.Mesh(new THREE.BoxGeometry(2.52, 0.9, 9.3), windowMat);
+    windowBand.position.y = 2.55;
+    group.add(windowBand);
 
-    // Interior glow strips on both flanks — visible warmth at night.
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffdca0, transparent: true, opacity: 0.0 });
-    const glow = new THREE.Mesh(new THREE.PlaneGeometry(9.2, 1.6), glowMat);
-    glow.position.set(1.32, 1.75, 0);
+    // Faint flank spill — warm bleed reading as interior light on the street.
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffdca0, transparent: true, opacity: 0.0, depthWrite: false });
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(9.2, 1.0), glowMat);
+    glow.position.set(1.34, 2.55, 0);
     glow.rotation.y = Math.PI / 2;
     group.add(glow);
     const glowBackMat = glowMat.clone();
-    const glowBack = new THREE.Mesh(new THREE.PlaneGeometry(9.2, 1.6), glowBackMat);
-    glowBack.position.set(-1.32, 1.75, 0);
+    const glowBack = new THREE.Mesh(new THREE.PlaneGeometry(9.2, 1.0), glowBackMat);
+    glowBack.position.set(-1.34, 2.55, 0);
     glowBack.rotation.y = -Math.PI / 2;
     group.add(glowBack);
+
+    // Rounded roof — open half-cylinder cap plus end discs.
+    const roofRadius = 1.32;
+    const roofLen = 9.4;
+    const roofCyl = new THREE.Mesh(
+      new THREE.CylinderGeometry(roofRadius, roofRadius, roofLen, 10, 1, true, Math.PI, Math.PI),
+      materials.steelDark
+    );
+    roofCyl.rotation.x = Math.PI / 2;
+    roofCyl.position.y = 3.0;
+    group.add(roofCyl);
+    for (const zEnd of [roofLen / 2, -roofLen / 2]) {
+      const cap = new THREE.Mesh(
+        new THREE.CircleGeometry(roofRadius, 10, Math.PI, Math.PI),
+        materials.steelDark
+      );
+      cap.position.set(0, 3.0, zEnd);
+      cap.rotation.y = zEnd > 0 ? 0 : Math.PI;
+      group.add(cap);
+    }
+
+    // Ground-level spill patch — faint warm glow pooling under/around the car.
+    const spillMat = new THREE.MeshBasicMaterial({
+      map: spillTex, color: 0xffcf8a, transparent: true, opacity: 0.0,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const spill = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 11), spillMat);
+    spill.rotation.x = -Math.PI / 2;
+    spill.position.y = 0.04;
+    group.add(spill);
+
+    // Trolley pole reaching up toward the overhead wire.
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 2.4, 6), materials.steelDark);
+    pole.position.set(0, 4.1, -1.4);
+    pole.rotation.x = -0.32;
+    group.add(pole);
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.14), materials.bronze);
+    shoe.position.set(0, 5.2, -2.15);
+    group.add(shoe);
+
+    // Cowcatcher grille on the leading (+Z) end.
+    const apron = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.5, 0.35), materials.steelDark);
+    apron.position.set(0, 0.45, 5.02);
+    apron.rotation.x = -0.35;
+    group.add(apron);
+    for (let b = 0; b < 4; b++) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.05, 0.05), materials.rail);
+      bar.position.set(0, 0.24 + b * 0.11, 5.1);
+      group.add(bar);
+    }
 
     // Destination rollsign on the leading face.
     const sign = deco.canvasSign(line.name, { width: 2.2, canvasWidth: 384, canvasHeight: 96 });
     sign.position.set(0, 2.55, 4.78);
     group.add(sign);
 
+    // Small route-number signboard above the rollsign.
+    const routeSign = deco.canvasSign(String(lineIndex + 1), { width: 0.7, canvasWidth: 128, canvasHeight: 128 });
+    routeSign.position.set(0, 3.35, 4.7);
+    group.add(routeSign);
+
     scene.add(group);
     cars.push({
       group, pts, segLens, total,
       dist: Math.random() * total,
-      glowMat, glowBackMat,
+      glowMat, glowBackMat, windowMat, spillMat,
     });
+    lineIndex++;
   }
 
   const carPositions = cars.map((c) => c.group.position);
@@ -104,7 +177,26 @@ export function startStreetcars(ctx) {
         car.group.rotation.y = heading;
         car.glowMat.opacity = op;
         car.glowBackMat.opacity = op;
+        car.windowMat.emissiveIntensity = night * 2.2;
+        car.spillMat.opacity = night * 0.35;
       }
     },
   };
+}
+
+/** Small radial gradient texture for the ground-level interior spill glow. */
+function makeSpillTexture(THREE) {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const c2d = canvas.getContext('2d');
+  const grad = c2d.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, 'rgba(255,220,160,0.85)');
+  grad.addColorStop(0.5, 'rgba(255,200,130,0.3)');
+  grad.addColorStop(1, 'rgba(255,200,130,0)');
+  c2d.fillStyle = grad;
+  c2d.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }

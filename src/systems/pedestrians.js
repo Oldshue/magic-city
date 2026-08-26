@@ -1,8 +1,12 @@
 /**
- * pedestrians.js — instanced capsule figures walking the sidewalks of
- * avenue-class streets. Density scales with proximity to the Heaviest
- * Corner (dense downtown) versus the industrial edges (sparse). One
- * InstancedMesh, one draw call, allocation-free per frame.
+ * pedestrians.js — instanced 1929 figures walking the sidewalks of
+ * avenue-class streets. Each figure reads as a period pedestrian at a
+ * distance: a tapered long coat, a shoulder slab, a head, a fedora or
+ * cloche hat, swinging arms, and shoes peeking from the coat hem — nine
+ * shared primitives, one InstancedMesh per part so draw calls stay
+ * constant no matter how many people are on the sidewalk. Density,
+ * routes, spawn counts, and the exported update(dt, elapsed) contract
+ * are unchanged from the previous system.
  */
 export function startPedestrians(ctx) {
   const { THREE, scene, plan, getDayPhase } = ctx;
@@ -38,6 +42,9 @@ export function startPedestrians(ctx) {
           speed: 1.1 + Math.random() * 0.6,
           dir: Math.random() < 0.5 ? 1 : -1,
           bob: Math.random() * Math.PI * 2,
+          paletteIdx: Math.floor(Math.random() * 6),
+          hatStyle: Math.random() < 0.5 ? 0 : 1, // 0 fedora (brim+crown), 1 cloche (round cap)
+          hatDark: Math.random() < 0.6,
         });
       }
     }
@@ -45,17 +52,56 @@ export function startPedestrians(ctx) {
   if (people.length > MAX_PEOPLE) people.length = MAX_PEOPLE;
 
   const COUNT = Math.max(1, people.length);
-  const geo = new THREE.CapsuleGeometry(0.24, 1.05, 3, 6);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x3a3630, roughness: 0.92, vertexColors: true });
-  const mesh = new THREE.InstancedMesh(geo, mat, COUNT);
-  const palette = [0x2a2622, 0x39322a, 0x203040, 0x402626, 0x30301c, 0x1c1c1c, 0x3a2c1c];
-  for (let i = 0; i < COUNT; i++) mesh.setColorAt(i, new THREE.Color(palette[i % palette.length]));
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  scene.add(mesh);
+
+  // --- geometry: a handful of shared primitives, ~9 per figure -----------
+  const coatGeo = new THREE.CylinderGeometry(0.15, 0.23, 1.0, 8);
+  const shoulderGeo = new THREE.BoxGeometry(0.5, 0.16, 0.28);
+  const headGeo = new THREE.SphereGeometry(0.135, 8, 6);
+  const brimGeo = new THREE.CylinderGeometry(0.23, 0.23, 0.03, 10);
+  const crownGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.15, 8);
+  const armGeo = new THREE.CylinderGeometry(0.045, 0.05, 0.6, 6);
+  const shoeGeo = new THREE.BoxGeometry(0.1, 0.2, 0.17);
+
+  // --- materials: muted period coat tones + trim, palette-consistent -----
+  const coatPalette = [0x3a3a3a, 0x232c3d, 0x4a1f22, 0x4b4a34, 0x6e6a5f, 0x40301f];
+  const hatPalette = [0x141414, 0x2c2018];
+  const coatMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0.02, vertexColors: true });
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xd9b48f, roughness: 0.8, metalness: 0.0 });
+  const hatMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.75, metalness: 0.02, vertexColors: true });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x171310, roughness: 0.7, metalness: 0.05 });
+
+  const coatMesh = new THREE.InstancedMesh(coatGeo, coatMat, COUNT);
+  const shoulderMesh = new THREE.InstancedMesh(shoulderGeo, coatMat, COUNT);
+  const headMesh = new THREE.InstancedMesh(headGeo, headMat, COUNT);
+  const brimMesh = new THREE.InstancedMesh(brimGeo, hatMat, COUNT);
+  const crownMesh = new THREE.InstancedMesh(crownGeo, hatMat, COUNT);
+  const armMesh = new THREE.InstancedMesh(armGeo, coatMat, COUNT * 2);
+  const shoeMesh = new THREE.InstancedMesh(shoeGeo, shoeMat, COUNT * 2);
+
+  for (let i = 0; i < COUNT; i++) {
+    const p = people[i];
+    const cc = new THREE.Color(coatPalette[p ? p.paletteIdx : 0]);
+    coatMesh.setColorAt(i, cc);
+    shoulderMesh.setColorAt(i, cc);
+    armMesh.setColorAt(i * 2, cc);
+    armMesh.setColorAt(i * 2 + 1, cc);
+    const hc = new THREE.Color(hatPalette[p && p.hatDark ? 0 : 1]);
+    brimMesh.setColorAt(i, hc);
+    crownMesh.setColorAt(i, hc);
+  }
+  if (coatMesh.instanceColor) coatMesh.instanceColor.needsUpdate = true;
+  if (shoulderMesh.instanceColor) shoulderMesh.instanceColor.needsUpdate = true;
+  if (armMesh.instanceColor) armMesh.instanceColor.needsUpdate = true;
+  if (brimMesh.instanceColor) brimMesh.instanceColor.needsUpdate = true;
+  if (crownMesh.instanceColor) crownMesh.instanceColor.needsUpdate = true;
+
+  scene.add(coatMesh, shoulderMesh, headMesh, brimMesh, crownMesh, armMesh, shoeMesh);
 
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const s = new THREE.Vector3(1, 1, 1);
+  const sHidden = new THREE.Vector3(0, 0, 0);
+  const sCloche = new THREE.Vector3(1.15, 1.3, 1.15);
   const pos = new THREE.Vector3();
   const segDir = new THREE.Vector3();
   const tmpPos = new THREE.Vector3();
@@ -89,17 +135,70 @@ export function startPedestrians(ctx) {
         const heading = Math.atan2(segDir.x * p.dir, segDir.z * p.dir);
         const nx = Math.cos(heading);
         const nz = -Math.sin(heading);
+        const fwdX = Math.sin(heading), fwdZ = Math.cos(heading);
         const edge = p.route.width / 2 + 2.0;
         const ox = pos.x + nx * edge * p.side;
         const oz = pos.z + nz * edge * p.side;
-        const bobY = 0.62 + Math.sin(elapsed * 5 + p.bob) * 0.03;
+        const walkPhase = elapsed * 5 + p.bob;
+        const bobY = 0.62 + Math.sin(walkPhase) * 0.03;
+        const swing = Math.sin(walkPhase) * 0.16; // meters of arm/leg fore-aft sway
+
         q.setFromAxisAngle(up, heading);
+
         tmpPos.set(ox, bobY, oz);
         m.compose(tmpPos, q, s);
-        mesh.setMatrixAt(i, m);
+        coatMesh.setMatrixAt(i, m);
+
+        tmpPos.set(ox, bobY + 0.56, oz);
+        m.compose(tmpPos, q, s);
+        shoulderMesh.setMatrixAt(i, m);
+
+        tmpPos.set(ox, bobY + 0.74, oz);
+        m.compose(tmpPos, q, s);
+        headMesh.setMatrixAt(i, m);
+
+        const hatY = bobY + 0.86;
+        if (p.hatStyle === 0) {
+          tmpPos.set(ox, hatY, oz);
+          m.compose(tmpPos, q, s);
+          brimMesh.setMatrixAt(i, m);
+          tmpPos.set(ox, hatY + 0.09, oz);
+          m.compose(tmpPos, q, s);
+          crownMesh.setMatrixAt(i, m);
+        } else {
+          tmpPos.set(ox, hatY, oz);
+          m.compose(tmpPos, q, sHidden);
+          brimMesh.setMatrixAt(i, m);
+          tmpPos.set(ox, hatY + 0.05, oz);
+          m.compose(tmpPos, q, sCloche);
+          crownMesh.setMatrixAt(i, m);
+        }
+
+        tmpPos.set(ox + nx * -0.28 + fwdX * swing, bobY + 0.4, oz + nz * -0.28 + fwdZ * swing);
+        m.compose(tmpPos, q, s);
+        armMesh.setMatrixAt(i * 2, m);
+        tmpPos.set(ox + nx * 0.28 - fwdX * swing, bobY + 0.4, oz + nz * 0.28 - fwdZ * swing);
+        m.compose(tmpPos, q, s);
+        armMesh.setMatrixAt(i * 2 + 1, m);
+
+        tmpPos.set(ox + nx * -0.09 - fwdX * swing, 0.1, oz + nz * -0.09 - fwdZ * swing);
+        m.compose(tmpPos, q, s);
+        shoeMesh.setMatrixAt(i * 2, m);
+        tmpPos.set(ox + nx * 0.09 + fwdX * swing, 0.1, oz + nz * 0.09 + fwdZ * swing);
+        m.compose(tmpPos, q, s);
+        shoeMesh.setMatrixAt(i * 2 + 1, m);
       }
-      mesh.count = people.length;
-      mesh.instanceMatrix.needsUpdate = true;
+      const n = people.length;
+      coatMesh.count = n; shoulderMesh.count = n; headMesh.count = n;
+      brimMesh.count = n; crownMesh.count = n;
+      armMesh.count = n * 2; shoeMesh.count = n * 2;
+      coatMesh.instanceMatrix.needsUpdate = true;
+      shoulderMesh.instanceMatrix.needsUpdate = true;
+      headMesh.instanceMatrix.needsUpdate = true;
+      brimMesh.instanceMatrix.needsUpdate = true;
+      crownMesh.instanceMatrix.needsUpdate = true;
+      armMesh.instanceMatrix.needsUpdate = true;
+      shoeMesh.instanceMatrix.needsUpdate = true;
     },
   };
 }
