@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Magic City 1929</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0a12; overflow: hidden; }
+  canvas { display: block; }
+  #loader {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 10;
+    background: radial-gradient(ellipse at center, #1c1830 0%, #0b0a12 75%);
+    color: #e8d9b0; transition: opacity 1.2s ease; font-family: Georgia, 'Times New Roman', serif;
+    text-align: center;
+  }
+  #loader h1 {
+    margin: 0; font-size: clamp(28px, 6vw, 72px); letter-spacing: 0.18em;
+    font-weight: normal;
+    color: #e8d9b0;
+    text-shadow: 0 0 24px rgba(232, 217, 176, 0.35);
+  }
+  #loader .rule {
+    width: min(60vw, 480px); height: 2px; margin-top: 22px;
+    background: linear-gradient(90deg, transparent, #b98d3e, transparent);
+  }
+  #loader .sub { margin-top: 14px; letter-spacing: 0.35em; font-size: 13px; color: #8f7f5c; }
+  #loader.done { opacity: 0; pointer-events: none; }
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/controls/PointerLockControls.js":"./vendor/PointerLockControls.js"}}</script>
+</head>
+<body>
+<div id="loader">
+  <h1>MAGIC CITY&nbsp;1929</h1>
+  <div class="rule"></div>
+  <div class="sub">BIRMINGHAM &mdash; INDUSTRIAL CAPITAL OF THE SOUTH</div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
