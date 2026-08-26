@@ -10,7 +10,7 @@ import { createRenderer } from './engine/renderer.js';
 import { createControls } from './engine/controls.js';
 import { createSky } from './engine/sky.js';
 import { materials } from './engine/materials.js';
-import { setLampsNight } from './engine/deco.js';
+import * as deco from './engine/deco.js';
 
 async function boot() {
   const { renderer, scene, camera } = createRenderer();
@@ -33,7 +33,6 @@ async function boot() {
   scene.add(ground);
 
   // --- Street ribbons: asphalt + sidewalk edges ----------------------
-  const up = new THREE.Vector3(0, 1, 0);
   for (const st of plan.streets) {
     const p0 = new THREE.Vector3(st.path[0][0], 0, st.path[0][1]);
     const p1 = new THREE.Vector3(st.path[1][0], 0, st.path[1][1]);
@@ -74,9 +73,11 @@ async function boot() {
     interactives.push({ object: object3d, title: info.title || '', body: info.body || '' });
   }
 
+  // Shared context per TECH-CONTRACT v1:
+  // { THREE, scene, plan, district, materials, deco, registerInteractive }
   const ctx = {
     THREE, scene, camera, renderer, plan,
-    materials, registerInteractive,
+    materials, deco, registerInteractive,
     getDayPhase: sky.getDayPhase,
     interactives,
   };
@@ -85,7 +86,7 @@ async function boot() {
   for (const d of plan.districts) {
     try {
       const mod = await import('./districts/' + d.slug + '.js');
-      await mod.build(ctx);
+      await mod.build({ ...ctx, district: d });
       console.info('[magic-city] built district:', d.slug);
     } catch (err) {
       console.warn('[magic-city] skipping district', d.slug, err && err.message);
@@ -115,7 +116,7 @@ async function boot() {
     const elapsed = clock.elapsedTime;
     controls.update(dt);
     const phase = sky.update(dt, elapsed);
-    setLampsNight(phase < 0.22 || phase > 0.8 ? 1 : 0);
+    deco.setLampsNight(phase < 0.22 || phase > 0.8 ? 1 : 0);
     if (systemsUpdate) systemsUpdate(dt, elapsed);
     renderer.render(scene, camera);
   }
