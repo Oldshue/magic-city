@@ -181,7 +181,7 @@ async function boot() {
     // (phase * 360) to the sky system every frame instead of clock time.
     const elapsed = hasPhaseOverride ? phaseOverride * DAY_NIGHT_CYCLE_SECONDS : clock.elapsedTime;
 
-    const phase = sky.update(dt, elapsed);
+    const phase = sky.update(dt, elapsed, camera.position);
     deco.setLampsNight(phase < 0.22 || phase > 0.8 ? 1 : 0);
     if (systemsUpdate) systemsUpdate(dt, elapsed);
     renderer.render(scene, camera);

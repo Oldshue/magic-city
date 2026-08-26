@@ -1,7 +1,7 @@
 /**
  * sky.js — 6-minute day-night cycle for Magic City 1929.
  *
- * createSky(scene, fog) -> { update(dt, elapsed), getDayPhase() }.
+ * createSky(scene, fog) -> { update(dt, elapsed, cameraPosition), getDayPhase() }.
  * getDayPhase(): [0,1); 0 = midnight, 0.25 = dawn, 0.5 = noon, 0.75 = dusk.
  * Cycle completes every 6 real minutes (360s). Animates sun + hemisphere
  * lights, gradient sky-dome colors, fog color/draw distance per keyframes.
@@ -16,14 +16,14 @@ const _tmpB = new THREE.Color();
 // Midnight/pre-dawn lifted so building massing still reads against the sky;
 // the horizon carries a faint warm city-glow at midnight (streetlamps, windows).
 const KEYS = [
-  [0.00, 0x141a30, 0x2a2438, 0.0, 0.22, 30, 500], // midnight
-  [0.20, 0x232a44, 0x45343c, 0.05, 0.28, 40, 600],
-  [0.27, 0xd98a52, 0xf2c48a, 0.85, 0.55, 50, 850], // dawn
-  [0.40, 0xa8c4dc, 0xd8e2ea, 1.35, 0.75, 60, 950],
-  [0.60, 0xa8c4dc, 0xd8e2ea, 1.35, 0.75, 60, 950],
-  [0.73, 0xd96a3a, 0xf2a05c, 0.90, 0.50, 50, 800], // dusk
-  [0.80, 0x232a44, 0x3d2f38, 0.05, 0.25, 40, 600],
-  [1.00, 0x141a30, 0x2a2438, 0.0, 0.22, 30, 500],
+  [0.00, 0x141a30, 0x2a2438, 0.0, 0.22, 30, 1000], // midnight
+  [0.20, 0x232a44, 0x45343c, 0.05, 0.28, 40, 1200],
+  [0.27, 0xd98a52, 0xf2c48a, 0.85, 0.55, 50, 1700], // dawn
+  [0.40, 0xa8c4dc, 0xd8e2ea, 1.35, 0.75, 60, 1900],
+  [0.60, 0xa8c4dc, 0xd8e2ea, 1.35, 0.75, 60, 1900],
+  [0.73, 0xd96a3a, 0xf2a05c, 0.90, 0.50, 50, 1600], // dusk
+  [0.80, 0x232a44, 0x3d2f38, 0.05, 0.25, 40, 1200],
+  [1.00, 0x141a30, 0x2a2438, 0.0, 0.22, 30, 1000],
 ];
 
 /**
@@ -38,7 +38,7 @@ export function createSky(scene, fog) {
     exponent: { value: 0.7 },
   };
   const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(1100, 24, 12),
+    new THREE.SphereGeometry(2600, 24, 12),
     new THREE.ShaderMaterial({
       uniforms,
       side: THREE.BackSide,
@@ -80,12 +80,23 @@ export function createSky(scene, fog) {
     return THREE.MathUtils.clamp((phase - KEYS[i][0]) / ((KEYS[i + 1][0] - KEYS[i][0]) || 1), 0, 1);
   }
 
-  /** Advance the cycle; returns current day phase in [0,1). */
-  function update(dt, totalElapsed) {
+  /**
+   * Advance the cycle; returns current day phase in [0,1).
+   * @param {number} dt
+   * @param {number} [totalElapsed]
+   * @param {{x:number,z:number}} [cameraPosition] optional — when provided,
+   *   the sky dome is re-centered under the camera horizontally so distant
+   *   sightlines never exit the dome (dome.position.y stays 0).
+   */
+  function update(dt, totalElapsed, cameraPosition) {
     elapsed = typeof totalElapsed === 'number' ? totalElapsed : elapsed + dt;
     const phase = (elapsed / CYCLE_SECONDS) % 1;
     const i = keyIndex(phase);
     const t = frac(phase, i);
+
+    if (cameraPosition) {
+      dome.position.set(cameraPosition.x, 0, cameraPosition.z);
+    }
 
     // Sun arcs east->west across the southern sky (+Z is south).
     const elev = Math.sin((phase - 0.25) * Math.PI * 2); // >0 between dawn and dusk
