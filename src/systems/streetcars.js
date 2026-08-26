@@ -86,6 +86,13 @@ export function startStreetcars(ctx) {
     getCarPositions() {
       return carPositions;
     },
+    /** Additive hook: live car state objects ({ group, pts, segLens, total, dist, ... }),
+     * same array reference every call. `group.position`/`group.rotation.y` are updated in
+     * place each update() — for systems (e.g. driving.js boarding) that need to attach the
+     * camera to a moving streetcar without reaching into module-private closures. */
+    getCars() {
+      return cars;
+    },
     update(dt) {
       const phase = getDayPhase();
       const night = phase < 0.22 || phase > 0.8 ? 1 : 0;

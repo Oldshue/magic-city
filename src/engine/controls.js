@@ -5,6 +5,12 @@
  * addColliders(boxes) registers {minX,maxX,minZ,maxZ} footprints (buildings,
  * blocks, props). Movement is axis-separated so the player slides along walls
  * instead of sticking. All per-frame work is allocation-free.
+ *
+ * setEnabled(false)/setEnabled(true) additionally lets other systems (driving,
+ * streetcar riding) take over the camera: while disabled, update() is a no-op
+ * so this module never fights whoever else is writing camera.position/rotation.
+ * getColliderBoxes() additively exposes the raw (unpadded) registered boxes so
+ * other systems can do their own radius padding (e.g. a car body vs. a player).
  */
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
@@ -37,18 +43,24 @@ export function createControls(camera, domElement, bounds) {
   const forward = new THREE.Vector3();
   const right = new THREE.Vector3();
 
+  let enabled = true;
+
   /** Register collision boxes. Accepts {minX,maxX,minZ,maxZ} objects.
    * @param {Array<{minX:number,maxX:number,minZ:number,maxZ:number}>} boxes */
   function addColliders(boxes) {
     if (!boxes) return;
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
+      rawBoxes.push(b);
       colliders.push(b.minX - PLAYER_RADIUS, b.maxX + PLAYER_RADIUS,
                      b.minZ - PLAYER_RADIUS, b.maxZ + PLAYER_RADIUS);
     }
   }
   // Flat array of [minX, maxX, minZ, maxZ] quads — cache-friendly, allocation-free scans.
   const colliders = [];
+  // Unpadded {minX,maxX,minZ,maxZ} boxes, same registration order as `colliders` — exposed via
+  // getColliderBoxes() so other systems (e.g. driving.js) can apply their own padding.
+  const rawBoxes = [];
 
   let bobPhase = 0;
 
@@ -60,9 +72,10 @@ export function createControls(camera, domElement, bounds) {
     return false;
   }
 
-  /** Per-frame movement update.
+  /** Per-frame movement update. No-op while disabled (see setEnabled).
    * @param {number} dt seconds */
   function update(dt) {
+    if (!enabled) return;
     if (!controls.isLocked) return;
     let ix = 0, iz = 0;
     if (keys['KeyW'] || keys['ArrowUp']) iz -= 1;
@@ -107,7 +120,18 @@ export function createControls(camera, domElement, bounds) {
     camera.rotation.set(0, THREE.MathUtils.degToRad(yawDeg), 0);
   }
 
-  return { controls, update, setSpawn, addColliders,
+  /** Enable/disable the WASD walking-movement update. Driving and streetcar-riding
+   * systems call setEnabled(false) to take over the camera, and setEnabled(true) to
+   * hand it back on exit.
+   * @param {boolean} v */
+  function setEnabled(v) { enabled = v; }
+
+  /** Read-only reference to the raw, unpadded collider boxes registered via addColliders —
+   * for systems that need their own collision padding (e.g. car-sized instead of player-sized).
+   * @returns {Array<{minX:number,maxX:number,minZ:number,maxZ:number}>} */
+  function getColliderBoxes() { return rawBoxes; }
+
+  return { controls, update, setSpawn, addColliders, setEnabled, getColliderBoxes,
     dispose() {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
