@@ -1,0 +1,23 @@
+{
+  "meta": { "name": "Magic City 1929", "units": "meters", "origin": "Heaviest Corner" },
+  "bounds": { "minX": -400, "maxX": 400, "minZ": -400, "maxZ": 400 },
+  "spawn": { "position": [0, -30], "yawDeg": 0 },
+  "districts": [
+    {
+      "slug": "test-block",
+      "name": "Test Block",
+      "polygon": [[-150, -150], [150, -150], [150, 150], [-150, 150]],
+      "character": "Placeholder proof-of-engine block of setback towers.",
+      "ambience": "Quiet streets, a few lit windows at dusk."
+    }
+  ],
+  "streets": [
+    { "name": "20th Street", "class": "avenue", "width": 18, "path": [[0, -300], [0, 300]] },
+    { "name": "1st Avenue North", "class": "street", "width": 14, "path": [[-300, 0], [300, 0]] }
+  ],
+  "landmarks": [
+    { "id": "heaviest-corner-tower", "name": "Heaviest Corner Tower", "district": "test-block", "position": [-40, -40], "rotationYDeg": 45, "footprint": [24, 24], "height": 120, "kind": "tower", "real": true, "description": "Placeholder ziggurat tower marking the Heaviest Corner." },
+    { "id": "north-gate-building", "name": "North Gate Building", "district": "test-block", "position": [60, -60], "rotationYDeg": 20, "footprint": [28, 20], "height": 90, "kind": "tower", "real": false, "description": "Stepped deco tower placeholder." },
+    { "id": "south-vulcan-block", "name": "South Vulcan Block", "district": "test-block", "position": [-70, 70], "rotationYDeg": -15, "footprint": [22, 22], "height": 75, "kind": "block", "real": false, "description": "Setback block placeholder with crown." }
+  ]
+}
