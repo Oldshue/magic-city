@@ -1,6 +1,19 @@
 /**
- * controls.js — first-person walking controls (PointerLockControls based)
- * with AABB collision against ctx-provided boxes and a subtle walking head-bob.
+ * controls.js — first-person walking controls (PointerLockControls based,
+ * with drag-to-look and on-screen joystick fallbacks) with AABB collision
+ * against ctx-provided boxes and a subtle walking head-bob.
+ *
+ * Pointer lock is attempted on click but is always optional: iPads, iframes,
+ * and browsers that deny/lack the Pointer Lock API still get a fully playable
+ * camera via two fallbacks wired up here (both allocation-free per frame):
+ *   - Mouse/touch drag-to-look: pointerdown+move directly rotates the camera
+ *     (Euler YXZ, pitch clamped) whenever pointer lock isn't held. Ignores
+ *     gestures that start on narrative UI chrome (anything under
+ *     #mc-narrative-root) so it never fights the title card, readable panel,
+ *     map overlay, or the on-screen joystick/buttons.
+ *   - setVirtualMove(x, z): a normalized [-1,1] movement vector the on-screen
+ *     joystick (src/narrative/index.js) feeds in every pointermove; it's
+ *     summed with WASD input each frame in update().
  *
  * addColliders(boxes) registers {minX,maxX,minZ,maxZ} footprints (buildings,
  * blocks, props). Movement is axis-separated so the player slides along walls
@@ -21,6 +34,9 @@ const SPRINT = 8.5; // m/s
 const PLAYER_RADIUS = 0.45; // body radius for collision padding
 const BOB_FREQ = 1.7; // bob cycles per second at walk speed
 const BOB_AMP = 0.05; // meters of head-bob at full walk speed
+const LOOK_SENSITIVITY = 0.0025; // radians/px — mouse drag-to-look fallback
+const TOUCH_LOOK_SENSITIVITY = 0.0032; // radians/px — one-finger drag-to-look
+const PITCH_LIMIT = Math.PI / 2 - 0.01; // mirrors PointerLockControls' own clamp
 
 /**
  * @param {THREE.Camera} camera
@@ -36,14 +52,71 @@ export function createControls(camera, domElement, bounds) {
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
 
-  // Click anywhere to lock.
-  const onClick = () => controls.lock();
+  // Click anywhere to *attempt* pointer lock — always optional (see module docs).
+  // Never throws out to the caller: some browsers (iframes without the
+  // allow-pointer-lock permission, some tablets) reject/deny this outright.
+  const onClick = () => {
+    try { controls.lock(); } catch (_) { /* denied/unavailable — fallbacks below take over */ }
+  };
   domElement.addEventListener('click', onClick);
 
   const forward = new THREE.Vector3();
   const right = new THREE.Vector3();
 
   let enabled = true;
+
+  // --- Fallback drag-to-look (mouse or touch) when pointer lock isn't held ---
+  const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  let dragging = false;
+  let dragPointerId = null;
+  let lastX = 0;
+  let lastY = 0;
+
+  /** True if `target` sits inside the narrative overlay chrome (title card,
+   * HUD buttons, joystick, readable panel, map) — drag-to-look ignores any
+   * gesture that starts there so it never fights that UI.
+   * @param {EventTarget} target */
+  function isNarrativeUi(target) {
+    return !!(target && target.closest && target.closest('#mc-narrative-root'));
+  }
+
+  function onPointerDown(e) {
+    if (!enabled || controls.isLocked) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (isNarrativeUi(e.target)) return;
+    dragging = true;
+    dragPointerId = e.pointerId;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  }
+  function onPointerMove(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    if (!enabled || controls.isLocked) { dragging = false; return; }
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    const sensitivity = e.pointerType === 'touch' ? TOUCH_LOOK_SENSITIVITY : LOOK_SENSITIVITY;
+    lookEuler.setFromQuaternion(camera.quaternion);
+    lookEuler.y -= dx * sensitivity;
+    lookEuler.x -= dy * sensitivity;
+    lookEuler.x = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, lookEuler.x));
+    camera.quaternion.setFromEuler(lookEuler);
+  }
+  function onPointerUp(e) {
+    if (e.pointerId === dragPointerId) { dragging = false; dragPointerId = null; }
+  }
+  domElement.addEventListener('pointerdown', onPointerDown);
+  domElement.addEventListener('pointermove', onPointerMove);
+  domElement.addEventListener('pointerup', onPointerUp);
+  domElement.addEventListener('pointercancel', onPointerUp);
+
+  // --- On-screen joystick input (fed by the narrative layer's touch controls) ---
+  // Normalized [-1,1] vector, summed with WASD every frame in update(); reset to
+  // (0,0) on release. Same two numbers mutated in place — never reallocated.
+  const virtualMove = { x: 0, z: 0 };
+  /** @param {number} x strafe, -1 (left) .. 1 (right) @param {number} z -1 (forward) .. 1 (back) */
+  function setVirtualMove(x, z) { virtualMove.x = x; virtualMove.z = z; }
 
   /** Register collision boxes. Accepts {minX,maxX,minZ,maxZ} objects.
    * @param {Array<{minX:number,maxX:number,minZ:number,maxZ:number}>} boxes */
@@ -73,15 +146,25 @@ export function createControls(camera, domElement, bounds) {
   }
 
   /** Per-frame movement update. No-op while disabled (see setEnabled).
+   * Movement works identically whether pointer lock is held (keys steer,
+   * PointerLockControls owns look) or not (keys + the on-screen joystick
+   * steer via virtualMove, drag-to-look owns look above) — movement used to
+   * be gated on `controls.isLocked`, which is exactly the bug that stranded
+   * players who never got pointer lock.
    * @param {number} dt seconds */
   function update(dt) {
     if (!enabled) return;
-    if (!controls.isLocked) return;
     let ix = 0, iz = 0;
     if (keys['KeyW'] || keys['ArrowUp']) iz -= 1;
     if (keys['KeyS'] || keys['ArrowDown']) iz += 1;
     if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
     if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+    // Blend in the on-screen joystick (touch/no-pointer-lock fallback); a
+    // harmless no-op sum whenever it's centered at (0,0).
+    ix += virtualMove.x;
+    iz += virtualMove.z;
+    if (ix > 1) ix = 1; else if (ix < -1) ix = -1;
+    if (iz > 1) iz = 1; else if (iz < -1) iz = -1;
 
     const moving = (ix !== 0 || iz !== 0);
 
@@ -131,11 +214,15 @@ export function createControls(camera, domElement, bounds) {
    * @returns {Array<{minX:number,maxX:number,minZ:number,maxZ:number}>} */
   function getColliderBoxes() { return rawBoxes; }
 
-  return { controls, update, setSpawn, addColliders, setEnabled, getColliderBoxes,
+  return { controls, update, setSpawn, addColliders, setEnabled, getColliderBoxes, setVirtualMove,
     dispose() {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
       domElement.removeEventListener('click', onClick);
+      domElement.removeEventListener('pointerdown', onPointerDown);
+      domElement.removeEventListener('pointermove', onPointerMove);
+      domElement.removeEventListener('pointerup', onPointerUp);
+      domElement.removeEventListener('pointercancel', onPointerUp);
       controls.dispose();
     }
   };
