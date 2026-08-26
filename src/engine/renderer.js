@@ -23,7 +23,7 @@ export function createRenderer(container = document.body) {
     70,
     window.innerWidth / window.innerHeight,
     0.1,
-    1200
+    6000
   );
 
   const fogColor = new THREE.Color(0x9fb4c8); // updated by sky each frame
