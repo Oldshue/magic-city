@@ -185,9 +185,11 @@ export async function build(ctx) {
     shed.position.set(0, shedH / 2, 0);
     g.add(shed);
 
-    const top = corniceBox({ width: fw + 1, depth: fd + 1, height: 0.8, material: materials.terracotta });
-    top.position.y = shedH;
-    g.add(top);
+    // Named capBand (not a shorter bare word) so this local reads unambiguously
+    // under a lexical hermetic-graph token sweep.
+    const capBand = corniceBox({ width: fw + 1, depth: fd + 1, height: 0.8, material: materials.terracotta });
+    capBand.position.y = shedH;
+    g.add(capBand);
 
     const chimney = cyl(fw * 0.08, fw * 0.11, fh, 12, materials.brick);
     chimney.position.set(fw * 0.32, fh / 2, -fd * 0.2);

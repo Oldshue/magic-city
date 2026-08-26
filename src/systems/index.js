@@ -42,6 +42,11 @@ export function startSystems(ctx) {
       if (driving) driving.update(dt, elapsed);
       if (weather) weather.update(dt, elapsed);
     },
+    // Additive beyond the documented { update } contract, same pattern as
+    // ctx's own additive `controls` field — src/main.js's dev api hook
+    // setWeather(state) calls weather.setState(state) through this
+    // reference so the hook is a real wire into the running system.
+    weather,
   };
 }
 

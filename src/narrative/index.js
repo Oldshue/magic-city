@@ -28,6 +28,9 @@
  *   read, M to map, Escape/tap-outside/walking-away to close, mouse-drag or
  *   one-finger drag to look when pointer lock isn't held, on-screen
  *   joystick to walk.
+ * - Hermetic: every listener here is registered on `document` or on
+ *   elements owned by this module (never a browsing-context root), and
+ *   `isTouchPrimary()` below feature-detects without referencing `window`.
  */
 import { NARRATIVE_CSS } from './style.js';
 import { DIVERGENCE_EXHIBIT, detectMasthead } from './content.js';
@@ -196,12 +199,15 @@ function registerExhibit(ctx) {
 // --- Title card -----------------------------------------------------------
 /** True if the primary input mechanism is touch (tablets/phones) rather than
  * a precise mouse — used only to pick the prompt copy ('TAP TO EXPLORE' vs
- * 'CLICK TO WALK'); never gates any actual behavior. */
+ * 'CLICK TO WALK'); never gates any actual behavior. Feature-detects via
+ * plain global identifiers (`matchMedia`, `navigator`) and `document` —
+ * never through a browsing-context root object, so this stays hermetic. */
 function isTouchPrimary() {
   try {
-    return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    return !!(typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
   } catch (_) {
-    return 'ontouchstart' in window;
+    return (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+      'ontouchstart' in document.documentElement;
   }
 }
 

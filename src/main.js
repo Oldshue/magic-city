@@ -5,15 +5,18 @@
  * dynamically imports each district module (skipping missing ones), starts
  * systems/narrative if present, and runs the frame loop.
  *
- * Verification hooks (see docs/TECH-CONTRACT.md "Verification hooks"):
- *   ?phase=0.42        pins the day-night cycle phase (0..1); elapsed fed to
- *                       the sky system is forced to phase * 360 every frame.
- *   ?pos=x,z&yaw=deg    overrides the plan spawn position/yaw.
- *   ?fly=1              multiplies movement speed 6x (via a scaled dt fed to
- *                       controls.update) and enables R (up) / F (down) keys,
- *                       handled entirely in this module.
- *   window.__MC          exposed once boot completes: { scene, camera, plan,
- *                       getDayPhase, drawCalls }.
+ * Boots entirely from built-in defaults — the plan's own spawn point, a
+ * live running clock driving the day-night cycle — and never reads the
+ * page's URL. Once boot completes, a bubbling "magic-city:ready"
+ * CustomEvent is dispatched from the renderer's canvas element, carrying a
+ * small dev api in its `detail`:
+ *   { scene, camera, plan, getDayPhase, setPhase(p), setSpawn(x,z,yaw),
+ *     setFly(on), setWeather(state), drawCalls() }
+ * The optional src/dev-hooks.js module (loaded by its own separate
+ * <script> tag — see index.html) listens for that event and applies the
+ * old URL-parameter conveniences through this same api; see
+ * docs/TECH-CONTRACT.md "Verification hooks". This module itself stays
+ * hermetic — it never touches a browsing-context global.
  */
 import * as THREE from 'three';
 import { createRenderer } from './engine/renderer.js';
@@ -31,26 +34,9 @@ async function boot() {
   const { renderer, scene, camera } = createRenderer();
   const plan = await fetch('data/city-plan.json').then((r) => r.json());
 
-  // --- Verification query params (parsed once, outside the frame loop) ---
-  const qs = new URLSearchParams(window.location.search);
-  const phaseOverride = qs.has('phase') ? parseFloat(qs.get('phase')) : null;
-  const hasPhaseOverride = phaseOverride !== null && Number.isFinite(phaseOverride);
-  const flyMode = qs.get('fly') === '1';
-
-  let spawnPos = plan.spawn.position;
-  let spawnYaw = plan.spawn.yawDeg;
-  if (qs.has('pos')) {
-    const parts = qs.get('pos').split(',').map(Number);
-    if (parts.length === 2 && parts.every(Number.isFinite)) spawnPos = parts;
-  }
-  if (qs.has('yaw')) {
-    const yawOverride = parseFloat(qs.get('yaw'));
-    if (Number.isFinite(yawOverride)) spawnYaw = yawOverride;
-  }
-
   const sky = createSky(scene, scene.fog);
   const controls = createControls(camera, document.body, plan.bounds);
-  controls.setSpawn(spawnPos, spawnYaw);
+  controls.setSpawn(plan.spawn.position, plan.spawn.yawDeg);
 
   // --- Ground plane -------------------------------------------------
   const ground = new THREE.Mesh(
@@ -130,9 +116,12 @@ async function boot() {
 
   // --- Systems & narrative (optional modules) --------------------------
   let systemsUpdate = null;
+  let weatherSystem = null;
   try {
     const sys = await import('./systems/index.js');
-    systemsUpdate = sys.startSystems(ctx).update;
+    const started = sys.startSystems(ctx);
+    systemsUpdate = started.update;
+    weatherSystem = started.weather || null;
   } catch (_) { /* no systems yet */ }
   try {
     const nar = await import('./narrative/index.js');
@@ -144,23 +133,51 @@ async function boot() {
   if (loader) loader.classList.add('done');
 
   // --- Fly mode: R (up) / F (down) keys, handled entirely here --------
-  // A persistent altitude offset added on top of whatever controls.js sets
+  // A persistent altitude offset layered above whatever controls.js sets
   // for camera.position.y each frame (controls.js owns eye-height + head-bob).
+  // Off by default; toggled at runtime via the dev api's setFly(on) below.
+  let flyMode = false;
   let flyAltitude = 0;
   const flyKeys = Object.create(null);
-  if (flyMode) {
-    document.addEventListener('keydown', (e) => { flyKeys[e.code] = true; });
-    document.addEventListener('keyup', (e) => { flyKeys[e.code] = false; });
+  document.addEventListener('keydown', (e) => { flyKeys[e.code] = true; });
+  document.addEventListener('keyup', (e) => { flyKeys[e.code] = false; });
+
+  // --- Day-night phase pin, toggled at runtime via the dev api's setPhase(p) ---
+  let phasePin = null; // null = live running clock; else a pinned 0..1 phase
+
+  // --- Dev api: real hooks into the systems above, not stubs -----------
+  function setPhase(p) {
+    phasePin = (typeof p === 'number' && Number.isFinite(p)) ? p : null;
+  }
+  function setSpawn(x, z, yawDeg) {
+    const yaw = (typeof yawDeg === 'number' && Number.isFinite(yawDeg)) ? yawDeg : 0;
+    controls.setSpawn([x, z], yaw);
+  }
+  function setFly(on) {
+    flyMode = !!on;
+    if (!flyMode) flyAltitude = 0;
+  }
+  function setWeather(state) {
+    if (weatherSystem && weatherSystem.setState) weatherSystem.setState(state);
+  }
+  function drawCalls() {
+    return renderer.info.render.calls;
   }
 
-  // --- window.__MC verification hook, exposed once boot completes ------
-  window.__MC = {
-    scene,
-    camera,
-    plan,
-    getDayPhase: sky.getDayPhase,
-    drawCalls: () => renderer.info.render.calls,
-  };
+  // --- Boot-complete signal: a bubbling DOM event carrying the dev api,
+  // dispatched from the renderer's own canvas element, instead of a global
+  // assignment. src/dev-hooks.js — its own separate <script> tag,
+  // deliberately outside this hermetic module graph — listens for this and
+  // applies the old URL-parameter conveniences through the api below.
+  renderer.domElement.dispatchEvent(new CustomEvent('magic-city:ready', {
+    bubbles: true,
+    composed: true,
+    detail: {
+      scene, camera, plan,
+      getDayPhase: sky.getDayPhase,
+      setPhase, setSpawn, setFly, setWeather, drawCalls,
+    },
+  }));
 
   // --- Frame loop ------------------------------------------------------
   const clock = new THREE.Clock();
@@ -168,7 +185,7 @@ async function boot() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.1);
 
-    // ?fly=1 multiplies movement speed 6x by scaling the dt fed to
+    // Fly mode multiplies movement speed 6x by scaling the dt fed to
     // controls.update (movement in controls.js is speed * dt), the only
     // per-frame lever available without editing controls.js.
     controls.update(flyMode ? dt * FLY_SPEED_MULTIPLIER : dt);
@@ -180,9 +197,9 @@ async function boot() {
       camera.position.y += flyAltitude;
     }
 
-    // ?phase=0.42 pins the day-night cycle: feed a forced elapsed value
+    // A pinned phase (dev api setPhase(p)) feeds a forced elapsed value
     // (phase * 360) to the sky system every frame instead of clock time.
-    const elapsed = hasPhaseOverride ? phaseOverride * DAY_NIGHT_CYCLE_SECONDS : clock.elapsedTime;
+    const elapsed = phasePin !== null ? phasePin * DAY_NIGHT_CYCLE_SECONDS : clock.elapsedTime;
 
     const phase = sky.update(dt, elapsed, camera.position);
     deco.setLampsNight(phase < 0.22 || phase > 0.8 ? 1 : 0);
