@@ -33,8 +33,8 @@ const _tmpB = new THREE.Color();
 
 // Shadow frustum: tight ~500m span kept near the camera, snapped to
 // shadow-texel increments so the map never shimmers as the player walks.
-const SHADOW_SPAN = 500;
-const SHADOW_MAP_SIZE = 2048;
+const SHADOW_SPAN = 1700;
+const SHADOW_MAP_SIZE = 4096;
 const SHADOW_TEXEL = SHADOW_SPAN / SHADOW_MAP_SIZE;
 const SUN_DIST = 380;
 const SKY_R = 2400; // radius for celestial billboards / stars, inside the 2600 dome
@@ -60,7 +60,7 @@ export function setWeatherDim(factor) {
 // nudged brighter/warmer than the first draft so sunlit masonry reads
 // clearly once the bump-shading overcorrection (materials.js) is fixed.
 const KEYS = [
-  [0.00, 0x0d1226, 0x201c2c, 0.0, 0.16, 30, 620], // midnight — tight fog, city glow at horizon
+  [0.00, 0x0d1226, 0x201c2c, 0.0, 0.30, 30, 620], // midnight — tight fog, city glow at horizon
   [0.20, 0x1c2238, 0x3a2c34, 0.05, 0.20, 35, 700],
   [0.27, 0xd98a52, 0xf2c48a, 1.15, 0.36, 45, 1100], // dawn — long warm light
   [0.40, 0x8fb6da, 0xdce6ec, 2.6, 0.52, 70, 2200],
@@ -68,7 +68,7 @@ const KEYS = [
   [0.60, 0x8fb6da, 0xdce6ec, 2.6, 0.52, 70, 2200],
   [0.73, 0xd96a3a, 0xf2a05c, 1.15, 0.36, 45, 1100], // dusk
   [0.80, 0x1c2238, 0x3d2f38, 0.05, 0.20, 35, 700],
-  [1.00, 0x0d1226, 0x201c2c, 0.0, 0.16, 30, 620],
+  [1.00, 0x0d1226, 0x201c2c, 0.0, 0.30, 30, 620],
 ];
 
 // --- Canvas texture helpers for celestial/cloud billboards --------------
@@ -156,6 +156,7 @@ export function createSky(scene, fog) {
         }`,
     })
   );
+  dome.userData.noShadow = true;
   scene.add(dome);
 
   const sun = new THREE.DirectionalLight(0xfff2dd, 1.2);
@@ -167,8 +168,8 @@ export function createSky(scene, fog) {
   sun.shadow.camera.right = SHADOW_SPAN / 2;
   sun.shadow.camera.top = SHADOW_SPAN / 2;
   sun.shadow.camera.bottom = -SHADOW_SPAN / 2;
-  sun.shadow.bias = -0.0006;
-  sun.shadow.normalBias = 0.06;
+  sun.shadow.bias = -0.0002;
+  sun.shadow.normalBias = 1.2;
   sun.shadow.camera.updateProjectionMatrix();
 
   const hemi = new THREE.HemisphereLight(0xbcd4ec, 0x6a6048, 0.6);
