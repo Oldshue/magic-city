@@ -6,7 +6,10 @@
  * The ore ridge itself — funicular head-houses, the crest parkway, stone
  * overlooks, and Vulcan: fifty-six feet of Sloss No. 2 pig iron atop his
  * hundred-and-twenty-foot sandstone-and-steel tower, anvil at his side,
- * spear lifted north over the valley smoke he feeds every night.
+ * spear lifted north over the valley smoke he feeds every night. Behind and
+ * around the park, a long low ridge silhouette carries the mountain itself
+ * across the whole southern horizon — the defining Birmingham view from
+ * anywhere downtown.
  *
  * export async function build(ctx)
  * ctx = { THREE, scene, plan, district, materials, deco, registerInteractive }
@@ -34,6 +37,7 @@ export async function build(ctx) {
   const oldIron = new THREE.MeshStandardMaterial({ color: 0x3a3630, roughness: 0.55, metalness: 0.7 });
   const flagRed = new THREE.MeshStandardMaterial({ color: 0x9a2b2b, roughness: 0.8, side: THREE.DoubleSide });
 
+  buildRidgeSilhouette();
   buildVulcan();
   buildSentinelDeck();
   buildFunicular(-1120, 1035, 1, true);
@@ -48,6 +52,90 @@ export async function build(ctx) {
   return;
 
   // ================= builders (closures over root/materials/deco) =================
+
+  function buildRidgeSilhouette() {
+    // THE DEFINING BIRMINGHAM VIEW: Red Mountain's long ridge, kilometers
+    // wide, spanning the whole southern edge of the world behind the park.
+    // Flat-shaded, low-poly triangulated masses — this reads only as a
+    // silhouette from downtown, so geometry stays cheap: two sloped faces
+    // (north + south) per segment, vertex-colored from forested lower
+    // slopes to exposed iron-red rock near the crest, with a gentle rise
+    // toward the center where Vulcan stands watch.
+    const halfWidth = 3400;
+    const segments = 72;
+    const crestZ = 1260; // beyond the built park features (trees/plaza end ~1180)
+    const depth = 240;   // north-south thickness, gives the mass real volume
+    const colorLow = new THREE.Color(0x2c4326);  // forest green, lower slopes
+    const colorHigh = new THREE.Color(0x8a3c2a); // iron-red, exposed crest rock
+
+    function seeded(seed) {
+      let s = seed >>> 0;
+      return function () {
+        s = (s + 0x6d2b79f5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const rr = seeded(50177);
+
+    function heightAt(x) {
+      const t = x / halfWidth;
+      let h = 170 + 65 * Math.sin(t * 3.1 + 0.6) + 34 * Math.sin(t * 7.3 + 2.1)
+             + 18 * Math.sin(t * 15.1 + 4.4);
+      h += 55 * Math.exp(-Math.pow(t * 2.2, 2)); // gentle rise toward Vulcan's crest
+      h += (rr() - 0.5) * 12;
+      return Math.max(95, h);
+    }
+
+    const pts = [];
+    for (let i = 0; i <= segments; i++) {
+      const x = -halfWidth + (2 * halfWidth) * (i / segments);
+      pts.push({ x, h: heightAt(x) });
+    }
+
+    function colorFor(h) {
+      const t = THREE.MathUtils.clamp((h - 90) / 190, 0, 1);
+      return colorLow.clone().lerp(colorHigh, t * t);
+    }
+
+    const positions = [];
+    const colors = [];
+    function pushTri(p0, p1, p2, c0, c1, c2) {
+      positions.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
+      colors.push(c0.r, c0.g, c0.b, c1.r, c1.g, c1.b, c2.r, c2.g, c2.b);
+    }
+
+    for (let i = 0; i < segments; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const ca = colorFor(a.h), cb = colorFor(b.h);
+      const aFront = [a.x, 0, crestZ + depth];
+      const bFront = [b.x, 0, crestZ + depth];
+      const aCrest = [a.x, a.h, crestZ];
+      const bCrest = [b.x, b.h, crestZ];
+      // North (front, downtown-facing) slope.
+      pushTri(aFront, bFront, bCrest, colorLow, colorLow, cb);
+      pushTri(aFront, bCrest, aCrest, colorLow, cb, ca);
+      // South (back) slope — gives the mass volume from any angle.
+      const aBack = [a.x, 0, crestZ - depth];
+      const bBack = [b.x, 0, crestZ - depth];
+      pushTri(aCrest, bCrest, bBack, ca, cb, colorLow);
+      pushTri(aCrest, bBack, aBack, ca, colorLow, colorLow);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+
+    const ridgeMat = new THREE.MeshStandardMaterial({
+      vertexColors: true, flatShading: true, roughness: 1.0, metalness: 0.0,
+    });
+    const ridge = new THREE.Mesh(geo, ridgeMat);
+    ridge.castShadow = false;
+    ridge.receiveShadow = false;
+    root.add(ridge);
+  }
 
   function buildVulcan() {
     const pos = vulcanData ? vulcanData.position : [0, 1125];
