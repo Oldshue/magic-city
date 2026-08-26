@@ -48,29 +48,36 @@ export function startTraffic(ctx) {
 
   const COUNT = Math.max(1, instances.length);
 
-  // --- geometry: a few boxes/cylinders, each shared across the whole fleet ---
-  const bodyGeo = new THREE.BoxGeometry(1.9, 1.05, 4.3);
-  const hoodGeo = new THREE.BoxGeometry(1.6, 0.68, 1.5);
-  const cabinGeo = new THREE.BoxGeometry(1.56, 0.72, 2.3);
-  const roofGeo = new THREE.BoxGeometry(1.28, 0.16, 2.0);
-  const boardGeo = new THREE.BoxGeometry(0.22, 0.08, 3.1);
-  const radiatorGeo = new THREE.BoxGeometry(1.3, 0.6, 0.14);
-  const wheelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.28, 6);
-  const hubGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.3, 6);
-  const lampGeo = new THREE.SphereGeometry(0.1, 6, 4);
+  // --- geometry: a 1929 sedan from shared primitives, judged at 3 m ---
+  const bodyGeo = new THREE.BoxGeometry(1.44, 0.52, 3.05);
+  const hoodGeo = new THREE.BoxGeometry(1.02, 0.46, 1.32);
+  const cowlGeo = new THREE.BoxGeometry(1.3, 0.34, 0.5);
+  const cabinGeo = new THREE.BoxGeometry(1.46, 0.8, 1.72);
+  const roofGeo = new THREE.BoxGeometry(1.54, 0.09, 1.9);
+  const visorGeo = new THREE.BoxGeometry(1.5, 0.05, 0.3);
+  const boardGeo = new THREE.BoxGeometry(0.28, 0.07, 1.5);
+  const radiatorGeo = new THREE.BoxGeometry(0.9, 0.62, 0.16);
+  const fenderGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.3, 10, 1, true, Math.PI, Math.PI);
+  const wheelGeo = new THREE.CylinderGeometry(0.37, 0.37, 0.22, 12);
+  const hubGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.23, 8);
+  const lampGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.16, 10);
+  const barGeo = new THREE.BoxGeometry(1.12, 0.05, 0.05);
+  const bumperGeo = new THREE.BoxGeometry(1.3, 0.07, 0.06);
+  const spareGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.11, 12);
   const glowGeo = new THREE.PlaneGeometry(1.6, 2.4);
 
   // --- materials: three period lacquers + trim, palette-consistent ---
-  const lacquer = [0x1d3b28, 0x141414, 0x4a1620]; // deep green / black / burgundy
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.42, metalness: 0.4, vertexColors: true });
-  const hoodMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.42, vertexColors: true });
-  const cabinMat = new THREE.MeshStandardMaterial({ color: 0x121212, roughness: 0.6, metalness: 0.15 });
-  const roofMat = cabinMat;
-  const boardMat = new THREE.MeshStandardMaterial({ color: 0x0e0e0e, roughness: 0.7, metalness: 0.3 });
+  const lacquer = [0x2e5c3e, 0x23252a, 0x6b2230];
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.35, vertexColors: true });
+  const hoodMat = bodyMat;
+  const cabinMat = bodyMat;
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: 0.7, metalness: 0.1 });
+  const boardMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.65, metalness: 0.25 });
+  const fenderMat = new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.45, metalness: 0.3 });
   const radiatorMat = new THREE.MeshStandardMaterial({ color: 0xd7dadd, roughness: 0.18, metalness: 0.88 });
-  const tireMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 0.9, metalness: 0.05 });
-  const hubMat = new THREE.MeshStandardMaterial({ color: 0xcfc6a8, roughness: 0.35, metalness: 0.45 });
-  const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff2c8, emissive: 0xfff2c8, emissiveIntensity: 0, roughness: 0.35, metalness: 0.1 });
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.92, metalness: 0.02 });
+  const hubMat = new THREE.MeshStandardMaterial({ color: 0xd8cfae, roughness: 0.3, metalness: 0.5 });
+  const lampMat = new THREE.MeshStandardMaterial({ color: 0xcfd3d8, emissive: 0xfff2c8, emissiveIntensity: 0, roughness: 0.3, metalness: 0.7 });
 
   const glowTex = makeGlowTexture(THREE);
   const glowMat = new THREE.MeshBasicMaterial({
@@ -80,13 +87,19 @@ export function startTraffic(ctx) {
 
   const bodyMesh = new THREE.InstancedMesh(bodyGeo, bodyMat, COUNT);
   const hoodMesh = new THREE.InstancedMesh(hoodGeo, hoodMat, COUNT);
+  const cowlMesh = new THREE.InstancedMesh(cowlGeo, bodyMat, COUNT);
   const cabinMesh = new THREE.InstancedMesh(cabinGeo, cabinMat, COUNT);
   const roofMesh = new THREE.InstancedMesh(roofGeo, roofMat, COUNT);
+  const visorMesh = new THREE.InstancedMesh(visorGeo, roofMat, COUNT);
   const boardMesh = new THREE.InstancedMesh(boardGeo, boardMat, COUNT * 2);
   const radiatorMesh = new THREE.InstancedMesh(radiatorGeo, radiatorMat, COUNT);
+  const fenderMesh = new THREE.InstancedMesh(fenderGeo, fenderMat, COUNT * 4);
   const wheelMesh = new THREE.InstancedMesh(wheelGeo, tireMat, COUNT * 4);
   const hubMesh = new THREE.InstancedMesh(hubGeo, hubMat, COUNT * 4);
   const lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, COUNT * 2);
+  const barMesh = new THREE.InstancedMesh(barGeo, boardMat, COUNT);
+  const bumperMesh = new THREE.InstancedMesh(bumperGeo, radiatorMat, COUNT * 2);
+  const spareMesh = new THREE.InstancedMesh(spareGeo, tireMat, COUNT);
   const glowMesh = new THREE.InstancedMesh(glowGeo, glowMat, COUNT);
   glowMesh.frustumCulled = false;
 
@@ -94,11 +107,14 @@ export function startTraffic(ctx) {
     const c = new THREE.Color(lacquer[i % lacquer.length]);
     bodyMesh.setColorAt(i, c);
     hoodMesh.setColorAt(i, c);
+    cowlMesh.setColorAt(i, c);
+    cabinMesh.setColorAt(i, c);
   }
-  if (bodyMesh.instanceColor) bodyMesh.instanceColor.needsUpdate = true;
-  if (hoodMesh.instanceColor) hoodMesh.instanceColor.needsUpdate = true;
+  for (const im of [bodyMesh, hoodMesh, cowlMesh, cabinMesh]) {
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  }
 
-  scene.add(bodyMesh, hoodMesh, cabinMesh, roofMesh, boardMesh, radiatorMesh, wheelMesh, hubMesh, lampMesh, glowMesh);
+  scene.add(bodyMesh, hoodMesh, cowlMesh, cabinMesh, roofMesh, visorMesh, boardMesh, radiatorMesh, fenderMesh, wheelMesh, hubMesh, lampMesh, barMesh, bumperMesh, spareMesh, glowMesh);
 
   // --- scratch objects, allocated once (zero allocation inside update) ---
   const m = new THREE.Matrix4();
@@ -106,6 +122,8 @@ export function startTraffic(ctx) {
   const qWheel = new THREE.Quaternion();
   const qGlow = new THREE.Quaternion();
   const wheelTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
+  const spareTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+  const qSpare = new THREE.Quaternion();
   const glowTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
   const s = new THREE.Vector3(1, 1, 1);
   const pos = new THREE.Vector3();
@@ -115,7 +133,7 @@ export function startTraffic(ctx) {
 
   // wheel local offsets: [lateral, forward]
   const WHEEL_OFFSETS = [
-    [-0.92, 1.32], [0.92, 1.32], [-0.92, -1.32], [0.92, -1.32],
+    [-0.78, 1.35], [0.78, 1.35], [-0.78, -1.3], [0.78, -1.3],
   ];
 
   function sample(route, dist) {
@@ -150,48 +168,76 @@ export function startTraffic(ctx) {
 
         q.setFromAxisAngle(up, heading);
 
-        tmpPos.set(ox, 0.56, oz);
+        tmpPos.set(ox, 0.62, oz);
         m.compose(tmpPos, q, s);
         bodyMesh.setMatrixAt(i, m);
 
-        tmpPos.set(ox + fwdX * 1.85, 0.82, oz + fwdZ * 1.85);
+        tmpPos.set(ox + fwdX * 1.18, 0.85, oz + fwdZ * 1.18);
         m.compose(tmpPos, q, s);
         hoodMesh.setMatrixAt(i, m);
 
-        tmpPos.set(ox + fwdX * -0.55, 1.24, oz + fwdZ * -0.55);
+        tmpPos.set(ox + fwdX * 0.42, 0.98, oz + fwdZ * 0.42);
+        m.compose(tmpPos, q, s);
+        cowlMesh.setMatrixAt(i, m);
+
+        tmpPos.set(ox + fwdX * -0.55, 1.06, oz + fwdZ * -0.55);
         m.compose(tmpPos, q, s);
         cabinMesh.setMatrixAt(i, m);
 
-        tmpPos.set(ox + fwdX * -0.55, 1.68, oz + fwdZ * -0.55);
+        tmpPos.set(ox + fwdX * -0.55, 1.5, oz + fwdZ * -0.55);
         m.compose(tmpPos, q, s);
         roofMesh.setMatrixAt(i, m);
 
-        tmpPos.set(ox + latX * -1.02, 0.38, oz + latZ * -1.02);
+        tmpPos.set(ox + fwdX * 0.42, 1.36, oz + fwdZ * 0.42);
+        m.compose(tmpPos, q, s);
+        visorMesh.setMatrixAt(i, m);
+
+        tmpPos.set(ox + latX * -0.86, 0.4, oz + latZ * -0.86);
         m.compose(tmpPos, q, s);
         boardMesh.setMatrixAt(i * 2, m);
-        tmpPos.set(ox + latX * 1.02, 0.38, oz + latZ * 1.02);
+        tmpPos.set(ox + latX * 0.86, 0.4, oz + latZ * 0.86);
         m.compose(tmpPos, q, s);
         boardMesh.setMatrixAt(i * 2 + 1, m);
 
-        tmpPos.set(ox + fwdX * 2.1, 0.82, oz + fwdZ * 2.1);
+        tmpPos.set(ox + fwdX * 1.86, 0.82, oz + fwdZ * 1.86);
         m.compose(tmpPos, q, s);
         radiatorMesh.setMatrixAt(i, m);
 
         for (let w = 0; w < 4; w++) {
           const wl = WHEEL_OFFSETS[w][0], wf = WHEEL_OFFSETS[w][1];
-          tmpPos.set(ox + latX * wl + fwdX * wf, 0.34, oz + latZ * wl + fwdZ * wf);
+          tmpPos.set(ox + latX * wl + fwdX * wf, 0.37, oz + latZ * wl + fwdZ * wf);
           qWheel.copy(q).multiply(wheelTilt);
           m.compose(tmpPos, qWheel, s);
           wheelMesh.setMatrixAt(i * 4 + w, m);
           hubMesh.setMatrixAt(i * 4 + w, m);
+          tmpPos.set(ox + latX * wl + fwdX * wf, 0.42, oz + latZ * wl + fwdZ * wf);
+          m.compose(tmpPos, qWheel, s);
+          fenderMesh.setMatrixAt(i * 4 + w, m);
         }
 
-        tmpPos.set(ox + latX * -0.6 + fwdX * 2.18, 0.58, oz + latZ * -0.6 + fwdZ * 2.18);
-        m.compose(tmpPos, q, s);
+        qSpare.copy(q).multiply(spareTilt);
+        tmpPos.set(ox + latX * -0.42 + fwdX * 1.98, 1.0, oz + latZ * -0.42 + fwdZ * 1.98);
+        m.compose(tmpPos, qSpare, s);
         lampMesh.setMatrixAt(i * 2, m);
-        tmpPos.set(ox + latX * 0.6 + fwdX * 2.18, 0.58, oz + latZ * 0.6 + fwdZ * 2.18);
-        m.compose(tmpPos, q, s);
+        tmpPos.set(ox + latX * 0.42 + fwdX * 1.98, 1.0, oz + latZ * 0.42 + fwdZ * 1.98);
+        m.compose(tmpPos, qSpare, s);
         lampMesh.setMatrixAt(i * 2 + 1, m);
+
+        tmpPos.set(ox + fwdX * 1.98, 1.0, oz + fwdZ * 1.98);
+        m.compose(tmpPos, q, s);
+        barMesh.setMatrixAt(i, m);
+
+        tmpPos.set(ox + fwdX * 2.02, 0.46, oz + fwdZ * 2.02);
+        m.compose(tmpPos, q, s);
+        bumperMesh.setMatrixAt(i * 2, m);
+        tmpPos.set(ox + fwdX * -1.72, 0.46, oz + fwdZ * -1.72);
+        m.compose(tmpPos, q, s);
+        bumperMesh.setMatrixAt(i * 2 + 1, m);
+
+        qSpare.copy(q).multiply(spareTilt);
+        tmpPos.set(ox + fwdX * -1.68, 0.78, oz + fwdZ * -1.68);
+        m.compose(tmpPos, qSpare, s);
+        spareMesh.setMatrixAt(i, m);
 
         tmpPos.set(ox + fwdX * 4.4, 0.04, oz + fwdZ * 4.4);
         qGlow.copy(q).multiply(glowTilt);
@@ -214,6 +260,12 @@ export function startTraffic(ctx) {
       hubMesh.instanceMatrix.needsUpdate = true;
       lampMesh.instanceMatrix.needsUpdate = true;
       glowMesh.instanceMatrix.needsUpdate = true;
+      cowlMesh.instanceMatrix.needsUpdate = true;
+      visorMesh.instanceMatrix.needsUpdate = true;
+      fenderMesh.instanceMatrix.needsUpdate = true;
+      barMesh.instanceMatrix.needsUpdate = true;
+      bumperMesh.instanceMatrix.needsUpdate = true;
+      spareMesh.instanceMatrix.needsUpdate = true;
 
       lampMat.emissiveIntensity = night ? 1.8 : 0.0;
       glowMat.opacity = night ? 0.4 : 0.0;
