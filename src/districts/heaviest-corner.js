@@ -60,6 +60,9 @@ export async function build(ctx) {
   }
 
   function facadeSign(towerGroup, lm, text, y, worldWidth, face = 'south', inset = 0.4) {
+    // The base tier carries ~40% of the height at full footprint; anything
+    // higher sits on a setback and a base-inset sign would float in air.
+    y = Math.min(y, lm.height * 0.36);
     const s = deco.canvasSign(text, { width: worldWidth });
     const hz = lm.footprint[1] / 2 + inset;
     const hx = lm.footprint[0] / 2 + inset;
@@ -83,7 +86,7 @@ export async function build(ctx) {
       // Gold-lit ziggurat crown band (marquee glow).
       const crownBand = new THREE.Mesh(
         new THREE.BoxGeometry(lm.footprint[0] * 0.62 + 0.6, 1.4, lm.footprint[1] * 0.62 + 0.6),
-        materials.marquee
+        materials.glassNight
       );
       crownBand.position.y = lm.height * 0.945;
       g.add(crownBand);

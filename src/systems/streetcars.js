@@ -14,6 +14,11 @@ export function startStreetcars(ctx) {
   const cars = [];
   const spillTex = makeSpillTexture(THREE);
 
+  // --- Overhead catenary: poles + sagging contact wire along every grade
+  // line (the elevated Belt Loop rides its own guideway and is skipped).
+  // One instanced pole mesh + one merged wire geometry — two draw calls.
+  buildCatenary(THREE, scene, plan.streetcarLines || []);
+
   let lineIndex = 0;
   for (const line of plan.streetcarLines || []) {
     const pts = line.path.map(([x, z]) => new THREE.Vector3(x, 0, z));
@@ -50,6 +55,46 @@ export function startStreetcars(ctx) {
     const windowBand = new THREE.Mesh(new THREE.BoxGeometry(2.52, 0.9, 9.3), windowMat);
     windowBand.position.y = 2.55;
     group.add(windowBand);
+
+    // Two-tone livery: cream letterboard over the windows, cream belt rail
+    // under them, and window pillars breaking the glazing into real sash.
+    const cream = new THREE.MeshStandardMaterial({ color: 0xe8ddb8, roughness: 0.5, metalness: 0.1 });
+    bodyColor.multiplyScalar(0.78); // de-toy the saturated line colors
+    const letterboard = new THREE.Mesh(new THREE.BoxGeometry(2.56, 0.26, 9.34), cream);
+    letterboard.position.y = 3.06;
+    group.add(letterboard);
+    const beltRail = new THREE.Mesh(new THREE.BoxGeometry(2.58, 0.1, 9.34), cream);
+    beltRail.position.y = 2.06;
+    group.add(beltRail);
+    for (let pIdx = 0; pIdx < 7; pIdx++) {
+      const pz = -3.9 + pIdx * 1.3;
+      for (const px of [1.28, -1.28]) {
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.94, 0.14), cream);
+        pillar.position.set(px, 2.55, pz);
+        group.add(pillar);
+      }
+    }
+    // Trucks and wheels under the frame.
+    for (const tz of [3.0, -3.0]) {
+      const truck = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.9), materials.steelDark);
+      truck.position.set(0, 0.36, tz);
+      group.add(truck);
+      for (const wx of [1.08, -1.08]) {
+        for (const wz of [tz + 0.62, tz - 0.62]) {
+          const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.1, 10), materials.steelDark);
+          wheel.rotation.z = Math.PI / 2;
+          wheel.position.set(wx, 0.34, wz);
+          group.add(wheel);
+        }
+      }
+    }
+    // End glazing + cream end panels so the front is a face, not a slab.
+    for (const ez of [4.78, -4.78]) {
+      const endWin = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.7), windowMat);
+      endWin.position.set(0, 2.55, ez);
+      if (ez < 0) endWin.rotation.y = Math.PI;
+      group.add(endWin);
+    }
 
     // Faint flank spill — warm bleed reading as interior light on the street.
     const glowMat = new THREE.MeshBasicMaterial({ color: 0xffdca0, transparent: true, opacity: 0.0, depthWrite: false });
@@ -199,4 +244,127 @@ function makeSpillTexture(THREE) {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+
+// ---------------------------------------------------------------------
+// Catenary network: timber-dark poles every ~32m on alternating sides
+// with a bracket arm, and a thin contact wire at 5.55m following each
+// route with a gentle sag per span. Wires never cast shadows.
+// ---------------------------------------------------------------------
+function buildCatenary(THREE, scene, lines) {
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x2b241c, roughness: 0.85, metalness: 0.1 });
+  const wireMat = new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: 0.6, metalness: 0.6 });
+
+  // Pole unit: post + bracket arm + drop, merged once, instanced per pole.
+  const parts = [];
+  const post = new THREE.CylinderGeometry(0.09, 0.12, 6.4, 6);
+  post.translate(0, 3.2, 0);
+  parts.push(post);
+  const arm = new THREE.CylinderGeometry(0.045, 0.045, 5.4, 5);
+  arm.rotateZ(Math.PI / 2);
+  arm.translate(-2.7, 6.1, 0);
+  parts.push(arm);
+  const drop = new THREE.CylinderGeometry(0.03, 0.03, 0.5, 4);
+  drop.translate(-5.2, 5.82, 0);
+  parts.push(drop);
+  const cap = new THREE.SphereGeometry(0.13, 6, 4);
+  cap.translate(0, 6.45, 0);
+  parts.push(cap);
+  let vc = 0, ic = 0;
+  for (const g of parts) { vc += g.attributes.position.count; ic += g.index.count; }
+  const pos = new Float32Array(vc * 3); const nor = new Float32Array(vc * 3); const uv = new Float32Array(vc * 2);
+  const idx = ic > 65535 ? new Uint32Array(ic) : new Uint16Array(ic);
+  let vo = 0, io = 0;
+  for (const g of parts) {
+    pos.set(g.attributes.position.array, vo * 3);
+    nor.set(g.attributes.normal.array, vo * 3);
+    if (g.attributes.uv) uv.set(g.attributes.uv.array, vo * 2);
+    const gi = g.index.array;
+    for (let i = 0; i < gi.length; i++) idx[io + i] = gi[i] + vo;
+    vo += g.attributes.position.count; io += gi.length;
+  }
+  const poleGeo = new THREE.BufferGeometry();
+  poleGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  poleGeo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  poleGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  poleGeo.setIndex(new THREE.BufferAttribute(idx, 1));
+
+  const poleXforms = [];
+  const wireBoxes = []; // {ax,ay,az,bx,by,bz}
+  const WIRE_Y = 5.55, SPAN = 32, SAG = 0.22;
+  for (const line of lines) {
+    if (/elevated/i.test(line.name || '') || line.elevated) continue;
+    const pts = (line.path || []).map(([x, z]) => new THREE.Vector2(x, z));
+    if (pts.length < 2) continue;
+    let side = 1, carry = 0, poleCount = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const seg = a.distanceTo(b);
+      if (seg < 0.001) continue;
+      const dx = (b.x - a.x) / seg, dz = (b.y - a.y) / seg;
+      const heading = Math.atan2(dx, dz);
+      // wire: subdivide the segment into spans with a sag midpoint
+      let d0 = 0;
+      while (d0 < seg) {
+        const d1 = Math.min(seg, d0 + SPAN);
+        const mx = a.x + dx * ((d0 + d1) / 2), mz = a.y + dz * ((d0 + d1) / 2);
+        const x0 = a.x + dx * d0, z0 = a.y + dz * d0;
+        const x1 = a.x + dx * d1, z1 = a.y + dz * d1;
+        wireBoxes.push([x0, WIRE_Y, z0, mx, WIRE_Y - SAG, mz]);
+        wireBoxes.push([mx, WIRE_Y - SAG, mz, x1, WIRE_Y, z1]);
+        d0 = d1;
+      }
+      // poles: continue accumulated spacing across vertices
+      let dp = carry === 0 ? 6 : SPAN - carry;
+      while (dp < seg) {
+        const px = a.x + dx * dp, pz = a.y + dz * dp;
+        poleXforms.push([px + Math.cos(heading) * 5.2 * side, pz - Math.sin(heading) * 5.2 * side, heading + (side > 0 ? 0 : Math.PI)]);
+        side = -side; poleCount++;
+        dp += SPAN;
+      }
+      carry = (seg - (dp - SPAN)) % SPAN;
+    }
+  }
+
+  const poleMesh = new THREE.InstancedMesh(poleGeo, poleMat, poleXforms.length);
+  const m4 = new THREE.Matrix4(); const q4 = new THREE.Quaternion(); const up = new THREE.Vector3(0, 1, 0); const one = new THREE.Vector3(1, 1, 1); const tv = new THREE.Vector3();
+  poleXforms.forEach(([x, z, h], i) => {
+    q4.setFromAxisAngle(up, h);
+    tv.set(x, 0, z);
+    m4.compose(tv, q4, one);
+    poleMesh.setMatrixAt(i, m4);
+  });
+  poleMesh.instanceMatrix.needsUpdate = true;
+  poleMesh.castShadow = true;
+  scene.add(poleMesh);
+
+  // Wire: one merged geometry of thin boxes between endpoint pairs.
+  const wvc = wireBoxes.length * 8, wic = wireBoxes.length * 36;
+  const wpos = new Float32Array(wvc * 3);
+  const widx = wvc > 65535 ? new Uint32Array(wic) : new Uint16Array(wic);
+  const R = 0.025;
+  wireBoxes.forEach(([ax, ay, az, bx, by, bz], bi) => {
+    const dx = bx - ax, dy = by - ay, dz = bz - az;
+    const len = Math.hypot(dx, dz) || 1;
+    const lx = (-dz / len) * R, lz = (dx / len) * R;
+    const corners = [
+      [ax + lx, ay - R, az + lz], [ax - lx, ay - R, az - lz], [ax + lx, ay + R, az + lz], [ax - lx, ay + R, az - lz],
+      [bx + lx, by - R, bz + lz], [bx - lx, by - R, bz - lz], [bx + lx, by + R, bz + lz], [bx - lx, by + R, bz - lz],
+    ];
+    corners.forEach((c, ci) => wpos.set(c, (bi * 8 + ci) * 3));
+    const o = bi * 8;
+    const quads = [[0,1,3,2],[4,6,7,5],[0,2,6,4],[1,5,7,3],[2,3,7,6],[0,4,5,1]];
+    quads.forEach((qd, qi) => {
+      widx.set([o+qd[0],o+qd[1],o+qd[2],o+qd[0],o+qd[2],o+qd[3]], bi*36+qi*6);
+    });
+  });
+  const wireGeo = new THREE.BufferGeometry();
+  wireGeo.setAttribute('position', new THREE.BufferAttribute(wpos, 3));
+  wireGeo.setIndex(new THREE.BufferAttribute(widx, 1));
+  wireGeo.computeVertexNormals();
+  const wireMesh = new THREE.Mesh(wireGeo, wireMat);
+  wireMesh.userData.noShadow = true;
+  wireMesh.castShadow = false;
+  scene.add(wireMesh);
 }

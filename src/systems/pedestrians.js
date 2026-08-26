@@ -54,11 +54,11 @@ export function startPedestrians(ctx) {
   const COUNT = Math.max(1, people.length);
 
   // --- geometry: a handful of shared primitives, ~9 per figure -----------
-  const coatGeo = new THREE.CylinderGeometry(0.15, 0.23, 1.0, 8);
-  const shoulderGeo = new THREE.BoxGeometry(0.5, 0.16, 0.28);
-  const headGeo = new THREE.SphereGeometry(0.135, 8, 6);
-  const brimGeo = new THREE.CylinderGeometry(0.23, 0.23, 0.03, 10);
-  const crownGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.15, 8);
+  const coatGeo = new THREE.CylinderGeometry(0.17, 0.24, 1.0, 8);
+  const shoulderGeo = new THREE.BoxGeometry(0.46, 0.16, 0.26);
+  const headGeo = new THREE.SphereGeometry(0.105, 8, 6);
+  const brimGeo = new THREE.CylinderGeometry(0.185, 0.185, 0.03, 10);
+  const crownGeo = new THREE.CylinderGeometry(0.095, 0.115, 0.17, 8);
   const armGeo = new THREE.CylinderGeometry(0.045, 0.05, 0.6, 6);
   const shoeGeo = new THREE.BoxGeometry(0.1, 0.2, 0.17);
 

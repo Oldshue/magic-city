@@ -48,6 +48,27 @@ export function startTraffic(ctx) {
 
   const COUNT = Math.max(1, instances.length);
 
+  // --- Parked rows: static sedans along the curbs of the two main
+  // commercial spines (20th St on x=0, 1st Ave on z=0), with gaps and a
+  // little angle jitter, clear of the crossing itself.
+  const parkedSpots = [];
+  {
+    const rngP = (() => { let a = 0x1929; return () => { a = (a * 48271) % 0x7fffffff; return a / 0x7fffffff; }; })();
+    for (const [axis, fixed, lanes] of [['z', 8.2, [[26, 126], [154, 300], [-210, -30]]], ['x', 8.2, [[24, 150], [-190, -26]]]]) {
+      for (const [lo, hi] of lanes) {
+        for (let d = lo; d < hi; d += 15) {
+          if (rngP() < 0.42) continue; // gaps — no solid wall of cars
+          const side = rngP() < 0.5 ? 1 : -1;
+          const jitter = (rngP() - 0.5) * 0.12;
+          if (axis === 'z') parkedSpots.push([fixed * side, d + rngP() * 6, jitter]);
+          else parkedSpots.push([d + rngP() * 6, fixed * side, Math.PI / 2 + jitter]);
+        }
+      }
+    }
+  }
+  const PARKED = parkedSpots.length;
+  const TOTAL = COUNT + PARKED;
+
   // --- geometry: a 1929 sedan from shared primitives, judged at 3 m ---
   const bodyGeo = new THREE.BoxGeometry(1.44, 0.52, 3.05);
   const hoodGeo = new THREE.BoxGeometry(1.02, 0.46, 1.32);
@@ -85,25 +106,25 @@ export function startTraffic(ctx) {
     depthWrite: false, blending: THREE.AdditiveBlending,
   });
 
-  const bodyMesh = new THREE.InstancedMesh(bodyGeo, bodyMat, COUNT);
-  const hoodMesh = new THREE.InstancedMesh(hoodGeo, hoodMat, COUNT);
-  const cowlMesh = new THREE.InstancedMesh(cowlGeo, bodyMat, COUNT);
-  const cabinMesh = new THREE.InstancedMesh(cabinGeo, cabinMat, COUNT);
-  const roofMesh = new THREE.InstancedMesh(roofGeo, roofMat, COUNT);
-  const visorMesh = new THREE.InstancedMesh(visorGeo, roofMat, COUNT);
-  const boardMesh = new THREE.InstancedMesh(boardGeo, boardMat, COUNT * 2);
-  const radiatorMesh = new THREE.InstancedMesh(radiatorGeo, radiatorMat, COUNT);
-  const fenderMesh = new THREE.InstancedMesh(fenderGeo, fenderMat, COUNT * 4);
-  const wheelMesh = new THREE.InstancedMesh(wheelGeo, tireMat, COUNT * 4);
-  const hubMesh = new THREE.InstancedMesh(hubGeo, hubMat, COUNT * 4);
-  const lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, COUNT * 2);
-  const barMesh = new THREE.InstancedMesh(barGeo, boardMat, COUNT);
-  const bumperMesh = new THREE.InstancedMesh(bumperGeo, radiatorMat, COUNT * 2);
-  const spareMesh = new THREE.InstancedMesh(spareGeo, tireMat, COUNT);
-  const glowMesh = new THREE.InstancedMesh(glowGeo, glowMat, COUNT);
+  const bodyMesh = new THREE.InstancedMesh(bodyGeo, bodyMat, TOTAL);
+  const hoodMesh = new THREE.InstancedMesh(hoodGeo, hoodMat, TOTAL);
+  const cowlMesh = new THREE.InstancedMesh(cowlGeo, bodyMat, TOTAL);
+  const cabinMesh = new THREE.InstancedMesh(cabinGeo, cabinMat, TOTAL);
+  const roofMesh = new THREE.InstancedMesh(roofGeo, roofMat, TOTAL);
+  const visorMesh = new THREE.InstancedMesh(visorGeo, roofMat, TOTAL);
+  const boardMesh = new THREE.InstancedMesh(boardGeo, boardMat, TOTAL * 2);
+  const radiatorMesh = new THREE.InstancedMesh(radiatorGeo, radiatorMat, TOTAL);
+  const fenderMesh = new THREE.InstancedMesh(fenderGeo, fenderMat, TOTAL * 4);
+  const wheelMesh = new THREE.InstancedMesh(wheelGeo, tireMat, TOTAL * 4);
+  const hubMesh = new THREE.InstancedMesh(hubGeo, hubMat, TOTAL * 4);
+  const lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, TOTAL * 2);
+  const barMesh = new THREE.InstancedMesh(barGeo, boardMat, TOTAL);
+  const bumperMesh = new THREE.InstancedMesh(bumperGeo, radiatorMat, TOTAL * 2);
+  const spareMesh = new THREE.InstancedMesh(spareGeo, tireMat, TOTAL);
+  const glowMesh = new THREE.InstancedMesh(glowGeo, glowMat, TOTAL);
   glowMesh.frustumCulled = false;
 
-  for (let i = 0; i < COUNT; i++) {
+  for (let i = 0; i < TOTAL; i++) {
     const c = new THREE.Color(lacquer[i % lacquer.length]);
     bodyMesh.setColorAt(i, c);
     hoodMesh.setColorAt(i, c);
@@ -115,6 +136,52 @@ export function startTraffic(ctx) {
   }
 
   scene.add(bodyMesh, hoodMesh, cowlMesh, cabinMesh, roofMesh, visorMesh, boardMesh, radiatorMesh, fenderMesh, wheelMesh, hubMesh, lampMesh, barMesh, bumperMesh, spareMesh, glowMesh);
+
+  // --- One-time placement of the parked rows (indices COUNT..TOTAL-1). ---
+  {
+    const m = new THREE.Matrix4(); const q = new THREE.Quaternion(); const qW = new THREE.Quaternion(); const qS = new THREE.Quaternion();
+    const one = new THREE.Vector3(1, 1, 1); const t = new THREE.Vector3(); const up = new THREE.Vector3(0, 1, 0);
+    const tiltW = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
+    const tiltS = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+    const W_OFF = [[-0.78, 1.35], [0.78, 1.35], [-0.78, -1.3], [0.78, -1.3]];
+    parkedSpots.forEach(([ox, oz, heading], k) => {
+      const i = COUNT + k;
+      const fx = Math.sin(heading), fz = Math.cos(heading);
+      const lx = Math.cos(heading), lz = -Math.sin(heading);
+      q.setFromAxisAngle(up, heading);
+      const put = (mesh, idx, px, py, pz, rot) => {
+        t.set(px, py, pz); m.compose(t, rot || q, one); mesh.setMatrixAt(idx, m);
+      };
+      put(bodyMesh, i, ox, 0.62, oz);
+      put(hoodMesh, i, ox + fx * 1.18, 0.85, oz + fz * 1.18);
+      put(cowlMesh, i, ox + fx * 0.42, 0.98, oz + fz * 0.42);
+      put(cabinMesh, i, ox + fx * -0.55, 1.06, oz + fz * -0.55);
+      put(roofMesh, i, ox + fx * -0.55, 1.5, oz + fz * -0.55);
+      put(visorMesh, i, ox + fx * 0.42, 1.36, oz + fz * 0.42);
+      put(boardMesh, i * 2, ox + lx * -0.86, 0.4, oz + lz * -0.86);
+      put(boardMesh, i * 2 + 1, ox + lx * 0.86, 0.4, oz + lz * 0.86);
+      put(radiatorMesh, i, ox + fx * 1.86, 0.82, oz + fz * 1.86);
+      qW.copy(q).multiply(tiltW);
+      for (let w = 0; w < 4; w++) {
+        const [wl, wf] = W_OFF[w];
+        put(wheelMesh, i * 4 + w, ox + lx * wl + fx * wf, 0.37, oz + lz * wl + fz * wf, qW);
+        put(hubMesh, i * 4 + w, ox + lx * wl + fx * wf, 0.37, oz + lz * wl + fz * wf, qW);
+        put(fenderMesh, i * 4 + w, ox + lx * wl + fx * wf, 0.42, oz + lz * wl + fz * wf, qW);
+      }
+      qS.copy(q).multiply(tiltS);
+      put(lampMesh, i * 2, ox + lx * -0.42 + fx * 1.98, 1.0, oz + lz * -0.42 + fz * 1.98, qS);
+      put(lampMesh, i * 2 + 1, ox + lx * 0.42 + fx * 1.98, 1.0, oz + lz * 0.42 + fz * 1.98, qS);
+      put(barMesh, i, ox + fx * 1.98, 1.0, oz + fz * 1.98);
+      put(bumperMesh, i * 2, ox + fx * 2.02, 0.46, oz + fz * 2.02);
+      put(bumperMesh, i * 2 + 1, ox + fx * -1.72, 0.46, oz + fz * -1.72);
+      put(spareMesh, i, ox + fx * -1.68, 0.78, oz + fz * -1.68, qS);
+      // glow stays unused for parked cars (index i left identity at origin scale 0)
+      t.set(0, -10, 0); m.compose(t, q, one.set(0.001, 0.001, 0.001)); glowMesh.setMatrixAt(i, m); one.set(1, 1, 1);
+    });
+    for (const im of [bodyMesh, hoodMesh, cowlMesh, cabinMesh, roofMesh, visorMesh, boardMesh, radiatorMesh, fenderMesh, wheelMesh, hubMesh, lampMesh, barMesh, bumperMesh, spareMesh, glowMesh]) {
+      im.instanceMatrix.needsUpdate = true;
+    }
+  }
 
   // --- scratch objects, allocated once (zero allocation inside update) ---
   const m = new THREE.Matrix4();
