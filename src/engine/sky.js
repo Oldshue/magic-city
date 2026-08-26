@@ -5,6 +5,12 @@
  * getDayPhase(): [0,1); 0 = midnight, 0.25 = dawn, 0.5 = noon, 0.75 = dusk.
  * Cycle completes every 6 real minutes (360s). Animates sun + hemisphere
  * lights, gradient sky-dome colors, fog color/draw distance per keyframes.
+ *
+ * setWeatherDim(factor) — additive hook for src/systems/weather.js: pulls
+ * the computed sky-dome colors toward grey and softens sun/hemisphere
+ * intensity while overcast or raining. factor 0 = clear (no effect), 1 =
+ * fully socked in. Kept minimal per the tech contract — weather.js owns all
+ * state-machine and timing logic; this file only exposes the multiplier.
  */
 import * as THREE from 'three';
 
@@ -25,6 +31,20 @@ const KEYS = [
   [0.80, 0x232a44, 0x3d2f38, 0.05, 0.25, 40, 1200],
   [1.00, 0x141a30, 0x2a2438, 0.0, 0.22, 30, 1000],
 ];
+
+// --- Weather-dim hook (additive; owned/driven by src/systems/weather.js) --
+let weatherDim = 0;
+const GREY_TOP = new THREE.Color(0x4f555d);
+const GREY_HORIZON = new THREE.Color(0x5b5a57);
+
+/**
+ * setWeatherDim — pulls sky colors toward grey and softens sun/hemisphere
+ * intensity. Called every frame by weather.js with its smoothed dim value.
+ * @param {number} factor 0 (clear) .. 1 (fully overcast/raining)
+ */
+export function setWeatherDim(factor) {
+  weatherDim = THREE.MathUtils.clamp(factor, 0, 1);
+}
 
 /**
  * @param {THREE.Scene} scene
@@ -108,6 +128,16 @@ export function createSky(scene, fog) {
 
     uniforms.topColor.value.copy(_tmpA.setHex(KEYS[i][1]).lerp(_tmpB.setHex(KEYS[i + 1][1]), t));
     uniforms.bottomColor.value.copy(_tmpA.setHex(KEYS[i][2]).lerp(_tmpB.setHex(KEYS[i + 1][2]), t));
+
+    // Weather dim (additive hook, driven by src/systems/weather.js): pull
+    // sky colors toward grey and soften sun/hemi intensity while overcast.
+    if (weatherDim > 0) {
+      uniforms.topColor.value.lerp(GREY_TOP, weatherDim * 0.8);
+      uniforms.bottomColor.value.lerp(GREY_HORIZON, weatherDim * 0.8);
+      sun.intensity *= 1 - weatherDim * 0.7;
+      hemi.intensity *= 1 - weatherDim * 0.25;
+    }
+
     fog.color.copy(uniforms.bottomColor.value);
     fog.near = KEYS[i][5] + (KEYS[i + 1][5] - KEYS[i][5]) * t;
     fog.far = KEYS[i][6] + (KEYS[i + 1][6] - KEYS[i][6]) * t;

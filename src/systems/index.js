@@ -1,7 +1,8 @@
 /**
  * systems/index.js — the living city. Wires together streetcars, period
  * automobiles, pedestrians, steel-district furnace life, WebAudio ambience,
- * and the NOIR JAZZ score, per docs/TECH-CONTRACT.md:
+ * noir weather (rain/overcast/thunder/wet streets), and the NOIR JAZZ score,
+ * per docs/TECH-CONTRACT.md:
  *   export async/sync function startSystems(ctx) -> { update(dt, elapsed) }
  * Each subsystem is started defensively — a failure in one never prevents
  * the rest of the living city from running.
@@ -11,6 +12,7 @@ import { startTraffic } from './traffic.js';
 import { startPedestrians } from './pedestrians.js';
 import { startSteelLife } from './steelLife.js';
 import { startAmbience } from './ambience.js';
+import { startWeather } from './weather.js';
 import { startJazz } from './jazz.js';
 
 export function startSystems(ctx) {
@@ -19,6 +21,7 @@ export function startSystems(ctx) {
   const pedestrians = safeStart(startPedestrians, ctx, 'pedestrians');
   const steelLife = safeStart(startSteelLife, ctx, 'steelLife');
   const ambience = safeStart(startAmbience, ctx, 'ambience');
+  const weather = safeStart(startWeather, ctx, 'weather');
   const jazz = safeStart(startJazz, ctx, 'jazz');
 
   const carPositions = streetcars && streetcars.getCarPositions ? streetcars.getCarPositions() : [];
@@ -31,6 +34,7 @@ export function startSystems(ctx) {
       if (pedestrians) pedestrians.update(dt, elapsed);
       if (steelLife) steelLife.update(dt, elapsed, ctx.camera);
       if (ambience) ambience.update(dt, elapsed, ambienceExtra);
+      if (weather) weather.update(dt, elapsed);
       if (jazz) jazz.update(dt, elapsed);
     },
   };
