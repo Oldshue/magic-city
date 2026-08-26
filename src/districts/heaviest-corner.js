@@ -159,7 +159,7 @@ export async function build(ctx) {
           g.add(stack);
         }
         facadeSign(g, 'TENNESSEE COAL & IRON', lm.height * 0.88, 20, 'east');
-        facadeSign(g, 'MADE WHERE IT\u2019S MINED \u2014 TC IRON', lm.height * 0.83, 18, 'east');
+        facadeSign(g, 'MADE WHERE IT’S MINED — TC IRON', lm.height * 0.83, 18, 'east');
       }
     );
   }
@@ -236,6 +236,8 @@ export async function build(ctx) {
   {
     const geoByMat = {};
     const lists = { brick: [], limestone: [] };
+    const caps = [];
+    const winMatrices = [];
     for (const [x, z, sx, sz, h, mat] of infills) {
       lists[mat].push([x, z, sx, sz, h]);
       geoByMat[mat] = geoByMat[mat] || null;
@@ -268,9 +270,29 @@ export async function build(ctx) {
       inst.instanceMatrix.needsUpdate = true;
       group.add(inst);
     }
-    var caps = [];
+
+    // Terracotta cornice caps atop each infill block roof.
+    if (caps.length) {
+      const capGeo = new THREE.BoxGeometry(1, 1, 1);
+      const capInst = new T.InstancedMesh(capGeo, materials.terracotta, caps.length);
+      caps.forEach((capMtx, i) => capInst.setMatrixAt(i, capMtx));
+      capInst.instanceMatrix.needsUpdate = true;
+      group.add(capInst);
+    }
+
+    // Small glassNight window planes at each infill window position, facing +Z.
+    if (winMatrices.length) {
+      const winGeo = new THREE.PlaneGeometry(1.1, 1.8);
+      const winInst = new T.InstancedMesh(winGeo, materials.glassNight, winMatrices.length);
+      const winMtx = new T.Matrix4();
+      winMatrices.forEach(([wx, wy, wz], i) => {
+        winMtx.makeTranslation(wx, wy, wz);
+        winInst.setMatrixAt(i, winMtx);
+      });
+      winInst.instanceMatrix.needsUpdate = true;
+      group.add(winInst);
+    }
   }
-  // NOTE: caps/winMatrices are populated above; declare before use properly:
 
   // ------------------------------------------------------------------
   // Street furniture: lamps, benches, newsstand, hydrant-free corners
@@ -317,7 +339,7 @@ export async function build(ctx) {
   const standAwning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.15, 2.4), materials.marquee);
   standAwning.position.set(0, 2.75, 0.2);
   newsstand.add(standAwning);
-  const headPage = deco.canvasSign('THE BIRMINGHAM LEDGER \u2014 EXTRA!', { width: 3, canvasWidth: 512, canvasHeight: 128 });
+  const headPage = deco.canvasSign('THE BIRMINGHAM LEDGER — EXTRA!', { width: 3, canvasWidth: 512, canvasHeight: 128 });
   headPage.position.set(0, 1.8, 1.05);
   newsstand.add(headPage);
   newsstand.position.set(16, 0.18, -8);
@@ -332,24 +354,24 @@ export async function build(ctx) {
   plaque.position.set(10 + 19.5, 1.6, -10 + 17.4);
   group.add(plaque);
   registerInteractive(plaque, {
-    title: 'Bronze Plaque \u2014 Jefferson Trust lobby vestibule',
-    body: 'Framed lede, The Birmingham Ledger, Nov 5, 1907:\n\n"WOODWARD SAYS NO. \u2014 TCI Declines Northern Bonds; \'Our Iron Will Carry Its Own Freight,\' Declares President, as Syndicate of the South Rallies to the Rescue."',
+    title: 'Bronze Plaque — Jefferson Trust lobby vestibule',
+    body: 'Framed lede, The Birmingham Ledger, Nov 5, 1907:\n\n"WOODWARD SAYS NO. — TCI Declines Northern Bonds; \'Our Iron Will Carry Its Own Freight,\' Declares President, as Syndicate of the South Rallies to the Rescue."',
   });
 
   // 2. Newspaper stand front page.
   registerInteractive(headPage.children[0], {
-    title: 'The Birmingham Ledger \u2014 Extra Edition, October 1928',
-    body: '"EXTRA! BIRMINGHAAM PASSES PITTSBURGH! MILL MEN SAY THE VALLEY NEVER LOOKED BACK \u2014 LEDGER, TWO CENTS!"',
+    title: 'The Birmingham Ledger — Extra Edition, October 1928',
+    body: '"EXTRA! BIRMINGHAAM PASSES PITTSBURGH! MILL MEN SAY THE VALLEY NEVER LOOKED BACK — LEDGER, TWO CENTS!"',
   });
 
   // 3. Painted wall advertisement on an infill wall (Age-Herald back page).
-  const paintedAd = deco.canvasSign('MADE WHERE IT\u2019S MINED!', { width: 14, canvasWidth: 512, canvasHeight: 160 });
+  const paintedAd = deco.canvasSign('MADE WHERE IT’S MINED!', { width: 14, canvasWidth: 512, canvasHeight: 160 });
   paintedAd.position.set(86 - 12.4, 9, -64);
   paintedAd.rotation.y = -Math.PI / 2;
   group.add(paintedAd);
   registerInteractive(paintedAd.children[0], {
-    title: 'Painted Advertisement \u2014 TC Iron',
-    body: '"MADE WHERE IT\u2019S MINED! One ton of TC steel crosses our yard in ninety minutes \u2014 ore, limestone, coal, fire. Ask your dealer why northern steel costs more to haul less. TC IRON \u2014 THE SOUTH\u2019S OWN METAL."',
+    title: 'Painted Advertisement — TC Iron',
+    body: '"MADE WHERE IT’S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, fire. Ask your dealer why northern steel costs more to haul less. TC IRON — THE SOUTH’S OWN METAL."',
   });
 
   scene.add(group);
