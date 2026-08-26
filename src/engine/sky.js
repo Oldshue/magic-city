@@ -12,6 +12,24 @@ const CYCLE_SECONDS = 360;
 const _tmpA = new THREE.Color();
 const _tmpB = new THREE.Color();
 
+// --- Additive weather hook (src/systems/weather.js) --------------------
+// Only one createSky() instance exists per boot, so a module-scoped dim
+// factor is sufficient — weather.js calls setWeatherDim() every frame with
+// an overcast/rain amount in [0,1]; update() below folds it into the
+// computed sky colors and light intensities without touching KEYS.
+let _weatherDim = 0;
+const _greyTop = new THREE.Color(0x545a63);
+const _greyBottom = new THREE.Color(0x6a6e73);
+
+/**
+ * Pulls sky colors toward grey and softens sun/hemi intensity while
+ * overcast or raining. 0 = clear (no change), 1 = full storm grey.
+ * @param {number} factor
+ */
+export function setWeatherDim(factor) {
+  _weatherDim = THREE.MathUtils.clamp(factor, 0, 1);
+}
+
 // Keyframes: [phase, topColorHex, horizonColorHex, sunIntensity, hemiIntensity, fogNear, fogFar]
 // Midnight/pre-dawn lifted so building massing still reads against the sky;
 // the horizon carries a faint warm city-glow at midnight (streetlamps, windows).
@@ -111,6 +129,17 @@ export function createSky(scene, fog) {
     fog.color.copy(uniforms.bottomColor.value);
     fog.near = KEYS[i][5] + (KEYS[i + 1][5] - KEYS[i][5]) * t;
     fog.far = KEYS[i][6] + (KEYS[i + 1][6] - KEYS[i][6]) * t;
+
+    // Additive weather dimming — see setWeatherDim() above.
+    if (_weatherDim > 0) {
+      sun.intensity *= (1 - _weatherDim * 0.75);
+      hemi.intensity *= (1 - _weatherDim * 0.35);
+      uniforms.topColor.value.lerp(_greyTop, _weatherDim * 0.85);
+      uniforms.bottomColor.value.lerp(_greyBottom, _weatherDim * 0.85);
+      fog.color.copy(uniforms.bottomColor.value);
+      fog.near *= (1 - _weatherDim * 0.2);
+      fog.far *= (1 - _weatherDim * 0.45);
+    }
 
     return phase;
   }
