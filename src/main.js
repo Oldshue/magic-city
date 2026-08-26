@@ -2,8 +2,8 @@
  * main.js — boot sequence for Magic City 1929.
  *
  * Loads data/city-plan.json, builds the ground plane and street ribbons,
- * dynamically imports each district module (skipping missing ones), starts
- * systems/narrative if present, and runs the frame loop.
+ * looks up each district module in the static registry (skipping missing
+ * ones), starts systems/narrative if present, and runs the frame loop.
  *
  * Boots entirely from built-in defaults — the plan's own spawn point, a
  * live running clock driving the day-night cycle — and never reads the
@@ -24,6 +24,7 @@ import { createControls, EYE_HEIGHT } from './engine/controls.js';
 import { createSky } from './engine/sky.js';
 import { materials } from './engine/materials.js';
 import * as deco from './engine/deco.js';
+import { builders } from './districts/registry.js';
 
 const DAY_NIGHT_CYCLE_SECONDS = 360;
 const FLY_SPEED_MULTIPLIER = 6;
@@ -103,11 +104,15 @@ async function boot() {
     interactives,
   };
 
-  // --- Districts (dynamic import, skip missing) -----------------------
+  // --- Districts (static registry lookup, skip missing) ----------------
   for (const d of plan.districts) {
+    const build = builders[d.slug];
+    if (!build) {
+      console.warn('[magic-city] skipping district', d.slug, 'no registered builder');
+      continue;
+    }
     try {
-      const mod = await import('./districts/' + d.slug + '.js');
-      await mod.build({ ...ctx, district: d });
+      await build({ ...ctx, district: d });
       console.info('[magic-city] built district:', d.slug);
     } catch (err) {
       console.warn('[magic-city] skipping district', d.slug, err && err.message);
