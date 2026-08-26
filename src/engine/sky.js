@@ -13,15 +13,17 @@ const _tmpA = new THREE.Color();
 const _tmpB = new THREE.Color();
 
 // Keyframes: [phase, topColorHex, horizonColorHex, sunIntensity, hemiIntensity, fogNear, fogFar]
+// Midnight/pre-dawn lifted so building massing still reads against the sky;
+// the horizon carries a faint warm city-glow at midnight (streetlamps, windows).
 const KEYS = [
-  [0.00, 0x0a0d1e, 0x121a2b, 0.0, 0.12, 30, 500], // midnight
-  [0.20, 0x1c2238, 0x3a2e36, 0.05, 0.25, 40, 600],
+  [0.00, 0x141a30, 0x2a2438, 0.0, 0.22, 30, 500], // midnight
+  [0.20, 0x232a44, 0x45343c, 0.05, 0.28, 40, 600],
   [0.27, 0xd98a52, 0xf2c48a, 0.85, 0.55, 50, 850], // dawn
   [0.40, 0xa8c4dc, 0xd8e2ea, 1.35, 0.75, 60, 950],
   [0.60, 0xa8c4dc, 0xd8e2ea, 1.35, 0.75, 60, 950],
   [0.73, 0xd96a3a, 0xf2a05c, 0.90, 0.50, 50, 800], // dusk
-  [0.80, 0x1c2238, 0x33262e, 0.05, 0.22, 40, 600],
-  [1.00, 0x0a0d1e, 0x121a2b, 0.0, 0.12, 30, 500],
+  [0.80, 0x232a44, 0x3d2f38, 0.05, 0.25, 40, 600],
+  [1.00, 0x141a30, 0x2a2438, 0.0, 0.22, 30, 500],
 ];
 
 /**
@@ -30,8 +32,8 @@ const KEYS = [
  */
 export function createSky(scene, fog) {
   const uniforms = {
-    topColor: { value: new THREE.Color(0x0a0d1e) },
-    bottomColor: { value: new THREE.Color(0x121a2b) },
+    topColor: { value: new THREE.Color(0x141a30) },
+    bottomColor: { value: new THREE.Color(0x2a2438) },
     offset: { value: 60 },
     exponent: { value: 0.7 },
   };

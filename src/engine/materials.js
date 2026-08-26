@@ -34,9 +34,10 @@ export const materials = {
   /** Daytime glass — reflective blue-grey, non-emissive. */
   glassDay: std({ color: 0x5b7080, roughness: 0.12, metalness: 0.65 }),
 
-  /** Night glass — emissive warm interior light; swap in at night or layer. */
+  /** Night glass — genuinely emissive warm window glow that carries the night
+   * view; reads as lit offices and hotel rooms even against lifted midnight sky. */
   glassNight: std({ color: 0x1a1f26, roughness: 0.2, metalness: 0.4,
-                    emissive: 0xffca7a, emissiveIntensity: 1.0 }),
+                    emissive: 0xffb45e, emissiveIntensity: 2.6 }),
 
   /** Marquee / sign face glow (basic [redacted] ignores lights, always lit). */
   marquee: basic(0xffe6b0),
