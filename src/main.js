@@ -89,6 +89,51 @@ async function boot() {
     }
   }
 
+  // --- Crosswalks: parallel-bar markings at the Heaviest Corner --------
+  // Four approaches at 20th & 1st (x=0, z=0). Bars sit 5cm above asphalt;
+  // merged into one geometry, one draw call, worn off-white.
+  {
+    const bars = [];
+    const BAR_W = 0.55, BAR_L = 3.4, GAP = 0.55, N = 8;
+    const SPAN = N * (BAR_W + GAP);
+    for (const [ax, az, horizontal] of [
+      [0, 14.5, true], [0, -14.5, true],   // across 20th, north & south approaches
+      [14.5, 0, false], [-14.5, 0, false], // across 1st Ave, east & west approaches
+    ]) {
+      for (let i = 0; i < N; i++) {
+        const off = -SPAN / 2 + (BAR_W + GAP) * i + BAR_W / 2;
+        const g = new THREE.PlaneGeometry(horizontal ? BAR_W : BAR_L, horizontal ? BAR_L : BAR_W);
+        g.rotateX(-Math.PI / 2);
+        g.translate(ax + (horizontal ? off : 0), 0.05, az + (horizontal ? 0 : off));
+        bars.push(g);
+      }
+    }
+    let vc = 0, ic = 0;
+    for (const g of bars) { vc += g.attributes.position.count; ic += g.index.count; }
+    const pos = new Float32Array(vc * 3), nor = new Float32Array(vc * 3), uv = new Float32Array(vc * 2);
+    const idx = new Uint16Array(ic);
+    let vo = 0, io = 0;
+    for (const g of bars) {
+      pos.set(g.attributes.position.array, vo * 3);
+      nor.set(g.attributes.normal.array, vo * 3);
+      uv.set(g.attributes.uv.array, vo * 2);
+      const gi = g.index.array;
+      for (let i = 0; i < gi.length; i++) idx[io + i] = gi[i] + vo;
+      vo += g.attributes.position.count; io += gi.length;
+    }
+    const cwGeo = new THREE.BufferGeometry();
+    cwGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    cwGeo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    cwGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    cwGeo.setIndex(new THREE.BufferAttribute(idx, 1));
+    const cwMat = new THREE.MeshStandardMaterial({ color: 0xcfc8b4, roughness: 0.9, metalness: 0.0 });
+    const cw = new THREE.Mesh(cwGeo, cwMat);
+    cw.receiveShadow = true;
+    cw.castShadow = false;
+    cw.userData.noShadow = true;
+    scene.add(cw);
+  }
+
   // --- Interactives registry -----------------------------------------
   const interactives = [];
   function registerInteractive(object3d, info) {
