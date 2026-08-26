@@ -1,6 +1,8 @@
 /**
  * style.js — the single injected stylesheet for the narrative/UI layer of
- * Magic City 1929: title card, HUD, readables panel, map overlay.
+ * Magic City 1929: title card, HUD, readables panel, map overlay, and the
+ * on-screen touch controls (joystick + E/M tap buttons) used whenever
+ * pointer lock isn't held.
  *
  * Palette and type are drawn straight from docs/WORLD-BIBLE.md Section 5
  * (gold on deep green-black, letterspaced deco caps, paper/plaque readables,
@@ -108,6 +110,7 @@ export const NARRATIVE_CSS = `
   background: linear-gradient(180deg, var(--mc-paper) 0%, var(--mc-paper-dark) 100%);
   color: var(--mc-ink); border: 3px double var(--mc-bronze); box-shadow: 0 18px 50px rgba(0,0,0,0.55);
   z-index: 40; font-family: var(--mc-font-serif);
+  pointer-events: auto; /* scroll + tap-anywhere-to-close on touch */
 }
 .mc-readable-inner { padding: 26px 30px; }
 .mc-readable-masthead { text-align: center; margin-bottom: 14px; }
@@ -130,6 +133,7 @@ export const NARRATIVE_CSS = `
 .mc-map-overlay {
   position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
   background: rgba(5,5,8,0.82);
+  pointer-events: auto; /* tap outside the frame to close, on touch */
 }
 .mc-map-frame {
   background: var(--mc-green-black); border: 6px solid var(--mc-bronze); padding: 18px;
@@ -150,4 +154,39 @@ export const NARRATIVE_CSS = `
   text-align: center; margin-top: 10px; font-family: var(--mc-font-deco);
   font-size: 10px; letter-spacing: 0.3em; color: var(--mc-gold);
 }
+
+/* ---------- Touch / soft controls ----------
+   Shown whenever pointer lock isn't held (mobile, tablets, iframes, denied
+   permission, or a desktop that just hasn't (re)locked yet). Understated:
+   translucent deco gold-on-green-black, matching the rest of the overlay. */
+.mc-touch-controls { position: fixed; inset: 0; z-index: 25; pointer-events: none; }
+
+.mc-joystick {
+  position: fixed; left: 22px; bottom: 22px; width: 92px; height: 92px;
+  pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none;
+}
+.mc-joystick-base {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: rgba(13, 20, 15, 0.38); border: 1px solid rgba(212,175,106,0.45);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.3) inset;
+}
+.mc-joystick-knob {
+  position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px;
+  border-radius: 50%; background: rgba(212,175,106,0.55); border: 1px solid var(--mc-gold);
+  transform: translate(-50%, -50%); transition: background 0.15s ease;
+}
+
+.mc-touch-buttons {
+  position: fixed; right: 20px; bottom: 26px; display: flex; flex-direction: column;
+  align-items: center; gap: 12px; pointer-events: none;
+}
+.mc-touch-btn {
+  pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none;
+  min-width: 62px; height: 42px; padding: 0 16px; border-radius: 21px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mc-font-deco); font-size: 12px; letter-spacing: 0.2em; color: var(--mc-gold-bright);
+  background: rgba(13, 20, 15, 0.45); border: 1px solid rgba(212,175,106,0.5);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+}
+.mc-touch-btn:active { background: rgba(212,175,106,0.35); }
 `;
