@@ -26,6 +26,27 @@ const KEYS = [
   [1.00, 0x141a30, 0x2a2438, 0.0, 0.22, 30, 1000],
 ];
 
+// --- Weather hook (additive; src/systems/weather.js is the only caller) ---
+// One module-scope dimming factor is enough because the city has exactly
+// one sky instance per page. Intentionally tiny: no new state machine here,
+// just a multiplier + a grey-pull applied inside update() below.
+let weatherDim = 1; // 1 = clear sky (no-op default)
+const _tmpGrey = new THREE.Color();
+const GREY_TOP = 0x545861;
+const GREY_HORIZON = 0x5d6169;
+
+/**
+ * setWeatherDim(factor) — minimal additive hook for src/systems/weather.js.
+ * factor in [0,1]: 1 = clear sky, unaffected; lower values soften sun and
+ * hemisphere intensity and pull the computed sky gradient + fog color
+ * toward an overcast grey. Default is 1 (no-op) so sky.js behaves exactly
+ * as before if nothing ever calls this.
+ * @param {number} factor
+ */
+export function setWeatherDim(factor) {
+  weatherDim = THREE.MathUtils.clamp(typeof factor === 'number' ? factor : 1, 0, 1);
+}
+
 /**
  * @param {THREE.Scene} scene
  * @param {THREE.Fog} fog
@@ -103,11 +124,17 @@ export function createSky(scene, fog) {
     const azim = phase * Math.PI * 2 - Math.PI / 2;
     const dist = 400;
     sun.position.set(Math.cos(azim) * dist, Math.max(elev, -0.2) * dist, Math.sin(azim) * dist * 0.4 + 150);
-    sun.intensity = KEYS[i][3] + (KEYS[i + 1][3] - KEYS[i][3]) * t;
-    hemi.intensity = KEYS[i][4] + (KEYS[i + 1][4] - KEYS[i][4]) * t;
+    sun.intensity = (KEYS[i][3] + (KEYS[i + 1][3] - KEYS[i][3]) * t) * THREE.MathUtils.lerp(0.3, 1, weatherDim);
+    hemi.intensity = (KEYS[i][4] + (KEYS[i + 1][4] - KEYS[i][4]) * t) * THREE.MathUtils.lerp(0.75, 1, weatherDim);
 
     uniforms.topColor.value.copy(_tmpA.setHex(KEYS[i][1]).lerp(_tmpB.setHex(KEYS[i + 1][1]), t));
     uniforms.bottomColor.value.copy(_tmpA.setHex(KEYS[i][2]).lerp(_tmpB.setHex(KEYS[i + 1][2]), t));
+    if (weatherDim < 1) {
+      // Overcast/rain: pull the computed gradient toward flat storm grey.
+      const greyPull = (1 - weatherDim) * 0.7;
+      uniforms.topColor.value.lerp(_tmpGrey.setHex(GREY_TOP), greyPull);
+      uniforms.bottomColor.value.lerp(_tmpGrey.setHex(GREY_HORIZON), greyPull);
+    }
     fog.color.copy(uniforms.bottomColor.value);
     fog.near = KEYS[i][5] + (KEYS[i + 1][5] - KEYS[i][5]) * t;
     fog.far = KEYS[i][6] + (KEYS[i + 1][6] - KEYS[i][6]) * t;
