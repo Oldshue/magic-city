@@ -48,6 +48,51 @@ export function mergeGeometries(geoms) {
   return merged;
 }
 
+/**
+ * mergeColored - like mergeGeometries, but bakes a per-part flat vertex
+ * color instead of relying on a single material, so a cluster of parts
+ * that would otherwise need different materials (a brown trunk plus
+ * green foliage lobes, or stone-tone trim plus dark reveals) can still
+ * draw as ONE mesh / one draw call via a single MeshStandardMaterial
+ * ({ vertexColors: true }). Parts already baked into place via
+ * .translate()/.rotate*(), same convention as mergeGeometries.
+ * @param {{geo: THREE.BufferGeometry, color: THREE.Color}[]} parts
+ * @returns {THREE.BufferGeometry} indexed geometry with a `color` attribute
+ */
+export function mergeColored(parts) {
+  let vertCount = 0, idxCount = 0;
+  for (const p of parts) { vertCount += p.geo.attributes.position.count; idxCount += p.geo.index.count; }
+  const position = new Float32Array(vertCount * 3);
+  const normal = new Float32Array(vertCount * 3);
+  const uv = new Float32Array(vertCount * 2);
+  const color = new Float32Array(vertCount * 3);
+  const IndexArray = idxCount > 65535 ? Uint32Array : Uint16Array;
+  const index = new IndexArray(idxCount);
+  let vOff = 0, iOff = 0;
+  for (const p of parts) {
+    const g = p.geo;
+    position.set(g.attributes.position.array, vOff * 3);
+    normal.set(g.attributes.normal.array, vOff * 3);
+    const srcUv = g.attributes.uv ? g.attributes.uv.array : new Float32Array(g.attributes.position.count * 2);
+    uv.set(srcUv, vOff * 2);
+    const n = g.attributes.position.count;
+    const c = p.color;
+    for (let i = 0; i < n; i++) {
+      color[(vOff + i) * 3] = c.r; color[(vOff + i) * 3 + 1] = c.g; color[(vOff + i) * 3 + 2] = c.b;
+    }
+    const idx = g.index.array;
+    for (let i = 0; i < idx.length; i++) index[iOff + i] = idx[i] + vOff;
+    vOff += n; iOff += idx.length;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(position, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setAttribute('color', new THREE.BufferAttribute(color, 3));
+  geo.setIndex(new THREE.BufferAttribute(index, 1));
+  return geo;
+}
+
 // Warm radial-glow disc texture (lamp pavement pools).
 let _glowDiscTexture = null;
 export function glowDiscTexture() {

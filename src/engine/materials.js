@@ -36,15 +36,21 @@
  * relief still reads (mortar joints, ashlar joints, terracotta reveals)
  * without overwhelming the base lighting.
  *
- * FIX (texel scale): brick/limestone/asphalt/sidewalk world-mapping scale
- * constants are the UV-per-meter density (`worldMeters * scale` -> UV, then
- * RepeatWrapping tiles every 1.0 UV). Brick's draft value (0.34) produced
- * ~0.29m tall courses already, but combined with the bump overcorrection
- * above and box-projection foreshortening on grazing tower faces, coursing
- * read far coarser in practice — tightened brick to real pressed-brick
- * coursing (~0.077m per course, 10 courses per texture tile) and re-tuned
- * limestone/terracotta/asphalt/sidewalk scales together so nothing reads
- * as stretched, oversized "painted blocks" at street level.
+ * FIX (texel scale, Graphics Finisher pass): brick/limestone/asphalt/
+ * sidewalk world-mapping scale constants are the UV-per-meter density
+ * (`worldMeters * scale` -> UV, then RepeatWrapping tiles every 1.0 UV).
+ *
+ * FIX (texel scale, Storefront Director close-up audit): the values above
+ * (brick scale 1.3, limestone scale 0.42) were tuned against small trim
+ * pieces and read far too fine at a true street-level 5m tower-base
+ * close-up — brick courses came out ~0.077m (a hair's width of relief)
+ * and limestone ashlar blocks ~0.6m x 0.4m, both a full material generation
+ * finer than the program's stated targets (brick courses ~0.25m tall;
+ * limestone blocks ~0.6m x 1.2m). Retuned so brick's 10-course/tile texture
+ * spans 2.5m (scale 0.4 -> 0.25m/course) and limestone's 6-row/tile texture
+ * spans 3.6m (scale 0.2778 -> 0.6m-tall rows; alternating 3/4 blocks per
+ * row read ~1.2m/~0.9m wide), matching real pressed-brick and large-block
+ * civic ashlar coursing at pedestrian viewing distance.
  *
  * Export: `materials` object with the named entries required by the contract:
  * limestone, brick, terracotta, bronze, steelDark, glassDay, glassNight,
@@ -332,17 +338,17 @@ export const materials = {
   foliage: std({ color: 0x3f5c34, roughness: 0.9, metalness: 0.0 }),
 };
 
-// Texel-density tuning (defect: brick courses read ~4x too coarse — nearly a
-// meter tall instead of real pressed-brick's ~7-8cm). `scale` is UV units
-// per world meter; texture tiles every 1.0 UV, so a tile spans (1/scale)
-// meters. Brick's texture is 10 courses per tile, so scale=1.3 -> tile
-// 0.769m -> ~0.077m (7.7cm) per course, matching real pressed brick.
-// Limestone (6 ashlar courses/tile) and terracotta (8 block rows/tile) tuned
-// to plausible large-block civic-building coursing; asphalt/sidewalk tuned
-// so their tiles read at a believable street-level grain instead of one
-// huge smeared/stretched tile.
-applyWorldMapping(materials.limestone, { scale: 0.42 });
-applyWorldMapping(materials.brick, { scale: 1.3 });
+// Texel-density tuning: `scale` is UV units per world meter; texture tiles
+// every 1.0 UV, so a tile spans (1/scale) meters. Brick's texture is 10
+// courses per tile: scale=0.4 -> tile 2.5m -> 0.25m per course, matching
+// the program's stated pressed-brick target. Limestone's texture is 6
+// ashlar rows per tile: scale=0.2778 -> tile 3.6m -> 0.6m per row, with
+// alternating 3/4-block rows reading ~1.2m/~0.9m wide blocks, matching the
+// program's stated large-block civic-ashlar target. Terracotta/asphalt/
+// sidewalk tuned to plausible street-level grain (unchanged from the prior
+// Graphics Finisher pass; not part of this audit's stated defects).
+applyWorldMapping(materials.limestone, { scale: 0.2778 });
+applyWorldMapping(materials.brick, { scale: 0.4 });
 applyWorldMapping(materials.terracotta, { scale: 0.55 });
 applyWorldMapping(materials.asphalt, { scale: 0.4 });
 applyWorldMapping(materials.sidewalk, { scale: 0.5 });
