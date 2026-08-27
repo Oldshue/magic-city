@@ -18,6 +18,7 @@ import * as avondaleBoulevard from './avondale-boulevard.js';
 import * as ensleyWorksMercato from './ensley-works-mercato.js';
 import * as furnaceRowSlossFlats from './furnace-row-sloss-flats.js';
 import * as heaviestCorner from './heaviest-corner.js';
+import * as railroadReservation from './railroad-reservation.js';
 import * as redMountainCrestVulcanPark from './red-mountain-crest-vulcan-park.js';
 import * as southsideHighlands from './southside-highlands.js';
 import * as terminalQuarter from './terminal-quarter.js';
@@ -29,6 +30,7 @@ export const builders = {
   'ensley-works-mercato': ensleyWorksMercato.build,
   'furnace-row-sloss-flats': furnaceRowSlossFlats.build,
   'heaviest-corner': heaviestCorner.build,
+  'railroad-reservation': railroadReservation.build,
   'red-mountain-crest-vulcan-park': redMountainCrestVulcanPark.build,
   'southside-highlands': southsideHighlands.build,
   'terminal-quarter': terminalQuarter.build,
