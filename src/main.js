@@ -89,6 +89,69 @@ async function boot() {
     }
   }
 
+  let streetHaloMat = null;
+  // --- Electric street lighting: 1929 Birmingham was Alabama Power's
+  // showcase city — ornamental standards lined every downtown street.
+  // Instanced rows (one pole mesh + one globe mesh, two draw calls);
+  // globes ride materials.glassNight so they ignite on the dusk ramp.
+  {
+    const DT = { x0: -640, x1: 640, z0: -330, z1: 350 };
+    const BAND = { z0: 78, z1: 318, x0: -520, x1: 520 }; // rail corridor: no standards inside
+    const SPACING = 34;
+    const spots = [];
+    for (const st of plan.streets) {
+      const [a, b] = [st.path[0], st.path[st.path.length - 1]];
+      if (st.path.length !== 2) continue;
+      const horiz = Math.abs(b[0] - a[0]) > Math.abs(b[1] - a[1]);
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const n = Math.floor(len / SPACING);
+      for (let i = 1; i < n; i++) {
+        const t = i / n;
+        const x = a[0] + (b[0] - a[0]) * t;
+        const z = a[1] + (b[1] - a[1]) * t;
+        if (x < DT.x0 || x > DT.x1 || z < DT.z0 || z > DT.z1) continue;
+        if (x > BAND.x0 && x < BAND.x1 && z > BAND.z0 && z < BAND.z1) continue;
+        const side = i % 2 === 0 ? 1 : -1;
+        const off = st.width / 2 + 0.7; // curbline, clear of the awning canopy line
+        spots.push([
+          x + (horiz ? 0 : off * side),
+          z + (horiz ? off * side : 0),
+        ]);
+      }
+    }
+    if (spots.length) {
+      const poleGeo = new THREE.CylinderGeometry(0.07, 0.11, 4.6, 6);
+      const globeGeo = new THREE.SphereGeometry(0.34, 8, 6);
+      const poleMesh = new THREE.InstancedMesh(poleGeo, materials.steelDark, spots.length);
+      const globeMesh = new THREE.InstancedMesh(globeGeo, materials.glassNight, spots.length);
+      const m4 = new THREE.Matrix4();
+      spots.forEach(([x, z], i) => {
+        m4.makeTranslation(x, 2.3, z); poleMesh.setMatrixAt(i, m4);
+        m4.makeTranslation(x, 4.85, z); globeMesh.setMatrixAt(i, m4);
+      });
+      poleMesh.instanceMatrix.needsUpdate = true;
+      globeMesh.instanceMatrix.needsUpdate = true;
+      poleMesh.userData.noShadow = true;
+      globeMesh.userData.noShadow = true;
+      // Warm additive halo shells make the rows of standards read as the
+      // lit "white way" at distance; opacity is driven from the same
+      // night factor as the deco lamp pool (see the update loop).
+      const haloGeo = new THREE.SphereGeometry(0.95, 8, 6);
+      streetHaloMat = new THREE.MeshBasicMaterial({
+        color: 0xffd9a0, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const haloMesh = new THREE.InstancedMesh(haloGeo, streetHaloMat, spots.length);
+      spots.forEach(([x, z], i) => {
+        m4.makeTranslation(x, 4.85, z); haloMesh.setMatrixAt(i, m4);
+      });
+      haloMesh.instanceMatrix.needsUpdate = true;
+      haloMesh.userData.noShadow = true;
+      scene.add(poleMesh, globeMesh, haloMesh);
+      console.info('[magic-city] electric street lighting:', spots.length, 'standards');
+    }
+  }
+
   // --- Crosswalks: parallel-bar markings at the Heaviest Corner --------
   // Four approaches at 20th & 1st (x=0, z=0). Bars sit 5cm above asphalt;
   // merged into one geometry, one draw call, worn off-white.
@@ -291,6 +354,7 @@ async function boot() {
     const phase = sky.update(dt, elapsed, camera.position);
     const nightGlow = sky.getNightGlow ? sky.getNightGlow() : (phase < 0.22 || phase > 0.8 ? 1 : 0);
     deco.setLampsNight(nightGlow);
+    if (streetHaloMat) streetHaloMat.opacity = Math.min(0.95, Math.max(0, (nightGlow - 0.3) * 1.6));
     deco.updateLampPool(camera.position, nightGlow);
     if (systemsUpdate) systemsUpdate(dt, elapsed);
     renderer.render(scene, camera);
