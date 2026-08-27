@@ -5,11 +5,15 @@
  * window band that lights up warm at night (emissive strip + faint flank
  * spill), a route-number signboard next to the destination rollsign, a
  * trolley pole reaching up toward the wire, and a cowcatcher grille on the
- * leading end. Movement, routing, and the exported contract are unchanged.
+ * leading end. Movement, routing, and the exported contract are unchanged;
+ * this pass adds dwell-at-stops: each car holds speed 0 for 9s within 4m
+ * of a stop point drawn from a small stops array on each route.
  */
 export function startStreetcars(ctx) {
   const { THREE, scene, plan, materials, deco, getDayPhase } = ctx;
   const SPEED = 9; // m/s, period Birney/center-door car pace
+  const DWELL_RADIUS = 4; // meters — within this of a stop point, dwell begins
+  const DWELL_TIME = 9; // seconds — how long a car holds at a stop
 
   const cars = [];
   const spillTex = makeSpillTexture(THREE);
@@ -18,6 +22,20 @@ export function startStreetcars(ctx) {
   // line (the elevated Belt Loop rides its own guideway and is skipped).
   // One instanced pole mesh + one merged wire geometry — two draw calls.
   buildCatenary(THREE, scene, plan.streetcarLines || []);
+
+  // Stops are not represented in city-plan.json streetcarLines entries, so
+  // each route gets 2-3 stop points hardcoded here at plausible corner
+  // locations along its own path (picked by inspecting each line's path
+  // below — near where the line crosses a major cross-street or turns a
+  // downtown corner). These are the same 4 "nearest downtown stop"
+  // coordinates pedestrians.js hardcodes for its waiting knots.
+  const ROUTE_STOPS = {
+    'Red Line': [[-60, -140], [0, -100], [0, 200]],
+    'Ensley Flyer': [[-160, 140], [-500, 140]],
+    'Avondale Local': [[0, 140], [300, 140]],
+    'Belt Loop (Elevated)': [[-260, -340], [260, -340]],
+    'Bessemer Limited': [[0, 140], [0, 420]],
+  };
 
   let lineIndex = 0;
   for (const line of plan.streetcarLines || []) {
@@ -169,10 +187,14 @@ export function startStreetcars(ctx) {
     group.add(routeSign);
 
     scene.add(group);
+    const stopPts = (ROUTE_STOPS[line.name] || []).map(([x, z]) => new THREE.Vector3(x, 0, z));
     cars.push({
       group, pts, segLens, total,
       dist: Math.random() * total,
       glowMat, glowBackMat, windowMat, spillMat,
+      stops: stopPts,
+      dwellUntil: 0, // clock timestamp; while elapsed < dwellUntil, car holds at zero speed
+      dwellStopIdx: -1, // index into stops of the stop currently dwelled/just-departed, -1 = none
     });
     lineIndex++;
   }
@@ -211,15 +233,41 @@ export function startStreetcars(ctx) {
     getCars() {
       return cars;
     },
-    update(dt) {
+    update(dt, elapsed) {
       const phase = getDayPhase();
       const night = phase < 0.22 || phase > 0.8 ? 1 : 0;
       const op = night * 0.85;
+      const clock = elapsed;
       for (const car of cars) {
-        car.dist += SPEED * dt;
+        const dwelling = clock < car.dwellUntil;
+        if (!dwelling) {
+          car.dist += SPEED * dt;
+        }
         const heading = sampleAt(car, car.dist);
         car.group.position.set(pos.x, 0.15, pos.z);
         car.group.rotation.y = heading;
+
+        // Approaching a stop while running (not already dwelling / just left
+        // this same stop) starts a 9s dwell at zero speed.
+        if (!dwelling && car.stops.length) {
+          if (car.dwellStopIdx >= 0) {
+            const left = car.stops[car.dwellStopIdx];
+            if (Math.hypot(pos.x - left.x, pos.z - left.z) > DWELL_RADIUS * 2) {
+              car.dwellStopIdx = -1; // far enough from last stop to arm the next one
+            }
+          }
+          if (car.dwellStopIdx < 0) {
+            for (let si = 0; si < car.stops.length; si++) {
+              const st = car.stops[si];
+              if (Math.hypot(pos.x - st.x, pos.z - st.z) < DWELL_RADIUS) {
+                car.dwellUntil = clock + DWELL_TIME;
+                car.dwellStopIdx = si;
+                break;
+              }
+            }
+          }
+        }
+
         car.glowMat.opacity = op;
         car.glowBackMat.opacity = op;
         car.windowMat.emissiveIntensity = night * 2.2;
