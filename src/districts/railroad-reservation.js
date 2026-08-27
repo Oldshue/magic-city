@@ -27,14 +27,14 @@ export async function build(ctx) {
   // Local materials (corridor palette — distinct from the shared civic
   // palette; ash/ballast/creosote/iron greys, not building stone).
   // ------------------------------------------------------------------
-  const cinderMat = new T.MeshStandardMaterial({ color: 0x2b2823, roughness: 1.0, metalness: 0.0 });
-  const ballastMat = new T.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.95, metalness: 0.0 });
-  const tieMat = new T.MeshStandardMaterial({ color: 0x18130f, roughness: 0.92, metalness: 0.0 });
+  const cinderMat = new T.MeshStandardMaterial({ color: 0x574f43, roughness: 1.0, metalness: 0.0 });
+  const ballastMat = new T.MeshStandardMaterial({ color: 0x6e6156, roughness: 0.95, metalness: 0.0 });
+  const tieMat = new T.MeshStandardMaterial({ color: 0x33281c, roughness: 0.92, metalness: 0.0 });
   const railMat = new T.MeshStandardMaterial({ color: 0x8d8478, roughness: 0.35, metalness: 0.85 });
-  const ashlarMat = new T.MeshStandardMaterial({ color: 0x3a3733, roughness: 0.88, metalness: 0.04 });
-  const ironMat = new T.MeshStandardMaterial({ color: 0x201d1a, roughness: 0.55, metalness: 0.65 });
+  const ashlarMat = new T.MeshStandardMaterial({ color: 0x6f6a60, roughness: 0.88, metalness: 0.04 });
+  const ironMat = new T.MeshStandardMaterial({ color: 0x3a362f, roughness: 0.55, metalness: 0.65 });
   const drumMat = new T.MeshStandardMaterial({ color: 0x53412a, roughness: 0.7, metalness: 0.3 });
-  const woodMat = new T.MeshStandardMaterial({ color: 0x2a2016, roughness: 0.85, metalness: 0.0 });
+  const woodMat = new T.MeshStandardMaterial({ color: 0x4a3826, roughness: 0.85, metalness: 0.0 });
   const glowMat = new T.MeshBasicMaterial({ color: 0xffeec2 });
 
   // ------------------------------------------------------------------

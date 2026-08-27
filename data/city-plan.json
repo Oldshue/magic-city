@@ -86,7 +86,7 @@
     {"name": "2nd Avenue North", "class": "avenue", "width": 18, "path": [[-1200, -140], [1200, -140]]},
     {"name": "3rd Avenue North", "class": "avenue", "width": 18, "path": [[-1200, -280], [620, -280]]},
     {"name": "1st Avenue South", "class": "avenue", "width": 18, "path": [[-1200, 340], [1200, 340]]},
-    {"name": "2nd Avenue South", "class": "avenue", "width": 18, "path": [[-1200, 290], [1200, 290]]},
+    {"name": "2nd Avenue South", "class": "avenue", "width": 18, "path": [[-1200, 390], [1200, 390]]},
     {"name": "Highland Avenue", "class": "avenue", "width": 20, "path": [[-160, 440], [1200, 440]]},
     {"name": "5th Avenue South", "class": "street", "width": 16, "path": [[-1200, 580], [1200, 580]]},
     {"name": "Morris Avenue", "class": "alley", "width": 11, "path": [[-520, 58], [520, 58]]},

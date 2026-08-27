@@ -168,6 +168,25 @@ function expandInstanced(mesh, worldMatrix, out) {
     out.push(g);
   }
 }
+function expandInstancedSplit(mesh, worldMatrix, outDark, outLit) {
+  // windowGrid marks lit panes via instanceColor (warm ~1.0) when handed
+  // glassNight; route lit instances to their own bucket so the merged
+  // block keeps the day/night window idiom without per-lot draw calls.
+  mesh.updateMatrix();
+  const im = new THREE.Matrix4();
+  const ic = mesh.instanceColor;
+  const c = new THREE.Color();
+  for (let i = 0; i < mesh.count; i++) {
+    mesh.getMatrixAt(i, im);
+    const g = mesh.geometry.clone();
+    g.applyMatrix4(im);
+    g.applyMatrix4(mesh.matrix);
+    g.applyMatrix4(worldMatrix);
+    let lit = false;
+    if (ic) { c.fromBufferAttribute(ic, i); lit = c.r > 0.5; }
+    (lit ? outLit : outDark).push(g);
+  }
+}
 function expandMesh(mesh, worldMatrix, out) {
   mesh.updateMatrix();
   const g = mesh.geometry.clone();
@@ -181,7 +200,8 @@ function collectFromWindowGrid(grid, worldMatrix, out) {
   grid.children.forEach((child, i) => {
     const key = names[i];
     if (!key) return;
-    if (child.isInstancedMesh) expandInstanced(child, worldMatrix, out[key]);
+    if (key === 'glass' && child.isInstancedMesh) expandInstancedSplit(child, worldMatrix, out.glass, out.glassLit);
+    else if (child.isInstancedMesh) expandInstanced(child, worldMatrix, out[key]);
     else if (child.isMesh) expandMesh(child, worldMatrix, out[key]);
   });
 }
@@ -256,7 +276,7 @@ function buildStreetFaces(lotsBySide, bodyParts, ctx, buckets) {
         const ww = Math.min(1.6, sx * (use === 'warehouse' ? 0.4 : 0.55));
         const grid = deco.windowGrid({
           rows, cols, spacingX: sx, spacingY: sy, width: ww, height: 2.0,
-          material: materials.glassDay, seed: lotSeed + 71,
+          material: materials.glassNight, seed: lotSeed + 71,
         });
         const localY = winBase + winH / 2;
         const wm = new THREE.Matrix4().makeTranslation(worldX, localY, worldZ).multiply(new THREE.Matrix4().makeRotationY(def.rotY));
@@ -487,7 +507,7 @@ export function blockFill(opts = {}) {
 
   const buckets = {
     sf: { masonry: [], bronze: [], glass: [], door: [], awning: [] },
-    win: { trim: [], ledge: [], glass: [] },
+    win: { trim: [], ledge: [], glass: [], glassLit: [] },
     roofSteel: [], roofBrick: [], roofColored: [],
   };
   const ctx = { deco, materials, use, groundH, seed };
@@ -508,6 +528,10 @@ export function blockFill(opts = {}) {
   if (steelGeos.length) {
     const m = new THREE.Mesh(mergeGeometries(steelGeos), materials.steelDark);
     m.castShadow = true; m.receiveShadow = true; group.add(m);
+  }
+  if (buckets.win.glassLit.length) {
+    const m = new THREE.Mesh(mergeGeometries(buckets.win.glassLit), materials.glassNight);
+    m.castShadow = false; m.receiveShadow = false; m.userData.noShadow = true; group.add(m);
   }
   const glassGeos = [...buckets.win.glass, ...buckets.sf.glass];
   if (glassGeos.length) {
