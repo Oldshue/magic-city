@@ -251,7 +251,7 @@ export function startJazz(ctx) {
     const shelf = ac.createBiquadFilter();
     shelf.type = 'highshelf';
     shelf.frequency.value = 3200;
-    shelf.gain.value = -5;
+    shelf.gain.value = -2;
 
     const doorLP = ac.createBiquadFilter();
     doorLP.type = 'lowpass';
@@ -266,22 +266,23 @@ export function startJazz(ctx) {
     doorLP.connect(dryGain);
     dryGain.connect(master);
 
-    const reverbSend = ac.createGain();
-    reverbSend.gain.value = 0.85;
+    // Room: a tight chamber fed per-instrument, never by the whole bus —
+    // a bus-wide send smears brushes and crackle into a constant hiss wash.
     const convolver = ac.createConvolver();
-    convolver.buffer = makeImpulseResponse(ac, 1.45, 2.6);
+    convolver.buffer = makeImpulseResponse(ac, 0.9, 4.0);
     const wetGain = ac.createGain();
-    wetGain.gain.value = 0.22;
-    doorLP.connect(reverbSend);
-    reverbSend.connect(convolver);
+    wetGain.gain.value = 0.14;
     convolver.connect(wetGain);
     wetGain.connect(master);
 
-    const bassBus = ac.createGain(); bassBus.gain.value = 0.95; bassBus.connect(jazzBus);
-    const drumBus = ac.createGain(); drumBus.gain.value = 0.5; drumBus.connect(jazzBus);
-    const pianoBus = ac.createGain(); pianoBus.gain.value = 0.55; pianoBus.connect(jazzBus);
+    const bassBus = ac.createGain(); bassBus.gain.value = 0.5; bassBus.connect(jazzBus);
+    const drumBus = ac.createGain(); drumBus.gain.value = 0.95; drumBus.connect(jazzBus);
+    const pianoBus = ac.createGain(); pianoBus.gain.value = 0.8; pianoBus.connect(jazzBus);
     const leadBus = ac.createGain(); leadBus.gain.value = 0.75; leadBus.connect(jazzBus);
-    const crackleBus = ac.createGain(); crackleBus.gain.value = 0.09; crackleBus.connect(jazzBus);
+    const crackleBus = ac.createGain(); crackleBus.gain.value = 0.03; crackleBus.connect(jazzBus);
+    const pianoRoom = ac.createGain(); pianoRoom.gain.value = 0.8; pianoBus.connect(pianoRoom); pianoRoom.connect(convolver);
+    const leadRoom = ac.createGain(); leadRoom.gain.value = 0.9; leadBus.connect(leadRoom); leadRoom.connect(convolver);
+    const drumRoom = ac.createGain(); drumRoom.gain.value = 0.15; drumBus.connect(drumRoom); drumRoom.connect(convolver);
 
     const rideBuf = makeNoiseBuffer(ac, 1, rng);
     const snareBuf = makeNoiseBuffer(ac, 1, rng);
