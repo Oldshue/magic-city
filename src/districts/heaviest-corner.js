@@ -74,97 +74,140 @@ export async function build(ctx) {
     return s;
   }
 
-  // ---------------- Jefferson Trust Tower (invented, 125 m) ----------
-  towerAt(
-    plan.landmarks.find(l => l.id === 'jefferson-trust-tower'),
-    { setbacks: 4, material: materials.limestone, windowMaterial: materials.glassNight },
-    (g, ) => {
-      const lm = plan.landmarks.find(l => l.id === 'jefferson-trust-tower');
-      entrance(g, lm, 'south');
-      entrance(g, lm, 'west');
-      facadeSign(g, lm, 'JEFFERSON TRUST', lm.height * 0.42, 16);
-      // Gold-lit ziggurat crown band (marquee glow).
-      const crownBand = new THREE.Mesh(
-        new THREE.BoxGeometry(lm.footprint[0] * 0.62 + 0.6, 1.4, lm.footprint[1] * 0.62 + 0.6),
-        materials.glassNight
-      );
-      crownBand.position.y = lm.height * 0.945;
-      g.add(crownBand);
-      // "THE HEAVIEST CORNER ON EARTH" etched over the corner bank entrance.
-      facadeSign(g, lm, 'THE HEAVIEST CORNER ON EARTH', 8.5, 22);
-    }
-  );
+  // ------------------------------------------------------------------
+  // THE HEAVIEST CORNER ON EARTH — the real four (1902-1912), true
+  // corners, true heights. Woodward SW, Brown Marx NE, Empire NW,
+  // American Trust SE. Prismatic commercial classicism: base/shaft/
+  // crown, flat parapets, no spires. Face names follow this file's
+  // local convention ('east' = +dx, 'south' = +dz).
+  // ------------------------------------------------------------------
 
-  // ---------------- First National–Hand Tower (real, 86 m) -----------
+  // WOODWARD BUILDING (1902, 10 floors) — SW corner. Chicago-school
+  // red-brown brick over a two-story rusticated base.
   {
-    const lm = plan.landmarks.find(l => l.id === 'first-national-hand-tower');
+    const lm = plan.landmarks.find(l => l.id === 'woodward-building');
     towerAt(
       lm,
-      { setbacks: 2, material: materials.limestone, windowMaterial: materials.glassNight },
+      { setbacks: 1, material: materials.brick, windowMaterial: materials.glassNight },
       g => {
-        entrance(g, lm, 'east');
-        // Neoclassical colonnade base facing 20th Street.
-        const colo = deco.pilasterFacade({ width: lm.footprint[1], height: 9, bays: 7,
-          material: materials.limestone, pilasterMaterial: materials.bronze });
-        colo.position.set(0, 0, lm.footprint[1] / 2 + 0.25);
-        g.add(colo);
-        facadeSign(g, lm, 'FIRST NATIONAL', lm.height * 0.86, 14);
+        entrance(g, lm, 'north');
+        const shops = deco.storefrontBand({ width: lm.footprint[0], height: 4.6,
+          material: materials.brick, awnings: true, seed: 1902 });
+        shops.rotation.y = Math.PI;
+        shops.position.set(0, 0, -lm.footprint[1] / 2 - 0.05);
+        g.add(shops);
+        const cor = deco.corniceBox({ width: lm.footprint[0] + 0.8, depth: lm.footprint[1] + 0.8,
+          height: 0.9, material: materials.terracotta });
+        cor.position.set(0, lm.height - 0.5, 0);
+        g.add(cor);
+        facadeSign(g, lm, 'WOODWARD', lm.height * 0.3, 10, 'north');
       }
     );
   }
 
-  // ---------------- Brown-Marx Building (real brick, 49 m) -----------
+  // BROWN MARX BUILDING (1906, 16 floors) — NE corner. Buff brick,
+  // rusticated stone base with arched openings, bracketed cornice;
+  // E-plan light courts suggested by two recessed slots on the alley
+  // (north) face.
   {
     const lm = plan.landmarks.find(l => l.id === 'brown-marx-building');
     towerAt(
       lm,
-      { setbacks: 2, material: materials.brick, windowMaterial: materials.glassNight },
+      { setbacks: 1, material: materials.limestone, windowMaterial: materials.glassNight },
       g => {
-        entrance(g, lm, 'west');
-        facadeSign(g, lm, 'BROWN-MARX', lm.height * 0.92, 14, 'west');
+        entrance(g, lm, 'south');
+        const base = deco.pilasterFacade({ width: lm.footprint[0], height: 9, bays: 8,
+          material: materials.limestone, pilasterMaterial: materials.bronze });
+        base.position.set(0, 0, lm.footprint[1] / 2 + 0.25);
+        g.add(base);
+        for (const nx of [-6, 6]) {
+          const slot = new THREE.Mesh(
+            new THREE.BoxGeometry(4.5, lm.height * 0.8, 0.9),
+            materials.steelDark
+          );
+          slot.position.set(nx, lm.height * 0.55, -lm.footprint[1] / 2 + 0.2);
+          g.add(slot);
+        }
+        const cor = deco.corniceBox({ width: lm.footprint[0] + 1.2, depth: lm.footprint[1] + 1.2,
+          height: 1.1, material: materials.bronze });
+        cor.position.set(0, lm.height - 0.6, 0);
+        g.add(cor);
+        facadeSign(g, lm, 'BROWN MARX', lm.height * 0.3, 13, 'south');
       }
     );
   }
 
-  // ---------------- Empire Building (white terra-cotta cake) ---------
+  // EMPIRE BUILDING (1909, 16 floors) — NW corner. White glazed
+  // terra-cotta; crown = two-story engaged colonnade under a deep
+  // modillion cornice, lit warm at night.
   {
     const lm = plan.landmarks.find(l => l.id === 'empire-building');
     towerAt(
       lm,
-      { setbacks: 4, material: materials.terracotta, windowMaterial: materials.glassNight },
+      { setbacks: 1, material: materials.limestone, windowMaterial: materials.glassNight },
       g => {
+        entrance(g, lm, 'south');
         entrance(g, lm, 'west');
-        // Stacked wedding-cake cornices.
-        for (let i = 0; i < 3; i++) {
-          const c = deco.corniceBox({ width: lm.footprint[0] * (1 - i * 0.08),
-            depth: lm.footprint[1] * (1 - i * 0.08), height: 0.8, material: materials.terracotta });
-          c.position.set(0, lm.height * (0.55 + i * 0.12), 0);
-          g.add(c);
+        const colonnadeY = lm.height - 7.2;
+        const colGeo = new THREE.CylinderGeometry(0.42, 0.46, 6.4, 8);
+        const perFace = 9;
+        const count = perFace * 4;
+        const cols = new THREE.InstancedMesh(colGeo, materials.limestone, count);
+        const m4 = new THREE.Matrix4();
+        let ci = 0;
+        const hx = lm.footprint[0] / 2 - 0.6, hz = lm.footprint[1] / 2 - 0.6;
+        for (let i = 0; i < perFace; i++) {
+          const t = -1 + (2 * i) / (perFace - 1);
+          m4.makeTranslation(t * (hx - 1.2), colonnadeY + 3.2, hz);   cols.setMatrixAt(ci++, m4);
+          m4.makeTranslation(t * (hx - 1.2), colonnadeY + 3.2, -hz);  cols.setMatrixAt(ci++, m4);
+          m4.makeTranslation(hx, colonnadeY + 3.2, t * (hz - 1.2));   cols.setMatrixAt(ci++, m4);
+          m4.makeTranslation(-hx, colonnadeY + 3.2, t * (hz - 1.2));  cols.setMatrixAt(ci++, m4);
         }
-        facadeSign(g, lm, 'EMPIRE', lm.height * 0.94, 12);
+        cols.instanceMatrix.needsUpdate = true;
+        cols.castShadow = true;
+        g.add(cols);
+        const cor = deco.corniceBox({ width: lm.footprint[0] + 2.8, depth: lm.footprint[1] + 2.8,
+          height: 1.2, material: materials.limestone });
+        cor.position.set(0, lm.height - 0.4, 0);
+        g.add(cor);
+        const crownGlow = new THREE.Mesh(
+          new THREE.BoxGeometry(lm.footprint[0] - 1.2, 0.5, lm.footprint[1] - 1.2),
+          materials.marquee
+        );
+        crownGlow.position.set(0, colonnadeY + 0.3, 0);
+        g.add(crownGlow);
+        facadeSign(g, lm, 'EMPIRE', lm.height * 0.3, 9, 'south');
       }
     );
   }
 
-  // ---------------- TCI Building (invented HQ, 116 m) ---------------
+  // AMERICAN TRUST & SAVINGS BANK (1912, 21 floors) — SE corner, the
+  // tallest of the four. Three-story banking base with tall arched
+  // windows, buff shaft, terra-cotta crown, rooftop sign frame.
   {
-    const lm = plan.landmarks.find(l => l.id === 'tci-building');
+    const lm = plan.landmarks.find(l => l.id === 'american-trust-building');
     towerAt(
       lm,
-      { setbacks: 3, material: materials.steelDark, windowMaterial: materials.glassNight },
+      { setbacks: 1, material: materials.limestone, windowMaterial: materials.glassNight },
       g => {
+        entrance(g, lm, 'north');
         entrance(g, lm, 'east');
-        // Blast-furnace relief frieze over the bronze doors.
-        const frieze = new THREE.Mesh(new THREE.BoxGeometry(18, 2.2, 0.5), materials.bronze);
-        frieze.position.set(0, 7.4, lm.footprint[0] / 2 + 0.3);
-        g.add(frieze);
-        for (let i = 0; i < 4; i++) {
-          const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.55, 1.8, 6), materials.furnaceGlow);
-          stack.position.set(-6 + i * 4, 7.4, lm.footprint[0] / 2 + 0.62);
-          g.add(stack);
-        }
-        facadeSign(g, lm, 'TENNESSEE COAL & IRON', lm.height * 0.88, 20, 'east');
-        facadeSign(g, lm, 'MADE WHERE IT’S MINED — TC IRON', lm.height * 0.83, 18, 'east');
+        const base = deco.pilasterFacade({ width: lm.footprint[0], height: 11, bays: 5,
+          material: materials.limestone, pilasterMaterial: materials.bronze });
+        base.rotation.y = Math.PI;
+        base.position.set(0, 0, -lm.footprint[1] / 2 - 0.25);
+        g.add(base);
+        const crown = deco.corniceBox({ width: lm.footprint[0] + 1.4, depth: lm.footprint[1] + 1.4,
+          height: 1.2, material: materials.terracotta });
+        crown.position.set(0, lm.height - 0.6, 0);
+        g.add(crown);
+        const signBack = new THREE.Mesh(new THREE.BoxGeometry(14, 2.6, 0.4), materials.steelDark);
+        signBack.position.set(0, lm.height + 1.8, 0);
+        g.add(signBack);
+        const roofSign = deco.canvasSign('AMERICAN TRUST', { width: 13 });
+        roofSign.position.set(0, lm.height + 1.1, 0.35);
+        g.add(roofSign);
+        facadeSign(g, lm, 'AMERICAN TRUST & SAVINGS', lm.height * 0.28, 15, 'north');
       }
     );
   }
@@ -478,7 +521,7 @@ export async function build(ctx) {
     THREE: T, materials, deco, seed: -884,
     block: { x0: -108, z0: -128, x1: -12, z1: -12 },
     gaps: [
-      { side: 'south', from: -66, to: -30 },
+      { side: 'south', from: -66, to: -15 },
       { side: 'east', from: -52, to: -16 },
     ],
     use: 'commercial', floorsRange: [2, 5], alley: true,
@@ -531,8 +574,8 @@ export async function build(ctx) {
     THREE: T, materials, deco, seed: -742,
     block: { x0: -108, z0: 14, x1: -12, z1: 46 },
     gaps: [
-      { side: 'north', from: -57, to: -27 },
-      { side: 'south', from: -57, to: -27 },
+      { side: 'north', from: -57, to: -17 },
+      { side: 'south', from: -57, to: -17 },
       { side: 'east', from: 3, to: 33 },
     ],
     use: 'warehouse', floorsRange: [2, 4], alley: false,
@@ -546,8 +589,8 @@ export async function build(ctx) {
     THREE: T, materials, deco, seed: 98,
     block: { x0: 12, z0: 14, x1: 108, z1: 46 },
     gaps: [
-      { side: 'north', from: 24, to: 56 },
-      { side: 'south', from: 24, to: 56 },
+      { side: 'north', from: 16, to: 56 },
+      { side: 'south', from: 16, to: 56 },
     ],
     use: 'warehouse', floorsRange: [2, 4], alley: false,
   }));
