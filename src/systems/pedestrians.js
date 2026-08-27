@@ -98,14 +98,14 @@ export function startPedestrians(ctx) {
     for (const side of [1, -1]) {
       for (let i = 0; i < perSide; i++) {
         const roll = rand();
-        // Base stature 1.19 puts a man's head at ~1.75 m (hat ~1.86) so the
-        // 1.7 m player eye meets the crowd at true 1929 street scale.
-        let scale = 1.15 + rand() * 0.09;
-        if (roll < 0.02) scale = 0.72; // child, paired near the previous walker below
-        else if (roll < 0.12) scale = 1.08 + rand() * 0.05; // shorter silhouette (~12% overall)
+        // Geometry is authored at true size (1.75 m man); scale is just
+        // natural variation around 1.
+        let scale = 0.97 + rand() * 0.08;
+        if (roll < 0.02) scale = 0.6; // child, paired near the previous walker below
+        else if (roll < 0.12) scale = 0.9 + rand() * 0.05; // shorter silhouette (~12% overall)
         const baseDist = (route.total / perSide) * i + rand() * 8;
         const prev = people[people.length - 1];
-        const dist = scale === 0.72 && prev && prev.route === route && prev.side === side
+        const dist = scale === 0.6 && prev && prev.route === route && prev.side === side
           ? prev.dist + (rand() < 0.5 ? 1 : -1) * 1.1
           : baseDist;
         const baseSpeed = 1.1 + rand() * 0.6;
@@ -208,15 +208,21 @@ export function startPedestrians(ctx) {
   const COUNT = Math.max(1, people.length);
 
   // --- geometry: a handful of shared primitives, ~9 per figure -----------
-  // Anatomy v2: knee-length coat over striding trouser legs — the figure
-  // reads as a person at arm's length, not a bell on a stick.
-  const coatGeo = new THREE.CylinderGeometry(0.16, 0.185, 0.74, 8);
-  const shoulderGeo = new THREE.BoxGeometry(0.44, 0.15, 0.24);
-  const headGeo = new THREE.SphereGeometry(0.1, 8, 6);
-  const brimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.03, 10);
-  const crownGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.17, 8);
-  const armGeo = new THREE.CylinderGeometry(0.04, 0.046, 0.54, 6);
-  const shoeGeo = new THREE.BoxGeometry(0.09, 0.56, 0.13);
+  // Anatomy v3: an articulated figure built at true size (1.75 m man).
+  // Torso+coat over a flared skirt, sloped shoulders, hip-pivoting thighs
+  // with knee flexion, counter-swinging elbow-bent arms — a walking
+  // person, not a bell on a stick. All parts remain instanced families.
+  const coatGeo = new THREE.CylinderGeometry(0.15, 0.19, 0.52, 8);      // chest to hip
+  const skirtGeo = new THREE.CylinderGeometry(0.19, 0.225, 0.34, 8);    // coat flare to the knee
+  const shoulderGeo = new THREE.BoxGeometry(0.42, 0.13, 0.22);
+  const headGeo = new THREE.SphereGeometry(0.093, 8, 6);
+  const brimGeo = new THREE.CylinderGeometry(0.175, 0.175, 0.028, 10);
+  const crownGeo = new THREE.CylinderGeometry(0.088, 0.106, 0.16, 8);
+  const armUGeo = new THREE.CylinderGeometry(0.041, 0.045, 0.3, 6);     // shoulder to elbow
+  const armLGeo = new THREE.CylinderGeometry(0.034, 0.039, 0.28, 6);    // elbow to hand
+  const thighGeo = new THREE.CylinderGeometry(0.062, 0.055, 0.42, 6);
+  const calfGeo = new THREE.CylinderGeometry(0.048, 0.042, 0.4, 6);
+  const shoeGeo = new THREE.BoxGeometry(0.09, 0.07, 0.25);
 
   // --- materials: muted period coat tones + trim, palette-consistent -----
   // + charcoal (0x2e2e2e) and dust brown (0x7a6248) for Tier 1 variety.
@@ -226,22 +232,30 @@ export function startPedestrians(ctx) {
   const headMat = new THREE.MeshStandardMaterial({ color: 0xd9b48f, roughness: 0.8, metalness: 0.0 });
   const hatMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.75, metalness: 0.02, vertexColors: true });
   const shoeMat = new THREE.MeshStandardMaterial({ color: 0x171310, roughness: 0.7, metalness: 0.05 });
+  const trouserMat = new THREE.MeshStandardMaterial({ color: 0x35322c, roughness: 0.85, metalness: 0.02 });
 
   const coatMesh = new THREE.InstancedMesh(coatGeo, coatMat, COUNT);
+  const skirtMesh = new THREE.InstancedMesh(skirtGeo, coatMat, COUNT);
   const shoulderMesh = new THREE.InstancedMesh(shoulderGeo, coatMat, COUNT);
   const headMesh = new THREE.InstancedMesh(headGeo, headMat, COUNT);
   const brimMesh = new THREE.InstancedMesh(brimGeo, hatMat, COUNT);
   const crownMesh = new THREE.InstancedMesh(crownGeo, hatMat, COUNT);
-  const armMesh = new THREE.InstancedMesh(armGeo, coatMat, COUNT * 2);
+  const armMesh = new THREE.InstancedMesh(armUGeo, coatMat, COUNT * 2);
+  const armLMesh = new THREE.InstancedMesh(armLGeo, coatMat, COUNT * 2);
+  const thighMesh = new THREE.InstancedMesh(thighGeo, trouserMat, COUNT * 2);
+  const calfMesh = new THREE.InstancedMesh(calfGeo, trouserMat, COUNT * 2);
   const shoeMesh = new THREE.InstancedMesh(shoeGeo, shoeMat, COUNT * 2);
 
   for (let i = 0; i < COUNT; i++) {
     const p = people[i];
     const cc = new THREE.Color(coatPalette[p ? p.paletteIdx : 0]);
     coatMesh.setColorAt(i, cc);
+    skirtMesh.setColorAt(i, cc);
     shoulderMesh.setColorAt(i, cc);
     armMesh.setColorAt(i * 2, cc);
     armMesh.setColorAt(i * 2 + 1, cc);
+    armLMesh.setColorAt(i * 2, cc);
+    armLMesh.setColorAt(i * 2 + 1, cc);
     const hc = new THREE.Color(hatPalette[p && p.hatDark ? 0 : 1]);
     brimMesh.setColorAt(i, hc);
     crownMesh.setColorAt(i, hc);
@@ -249,13 +263,20 @@ export function startPedestrians(ctx) {
   if (coatMesh.instanceColor) coatMesh.instanceColor.needsUpdate = true;
   if (shoulderMesh.instanceColor) shoulderMesh.instanceColor.needsUpdate = true;
   if (armMesh.instanceColor) armMesh.instanceColor.needsUpdate = true;
+  if (skirtMesh.instanceColor) skirtMesh.instanceColor.needsUpdate = true;
+  if (armLMesh.instanceColor) armLMesh.instanceColor.needsUpdate = true;
   if (brimMesh.instanceColor) brimMesh.instanceColor.needsUpdate = true;
   if (crownMesh.instanceColor) crownMesh.instanceColor.needsUpdate = true;
 
-  scene.add(coatMesh, shoulderMesh, headMesh, brimMesh, crownMesh, armMesh, shoeMesh);
+  scene.add(coatMesh, skirtMesh, shoulderMesh, headMesh, brimMesh, crownMesh, armMesh, armLMesh, thighMesh, calfMesh, shoeMesh);
 
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
+  const qP = new THREE.Quaternion();
+  const qJ = new THREE.Quaternion();
+  const X_AXIS = new THREE.Vector3(1, 0, 0);
+  const tmpV = new THREE.Vector3();
+  const tmpV2 = new THREE.Vector3();
   const sHidden = new THREE.Vector3(0, 0, 0);
   const sCloche = new THREE.Vector3(1.15, 1.3, 1.15);
   const sBody = new THREE.Vector3(1, 1, 1);
@@ -307,18 +328,40 @@ export function startPedestrians(ctx) {
         const nx = Math.cos(heading);
         const nz = -Math.sin(heading);
         const fwdX = Math.sin(heading), fwdZ = Math.cos(heading);
-        const walkPhase = elapsed * (p.standing ? 1.2 : 5) + p.bob;
-        const idleAmp = p.standing ? 0.01 : 0.03;
-        const bobY = 0.86 * p.scale + Math.sin(walkPhase) * idleAmp;
-        const swing = p.standing ? 0 : Math.sin(walkPhase) * 0.16 * p.scale; // meters of arm/leg fore-aft sway
+        const stride = p.standing ? 1.2 : 5.2;
+        const walkPhase = elapsed * stride + p.bob;
+        const moving = p.standing ? 0 : 1;
+        const bobY = 0.02 * Math.sin(walkPhase * 2) * moving + (p.standing ? 0.008 * Math.sin(walkPhase) : 0);
 
         q.setFromAxisAngle(up, heading);
         sBody.set(p.scale, p.scale, p.scale);
+        const S = p.scale;
+        const groundY = bobY;
+
+        // Joint helper: place a limb segment hanging from a joint with a
+        // local-X pitch (radians, + swings the far end forward).
+        const placeLimb = (mesh, idx, jx, jy, pitch, len) => {
+          qP.setFromAxisAngle(X_AXIS, pitch);
+          qJ.copy(q).multiply(qP);
+          tmpV.set(0, -len / 2, 0).applyQuaternion(qJ);
+          tmpPos.set(ox + nx * jx * S + tmpV.x * S, groundY + jy * S + tmpV.y * S, oz + nz * jx * S + tmpV.z * S);
+          m.compose(tmpPos, qJ, sBody);
+          mesh.setMatrixAt(idx, m);
+          return qJ;
+        };
+        // End of a segment from its joint (for chaining knee/elbow).
+        const jointEnd = (jx, jy, pitch, len, out) => {
+          qP.setFromAxisAngle(X_AXIS, pitch);
+          qJ.copy(q).multiply(qP);
+          tmpV.set(0, -len, 0).applyQuaternion(qJ);
+          out.x = ox + nx * jx * S + tmpV.x * S;
+          out.y = groundY + jy * S + tmpV.y * S;
+          out.z = oz + nz * jx * S + tmpV.z * S;
+        };
 
         if (p.prop) {
-          // Paper stack: only the shoulder-box part draws (a small box, still
-          // inside the existing shoulder InstancedMesh family); every other
-          // part for this slot is scaled to zero and stowed below grade.
+          // Paper stack: only the shoulder-box part draws; every other part
+          // for this slot is stowed below grade.
           tmpPos.set(ox, 0.14, oz);
           sProp.set(0.5, 0.35, 0.6);
           m.compose(tmpPos, q, sProp);
@@ -326,34 +369,40 @@ export function startPedestrians(ctx) {
           tmpPos.set(ox, -5, oz);
           m.compose(tmpPos, q, sHidden);
           coatMesh.setMatrixAt(i, m);
+          skirtMesh.setMatrixAt(i, m);
           headMesh.setMatrixAt(i, m);
           brimMesh.setMatrixAt(i, m);
           crownMesh.setMatrixAt(i, m);
-          armMesh.setMatrixAt(i * 2, m);
-          armMesh.setMatrixAt(i * 2 + 1, m);
-          shoeMesh.setMatrixAt(i * 2, m);
-          shoeMesh.setMatrixAt(i * 2 + 1, m);
+          for (const k of [i * 2, i * 2 + 1]) {
+            armMesh.setMatrixAt(k, m);
+            armLMesh.setMatrixAt(k, m);
+            thighMesh.setMatrixAt(k, m);
+            calfMesh.setMatrixAt(k, m);
+            shoeMesh.setMatrixAt(k, m);
+          }
           continue;
         }
 
-        tmpPos.set(ox, bobY, oz);
+        // Torso: coat over flared skirt, sloped shoulders, head, hat.
+        tmpPos.set(ox, groundY + 1.19 * S, oz);
         m.compose(tmpPos, q, sBody);
         coatMesh.setMatrixAt(i, m);
-
-        tmpPos.set(ox, bobY + 0.37 * p.scale, oz);
+        tmpPos.set(ox, groundY + 0.78 * S, oz);
+        m.compose(tmpPos, q, sBody);
+        skirtMesh.setMatrixAt(i, m);
+        tmpPos.set(ox, groundY + 1.42 * S, oz);
         m.compose(tmpPos, q, sBody);
         shoulderMesh.setMatrixAt(i, m);
-
-        tmpPos.set(ox, bobY + 0.5 * p.scale, oz);
+        tmpPos.set(ox, groundY + 1.6 * S, oz);
         m.compose(tmpPos, q, sBody);
         headMesh.setMatrixAt(i, m);
 
-        const hatY = bobY + 0.6 * p.scale;
+        const hatY = groundY + 1.69 * S;
         if (p.hatStyle === 0) {
           tmpPos.set(ox, hatY, oz);
           m.compose(tmpPos, q, sBody);
           brimMesh.setMatrixAt(i, m);
-          tmpPos.set(ox, hatY + 0.09 * p.scale, oz);
+          tmpPos.set(ox, hatY + 0.08 * S, oz);
           m.compose(tmpPos, q, sBody);
           crownMesh.setMatrixAt(i, m);
         } else {
@@ -361,36 +410,80 @@ export function startPedestrians(ctx) {
           m.compose(tmpPos, q, sHidden);
           brimMesh.setMatrixAt(i, m);
           sHat.set(sCloche.x * p.scale, sCloche.y * p.scale, sCloche.z * p.scale);
-          tmpPos.set(ox, hatY + 0.05 * p.scale, oz);
+          tmpPos.set(ox, hatY + 0.04 * S, oz);
           m.compose(tmpPos, q, sHat);
           crownMesh.setMatrixAt(i, m);
         }
 
-        tmpPos.set(ox + nx * -0.26 * p.scale + fwdX * swing, bobY + 0.06 * p.scale, oz + nz * -0.26 * p.scale + fwdZ * swing);
-        m.compose(tmpPos, q, sBody);
-        armMesh.setMatrixAt(i * 2, m);
-        tmpPos.set(ox + nx * 0.26 * p.scale - fwdX * swing, bobY + 0.06 * p.scale, oz + nz * 0.26 * p.scale - fwdZ * swing);
-        m.compose(tmpPos, q, sBody);
-        armMesh.setMatrixAt(i * 2 + 1, m);
+        // Gait: legs swing about the hip with knee flexion in the swing
+        // phase; arms counter-swing with a standing elbow bend.
+        const swingR = moving * 0.5 * Math.sin(walkPhase);
+        const swingL = moving * 0.5 * Math.sin(walkPhase + Math.PI);
+        const kneeR = moving * 0.6 * Math.max(0, Math.sin(walkPhase - 0.5));
+        const kneeL = moving * 0.6 * Math.max(0, Math.sin(walkPhase + Math.PI - 0.5));
+        const armR = -swingR * 0.75;
+        const armL2 = -swingL * 0.75;
+        const elbow = 0.38;
 
-        tmpPos.set(ox + nx * -0.09 * p.scale - fwdX * swing, 0.28 * p.scale, oz + nz * -0.09 * p.scale - fwdZ * swing);
-        m.compose(tmpPos, q, sBody);
-        shoeMesh.setMatrixAt(i * 2, m);
-        tmpPos.set(ox + nx * 0.09 * p.scale + fwdX * swing, 0.28 * p.scale, oz + nz * 0.09 * p.scale + fwdZ * swing);
-        m.compose(tmpPos, q, sBody);
-        shoeMesh.setMatrixAt(i * 2 + 1, m);
+        // Right side (lateral +0.1 hip / +0.24 shoulder), then left.
+        placeLimb(thighMesh, i * 2, 0.1, 0.95, swingR, 0.42);
+        jointEnd(0.1, 0.95, swingR, 0.42, tmpV2);
+        {
+          qP.setFromAxisAngle(X_AXIS, swingR - kneeR);
+          qJ.copy(q).multiply(qP);
+          tmpV.set(0, -0.2, 0).applyQuaternion(qJ);
+          tmpPos.set(tmpV2.x + tmpV.x * S, tmpV2.y + tmpV.y * S, tmpV2.z + tmpV.z * S);
+          m.compose(tmpPos, qJ, sBody);
+          calfMesh.setMatrixAt(i * 2, m);
+          tmpV.set(0, -0.4, 0.035).applyQuaternion(qJ);
+          tmpPos.set(tmpV2.x + tmpV.x * S, tmpV2.y + tmpV.y * S + 0.035 * S, tmpV2.z + tmpV.z * S);
+          m.compose(tmpPos, qJ, sBody);
+          shoeMesh.setMatrixAt(i * 2, m);
+        }
+        placeLimb(thighMesh, i * 2 + 1, -0.1, 0.95, swingL, 0.42);
+        jointEnd(-0.1, 0.95, swingL, 0.42, tmpV2);
+        {
+          qP.setFromAxisAngle(X_AXIS, swingL - kneeL);
+          qJ.copy(q).multiply(qP);
+          tmpV.set(0, -0.2, 0).applyQuaternion(qJ);
+          tmpPos.set(tmpV2.x + tmpV.x * S, tmpV2.y + tmpV.y * S, tmpV2.z + tmpV.z * S);
+          m.compose(tmpPos, qJ, sBody);
+          calfMesh.setMatrixAt(i * 2 + 1, m);
+          tmpV.set(0, -0.4, 0.035).applyQuaternion(qJ);
+          tmpPos.set(tmpV2.x + tmpV.x * S, tmpV2.y + tmpV.y * S + 0.035 * S, tmpV2.z + tmpV.z * S);
+          m.compose(tmpPos, qJ, sBody);
+          shoeMesh.setMatrixAt(i * 2 + 1, m);
+        }
+
+        placeLimb(armMesh, i * 2, 0.24, 1.42, armR, 0.3);
+        jointEnd(0.24, 1.42, armR, 0.3, tmpV2);
+        {
+          qP.setFromAxisAngle(X_AXIS, armR + elbow);
+          qJ.copy(q).multiply(qP);
+          tmpV.set(0, -0.14, 0).applyQuaternion(qJ);
+          tmpPos.set(tmpV2.x + tmpV.x * S, tmpV2.y + tmpV.y * S, tmpV2.z + tmpV.z * S);
+          m.compose(tmpPos, qJ, sBody);
+          armLMesh.setMatrixAt(i * 2, m);
+        }
+        placeLimb(armMesh, i * 2 + 1, -0.24, 1.42, armL2, 0.3);
+        jointEnd(-0.24, 1.42, armL2, 0.3, tmpV2);
+        {
+          qP.setFromAxisAngle(X_AXIS, armL2 + elbow);
+          qJ.copy(q).multiply(qP);
+          tmpV.set(0, -0.14, 0).applyQuaternion(qJ);
+          tmpPos.set(tmpV2.x + tmpV.x * S, tmpV2.y + tmpV.y * S, tmpV2.z + tmpV.z * S);
+          m.compose(tmpPos, qJ, sBody);
+          armLMesh.setMatrixAt(i * 2 + 1, m);
+        }
       }
       const n = people.length;
-      coatMesh.count = n; shoulderMesh.count = n; headMesh.count = n;
+      coatMesh.count = n; skirtMesh.count = n; shoulderMesh.count = n; headMesh.count = n;
       brimMesh.count = n; crownMesh.count = n;
-      armMesh.count = n * 2; shoeMesh.count = n * 2;
-      coatMesh.instanceMatrix.needsUpdate = true;
-      shoulderMesh.instanceMatrix.needsUpdate = true;
-      headMesh.instanceMatrix.needsUpdate = true;
-      brimMesh.instanceMatrix.needsUpdate = true;
-      crownMesh.instanceMatrix.needsUpdate = true;
-      armMesh.instanceMatrix.needsUpdate = true;
-      shoeMesh.instanceMatrix.needsUpdate = true;
+      armMesh.count = n * 2; armLMesh.count = n * 2;
+      thighMesh.count = n * 2; calfMesh.count = n * 2; shoeMesh.count = n * 2;
+      for (const mm of [coatMesh, skirtMesh, shoulderMesh, headMesh, brimMesh, crownMesh, armMesh, armLMesh, thighMesh, calfMesh, shoeMesh]) {
+        mm.instanceMatrix.needsUpdate = true;
+      }
     },
   };
 }
