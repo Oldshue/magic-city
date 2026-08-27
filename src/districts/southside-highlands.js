@@ -211,16 +211,16 @@ export async function build(ctx) {
     width: 18, depth: 18, height: 42, setbacks: 1,
     material: materials.limestone, windowMaterial: materials.glassNight,
   });
-  apartments.position.set(40, 0, 250);
+  apartments.position.set(40, 0, 420);
   group.add(apartments);
   const apartmentSign = deco.canvasSign('HIGHLAND COURT', { width: 8 });
-  apartmentSign.position.set(40, 6, 259.2);
+  apartmentSign.position.set(40, 6, 429.2);
   group.add(apartmentSign);
 
   // -----------------------------------------------------------------------
   // 3. CORNER DRUGSTORE — small commercial anchor near 2nd Ave S & 19th
   // -----------------------------------------------------------------------
-  const drugX = 96, drugZ = 305;
+  const drugX = 96, drugZ = 425;
   const drugFacade = deco.pilasterFacade({ width: 12, height: 7.5, bays: 4, material: materials.brick, pilasterMaterial: materials.terracotta });
   drugFacade.rotation.y = Math.PI;
   drugFacade.position.set(drugX, 0, drugZ);
@@ -457,7 +457,7 @@ export async function build(ctx) {
   buildInstanced(canopyMatrices, canopyGeo, materials.foliage);
 
   const lampSpots = [
-    [120, 290], [240, 290], [120, 440], [450, 440],
+    [120, 360], [240, 360], [120, 440], [450, 440],
     [600, 440], [120, 580], [450, 580], [186, 438],
   ];
   for (const [lx, lz] of lampSpots) {
@@ -518,11 +518,11 @@ export async function build(ctx) {
   // -----------------------------------------------------------------------
 
   const standBox = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.3, 0.6), materials.steelDark);
-  standBox.position.set(112, 0.65, 296);
+  standBox.position.set(112, 0.65, 436);
   group.add(standBox);
   const standBoard = deco.canvasSign('THE BIRMINGHAM LEDGER', { width: 1.6 });
   standBoard.rotation.y = Math.PI / 2;
-  standBoard.position.set(112.7, 1.5, 296);
+  standBoard.position.set(112.7, 1.5, 436);
   group.add(standBoard);
   registerInteractive(standBoard, {
     title: 'Ledger Newsstand — Extra Edition',
@@ -530,7 +530,7 @@ export async function build(ctx) {
   });
 
   const adPanel = new THREE.Mesh(new THREE.PlaneGeometry(6, 3), materials.terracotta);
-  adPanel.position.set(80, 6, 304);
+  adPanel.position.set(80, 6, 424);
   adPanel.rotation.y = Math.PI;
   group.add(adPanel);
   registerInteractive(adPanel, {
