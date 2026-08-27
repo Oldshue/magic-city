@@ -24,7 +24,7 @@
  * bright-side vs. shade-side even before ACES tone mapping rolls off
  * highlights.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { setGlassNightGlow } from './materials.js';
 
 const CYCLE_SECONDS = 360;

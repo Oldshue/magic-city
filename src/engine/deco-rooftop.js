@@ -26,7 +26,7 @@
  * @param {boolean} [opts.mast=false] add a radio mast (tallest towers only)
  * @returns {THREE.Group} origin at roof-deck center, y=0 = deck surface
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { materials } from './materials.js';
 import { rand, mergeGeometries, mergeColored } from './deco-shared.js';
 

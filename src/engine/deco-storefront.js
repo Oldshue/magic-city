@@ -15,7 +15,7 @@
  * z ~0.5, glass sits recessed around z ~0.32-0.4, awnings cantilever out
  * to z ~1.4. Base of the band is at y = 0.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { materials } from './materials.js';
 import { rand, mergeGeometries, awningTexture } from './deco-shared.js';
 

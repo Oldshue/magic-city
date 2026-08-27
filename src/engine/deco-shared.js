@@ -3,7 +3,7 @@
  * that together implement src/engine/deco.js's public API. Split out
  * purely to keep each file small; deco.js re-exports the public surface.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { materials } from './materials.js';
 
 /** Deterministic PRNG (mulberry32) for stable per-instance variation. */

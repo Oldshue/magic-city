@@ -3,7 +3,7 @@
  * A handful of setback towers around the crossing streets, lit windows,
  * and a canvas marquee reading "MAGIC CITY" over the Heaviest Corner.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { setbackTower, canvasSign, streetlamp, decoDoorway, windowGrid } from '../engine/deco.js';
 import { materials } from '../engine/materials.js';
 

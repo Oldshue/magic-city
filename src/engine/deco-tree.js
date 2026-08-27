@@ -12,7 +12,7 @@
  * Districts pick this helper up in their own passes (per facade-v2 scope,
  * this module does not place any trees itself).
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { rand, mergeColored } from './deco-shared.js';
 
 let _treeMat = null;

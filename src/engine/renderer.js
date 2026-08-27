@@ -7,7 +7,7 @@
  * reads innerWidth/innerHeight off a browsing-context root and never
  * listens for a global resize event.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 
 /**
  * Create the renderer bundle.

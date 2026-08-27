@@ -8,7 +8,7 @@
  * Cab stand, streetcar rails of the Red Line, and dense low brick-and-
  * limestone fabric of rooming houses, lunch counters and freight offices.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import {
   setbackTower, corniceBox, pilasterFacade, finial, windowGrid,
   canvasSign, streetlamp, decoDoorway,
