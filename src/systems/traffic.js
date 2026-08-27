@@ -312,7 +312,9 @@ export function startTraffic(ctx) {
         glowMesh.setMatrixAt(i, m);
       }
 
-      const n = instances.length;
+      // Render moving instances plus the static parked rows appended
+      // after them (indices COUNT..TOTAL-1) — never clamp the parked cars away.
+      const n = instances.length + PARKED;
       bodyMesh.count = n; hoodMesh.count = n; cabinMesh.count = n; roofMesh.count = n;
       boardMesh.count = n * 2; radiatorMesh.count = n;
       wheelMesh.count = n * 4; hubMesh.count = n * 4;
