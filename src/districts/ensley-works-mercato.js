@@ -553,6 +553,218 @@ function buildStreetFurniture(ctx, group, rand) {
   group.add(crates);
 }
 
+// ---------------------------------------------------------------------------
+// STREET-WALL FAN-OUT: continuous 1929 street-wall fabric on the assigned
+// Ensley mill-town blocks via the generic blockFill generator
+// (src/engine/deco-blockfill.js), one call per block. Seeds are stable
+// integers derived from block coordinates (x0*7+z0) so reruns stay
+// deterministic. Two blocks carry a frontage gap sized to a Tier-2 anchor
+// footprint (+2m clearance) so the fill never intersects the bespoke
+// mill-town anchors built in buildMillTownAnchors below.
+// ---------------------------------------------------------------------------
+function buildStreetWallBlocks(ctx, group) {
+  const { deco } = ctx;
+
+  const rowhouseBlocks = [
+    // Junction Dance Hall sits on this block's north frontage at (-470,350).
+    { x0: -500, z0: 350, x1: -393, z1: 453, gaps: [{ side: "north", from: -481, to: -459 }] },
+    { x0: -500, z0: 463, x1: -393, z1: 556 },
+    { x0: -500, z0: 566, x1: -393, z1: 660 },
+    { x0: -383, z0: 350, x1: -276, z1: 453 },
+    // Company Commissary sits on this block's north frontage at (-340,470).
+    { x0: -383, z0: 463, x1: -276, z1: 556, gaps: [{ side: "north", from: -355, to: -325 }] },
+    { x0: -383, z0: 566, x1: -276, z1: 660 },
+    { x0: -266, z0: 350, x1: -180, z1: 453 },
+    { x0: -266, z0: 463, x1: -180, z1: 556 },
+    // Mill Church sits well inside this block's interior (>30m from every
+    // frontage), clear of the perimeter fill band -- no gap needed.
+    { x0: -266, z0: 566, x1: -180, z1: 660 },
+    { x0: -1180, z0: 200, x1: -1060, z1: 330 },
+    { x0: -1180, z0: 360, x1: -1060, z1: 490 },
+  ];
+  rowhouseBlocks.forEach((b) => {
+    const block = { x0: b.x0, z0: b.z0, x1: b.x1, z1: b.z1 };
+    const seed = b.x0 * 7 + b.z0;
+    const fill = deco.blockFill({
+      deco, seed, block, gaps: b.gaps || [], use: "rowhouse", floorsRange: [1, 2],
+    });
+    group.add(fill);
+  });
+
+  const commercialBlocks = [
+    { x0: -680, z0: 345, x1: -560, z1: 445 },
+    { x0: -548, z0: 240, x1: -440, z1: 330 },
+  ];
+  commercialBlocks.forEach((b) => {
+    const block = { x0: b.x0, z0: b.z0, x1: b.x1, z1: b.z1 };
+    const seed = b.x0 * 7 + b.z0;
+    const fill = deco.blockFill({
+      deco, seed, block, gaps: [], use: "commercial", floorsRange: [2, 3],
+    });
+    group.add(fill);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// TIER 2 -- mill-town anchors: Company Commissary, Mill Church, and The
+// Junction Dance Hall (Birmingham's real Tuxedo Junction was exactly this:
+// a second-story dance hall over a drugstore at a streetcar crossing where
+// mill shifts met). Bespoke, simple massing built from deco helpers plus a
+// handful of primitive/instanced meshes, placed after the street-wall fill
+// so their gap carve-outs above are already accounted for.
+// ---------------------------------------------------------------------------
+function buildMillTownAnchors(ctx, group) {
+  const { THREE, materials, deco, registerInteractive } = ctx;
+  const m4 = new THREE.Matrix4();
+  const q0 = new THREE.Quaternion();
+  const s1 = new THREE.Vector3(1, 1, 1);
+
+  // --- Company Commissary: TCI Commissary No. 7 -------------------------
+  {
+    const x = -340, z = 470;
+    const w = 26, d = 14, h = 7.2;
+    const sub = new THREE.Group();
+    sub.position.set(x, 0, z);
+    sub.name = "tci-commissary-no7";
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), materials.brick);
+    body.position.set(0, h / 2, 0);
+    sub.add(body);
+
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(w + 1, 0.3, 3.2), materials.terracotta);
+    canopy.position.set(0, 3.4, d / 2 + 1.6);
+    sub.add(canopy);
+
+    const postGeo = new THREE.CylinderGeometry(0.13, 0.13, 3.4, 6);
+    const posts = new THREE.InstancedMesh(postGeo, materials.steelDark, 5);
+    for (let i = 0; i < 5; i++) {
+      const px = -w / 2 + 2 + (i * (w - 4)) / 4;
+      m4.compose(new THREE.Vector3(px, 1.7, d / 2 + 3.1), q0, s1);
+      posts.setMatrixAt(i, m4);
+    }
+    posts.instanceMatrix.needsUpdate = true;
+    sub.add(posts);
+
+    const sign = deco.canvasSign("TCI COMMISSARY NO. 7", { width: 14, canvasWidth: 640, canvasHeight: 128 });
+    sign.position.set(0, h + 0.6, d / 2 + 0.3);
+    sub.add(sign);
+
+    const crateGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    const crates = new THREE.InstancedMesh(crateGeo, materials.brick, 4);
+    for (let i = 0; i < 4; i++) {
+      m4.compose(new THREE.Vector3(w / 2 - 2 - i * 0.9, 0.4, d / 2 + 2.4), q0, s1);
+      crates.setMatrixAt(i, m4);
+    }
+    crates.instanceMatrix.needsUpdate = true;
+    sub.add(crates);
+
+    group.add(sub);
+    registerInteractive(sign, {
+      title: "TCI Commissary No. 7",
+      body: "Scrip good here — nowhere else. Flour, salt pork, and coal oil, and a ledger that never quite balances in the miner's favor.",
+    });
+  }
+
+  // --- Mill Church --------------------------------------------------------
+  {
+    const x = -230, z = 600;
+    const w = 10, d = 22, naveH = 8, steepleH = 16;
+    const sub = new THREE.Group();
+    sub.position.set(x, 0, z);
+    sub.name = "mill-church";
+
+    const nave = new THREE.Mesh(new THREE.BoxGeometry(w, naveH, d), materials.limestone);
+    nave.position.set(0, naveH / 2, 0);
+    sub.add(nave);
+
+    const roofCap = new THREE.Mesh(new THREE.BoxGeometry(w + 1.4, 1.1, d + 1.4), materials.terracotta);
+    roofCap.position.set(0, naveH + 0.55, 0);
+    sub.add(roofCap);
+
+    const steepleBase = new THREE.Mesh(new THREE.BoxGeometry(3.4, steepleH, 3.4), materials.limestone);
+    steepleBase.position.set(0, steepleH / 2, d / 2 + 2.4);
+    sub.add(steepleBase);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(2.6, 3, 4), materials.terracotta);
+    cap.rotation.y = Math.PI / 4;
+    cap.position.set(0, steepleH + 1.5, d / 2 + 2.4);
+    sub.add(cap);
+
+    const door = new THREE.Mesh(new THREE.BoxGeometry(2.0, 3.2, 0.3), materials.steelDark);
+    door.position.set(0, 1.6, d / 2 + 0.15);
+    sub.add(door);
+
+    const winGeo = new THREE.BoxGeometry(0.6, 2.2, 0.25);
+    const windows = new THREE.InstancedMesh(winGeo, materials.glassNight, 6);
+    for (let i = 0; i < 3; i++) {
+      const wz = -d / 2 + 4 + i * 5.5;
+      m4.compose(new THREE.Vector3(-w / 2 - 0.13, 4.6, wz), q0, s1);
+      windows.setMatrixAt(i, m4);
+      m4.compose(new THREE.Vector3(w / 2 + 0.13, 4.6, wz), q0, s1);
+      windows.setMatrixAt(i + 3, m4);
+    }
+    windows.instanceMatrix.needsUpdate = true;
+    sub.add(windows);
+
+    const fenceGeo = new THREE.BoxGeometry(0.1, 1.0, 1.0);
+    const fenceCount = 16;
+    const fence = new THREE.InstancedMesh(fenceGeo, materials.steelDark, fenceCount);
+    for (let i = 0; i < fenceCount; i++) {
+      const f = i / (fenceCount - 1);
+      const fx = -w / 2 - 3 + f * (w + 6);
+      m4.compose(new THREE.Vector3(fx, 0.5, d / 2 + 5), q0, s1);
+      fence.setMatrixAt(i, m4);
+    }
+    fence.instanceMatrix.needsUpdate = true;
+    sub.add(fence);
+
+    group.add(sub);
+  }
+
+  // --- The Junction Dance Hall --------------------------------------------
+  {
+    const x = -470, z = 350;
+    const w = 18, d = 14, h = 7.6;
+    const sub = new THREE.Group();
+    sub.position.set(x, 0, z);
+    sub.name = "the-junction-dance-hall";
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), materials.brick);
+    body.position.set(0, h / 2, 0);
+    sub.add(body);
+
+    const storefront = deco.storefrontBand({ width: w, bays: 4, height: 4.2, material: materials.limestone, awnings: true, seed: 4703 });
+    storefront.position.set(0, 0, d / 2 + 0.05);
+    sub.add(storefront);
+
+    const grid = deco.windowGrid({ rows: 1, cols: 6, spacingX: w / 7, spacingY: 2.6, width: 1.5, height: 2.6, material: materials.glassNight, seed: 4711 });
+    grid.position.set(0, 5.6, d / 2 + 0.05);
+    sub.add(grid);
+
+    const signFrame = deco.canvasSign("THE JUNCTION -- DANCING TONIGHT", { width: 12, canvasWidth: 640, canvasHeight: 160 });
+    signFrame.position.set(0, h + 1.6, 0);
+    sub.add(signFrame);
+
+    group.add(sub);
+
+    const lampSpots4 = [
+      [-w / 2 - 0.3, -d / 2 - 0.3],
+      [w / 2 + 0.3, -d / 2 - 0.3],
+      [-w / 2 - 0.3, d / 2 + 0.3],
+      [w / 2 + 0.3, d / 2 + 0.3],
+    ];
+    lampSpots4.forEach(([lx, lz]) => {
+      const lamp = deco.streetlamp();
+      lamp.position.set(x + lx, 0, z + lz);
+      group.add(lamp);
+    });
+
+    registerInteractive(signFrame, {
+      title: "The Junction",
+      body: "Upstairs after the shift whistle — two bands, no cover for mill men. The trombone player from Tuxedo Park runs the late set.",
+    });
+  }
+}
+
 /**
  * build -- entry point required by src/main.js's dynamic district loader.
  * @param {object} ctx { THREE, scene, plan, district, materials, deco, registerInteractive }
@@ -582,6 +794,12 @@ export async function build(ctx) {
 
   avoidBoxes.push(buildStElias(ctx, group));
   avoidBoxes.push(buildWorkersInstitute(ctx, group));
+
+  // Street-wall fan-out: fill the assigned Ensley mill-town blocks with
+  // continuous party-wall fabric, then place the bespoke mill-town anchors
+  // (their frontage gaps are already carved into the fill calls above).
+  buildStreetWallBlocks(ctx, group);
+  buildMillTownAnchors(ctx, group);
 
   buildResidentialFabric(ctx, group, rand, avoidBoxes);
   buildStreetFurniture(ctx, group, rand);
