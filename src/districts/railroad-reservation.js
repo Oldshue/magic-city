@@ -380,6 +380,115 @@ export async function build(ctx) {
   }
 
   // ------------------------------------------------------------------
+  // 10. TIER 1a — Underpass girder spans at 20th St (x=0) and 18th St
+  // (x=240): the 1929 grade separation. Riveted plate-girder deck seated
+  // on the phase-1 abutment towers, carrying the 4 main tracks over the
+  // street gap so the through line reads continuous; caged utility
+  // lamps light the underpass at night; retaining wings flare from the
+  // abutments toward the street.
+  // ------------------------------------------------------------------
+  const girderMat = new T.MeshStandardMaterial({ color: 0x3c2a22, roughness: 0.6, metalness: 0.6 });
+  const lampCageMat = new T.MeshStandardMaterial({ color: 0x1a1a18, roughness: 0.6, metalness: 0.4 });
+  const lampDimMat = new T.MeshStandardMaterial({ color: 0x3a2c18, emissive: 0xffb066, emissiveIntensity: 0.7, roughness: 0.5 });
+  const gateMat = new T.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.7, metalness: 0.0 });
+  const UNDERPASSES = [
+    { x0: GAP_20TH[0], x1: GAP_20TH[1] },
+    { x0: GAP_18TH[0], x1: GAP_18TH[1] },
+  ];
+  const GIRDER_Z_OFF = EMB_TOP_W / 2 - 1; // 16
+  const DECK_TOP_Y = EMB_TOTAL_H; // 4 — matches embankment top so mains ride level
+  {
+    const spanLen = 30;
+    for (const { x0, x1 } of UNDERPASSES) {
+      const cx = (x0 + x1) / 2;
+      for (const side of [-1, 1]) {
+        const gz = EMB_Z + side * GIRDER_Z_OFF;
+        const girder = new THREE.Mesh(new THREE.BoxGeometry(spanLen, 1.6, 0.2), girderMat);
+        girder.position.set(cx, DECK_TOP_Y - 0.8, gz);
+        girder.castShadow = true; girder.receiveShadow = true;
+        group.add(girder);
+      }
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0 + 2, 0.15, EMB_TOP_W), ironMat);
+      plate.position.set(cx, DECK_TOP_Y + 0.02, EMB_Z);
+      plate.receiveShadow = true;
+      group.add(plate);
+      // Retaining wings flaring from the abutment corners toward the street.
+      for (const az of [EMB_Z - GIRDER_Z_OFF - 1, EMB_Z + GIRDER_Z_OFF + 1]) {
+        for (const ax of [x0, x1]) {
+          const wing = new THREE.Mesh(new THREE.BoxGeometry(4.5, 3.2, 0.6), ashlarMat);
+          wing.position.set(ax + (ax === x0 ? -2 : 2), 1.6, az + (az < EMB_Z ? -1.6 : 1.6));
+          wing.rotation.y = (ax === x0 ? 1 : -1) * 0.5;
+          wing.castShadow = true; wing.receiveShadow = true;
+          group.add(wing);
+        }
+      }
+      // The 4 main tracks continue over the deck, gapped segment only.
+      for (const z of MAIN_Z) buildTrackRibbon(z, DECK_TOP_Y, [[x0, x1]]);
+    }
+    // Caged utility lamps under the deck — warm dim emissive discs only.
+    const lampSpots = [];
+    for (const { x0, x1 } of UNDERPASSES) {
+      const cx = (x0 + x1) / 2;
+      for (const lx of [cx - 7, cx + 7]) {
+        for (const lz of [EMB_Z - 8, EMB_Z + 8]) lampSpots.push([lx, DECK_TOP_Y - 1.1, lz]);
+      }
+    }
+    const cageGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const discGeo = new THREE.CircleGeometry(0.16, 8);
+    const cageInst = new T.InstancedMesh(cageGeo, lampCageMat, lampSpots.length);
+    const discInst = new T.InstancedMesh(discGeo, lampDimMat, lampSpots.length);
+    cageInst.userData.noShadow = true; discInst.userData.noShadow = true;
+    const m4c = new T.Matrix4();
+    lampSpots.forEach(([x, y, z], i) => {
+      m4c.makeTranslation(x, y, z);
+      cageInst.setMatrixAt(i, m4c);
+      m4c.makeRotationX(-Math.PI / 2);
+      m4c.setPosition(x, y - 0.16, z);
+      discInst.setMatrixAt(i, m4c);
+    });
+    cageInst.instanceMatrix.needsUpdate = true;
+    discInst.instanceMatrix.needsUpdate = true;
+    group.add(cageInst, discInst);
+  }
+
+  // ------------------------------------------------------------------
+  // 11. TIER 1b — At-grade crossing gates + watchman's shanty. The yard
+  // tracks break at 20th/18th (SEGMENTS already gaps them); white timber
+  // gates lowered across the street mark the at-grade crossing, and a
+  // watchman's shanty sits beside the 20th St crossing on the north yard.
+  // ------------------------------------------------------------------
+  {
+    const gateGeo = new THREE.BoxGeometry(9, 0.16, 0.16);
+    const gateSpots = [
+      { x: 0, z: NORTH_YARD_Z[0] - 6 }, { x: 0, z: SOUTH_YARD_Z[SOUTH_YARD_Z.length - 1] + 6 },
+      { x: 240, z: NORTH_YARD_Z[0] - 6 }, { x: 240, z: SOUTH_YARD_Z[SOUTH_YARD_Z.length - 1] + 6 },
+    ];
+    const gateInst = new T.InstancedMesh(gateGeo, gateMat, gateSpots.length);
+    const m4g = new T.Matrix4();
+    const gq = new T.Quaternion();
+    gateSpots.forEach(({ x, z }, i) => {
+      gq.setFromEuler(new T.Euler(0, 0, 15 * Math.PI / 180));
+      m4g.compose(new T.Vector3(x, 1.1, z), gq, new T.Vector3(1, 1, 1));
+      gateInst.setMatrixAt(i, m4g);
+    });
+    gateInst.instanceMatrix.needsUpdate = true;
+    group.add(gateInst);
+
+    // Watchman's shanty — 20th St crossing, north yard side.
+    const shantyGroup = new THREE.Group();
+    const shantyBody = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.6, 2.2), woodMat);
+    shantyBody.position.y = 1.3;
+    shantyBody.castShadow = true; shantyBody.receiveShadow = true;
+    shantyGroup.add(shantyBody);
+    const shantyRoof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.1, 4), ashlarMat);
+    shantyRoof.rotation.y = Math.PI / 4;
+    shantyRoof.position.y = 2.6 + 0.55;
+    shantyGroup.add(shantyRoof);
+    shantyGroup.position.set(22, 0, NORTH_YARD_Z[0] - 10);
+    group.add(shantyGroup);
+  }
+
+  // ------------------------------------------------------------------
   // 9. Finalize ties — one InstancedMesh for every tie in the corridor
   // (at-grade yard tracks, mains on the embankment, and the two siding
   // stubs all pushed into the same shared tieMatrices array above). Ties
