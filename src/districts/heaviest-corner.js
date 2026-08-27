@@ -212,6 +212,84 @@ export async function build(ctx) {
     );
   }
 
+  // CITY FEDERAL BUILDING (1913, 27 floors) — 2nd Ave N & 21st St.
+  // Tallest in Alabama 1913-1969: pale neoclassical shaft, three-story
+  // arcaded crown, heavy cornice, corner flagpole. The skyline king.
+  {
+    const lm = plan.landmarks.find(l => l.id === 'city-federal-building');
+    towerAt(
+      lm,
+      { setbacks: 1, material: materials.limestone, windowMaterial: materials.glassNight },
+      g => {
+        entrance(g, lm, 'west');
+        const arcY = lm.height - 11;
+        const arc = new THREE.Mesh(
+          new THREE.BoxGeometry(lm.footprint[0] + 0.4, 10, lm.footprint[1] + 0.4),
+          materials.limestone
+        );
+        arc.position.set(0, arcY + 5, 0);
+        g.add(arc);
+        const openGeo = new THREE.PlaneGeometry(2.2, 7.5);
+        const perFace = 6;
+        const opens = new THREE.InstancedMesh(openGeo, materials.glassNight, perFace * 4);
+        const m4 = new THREE.Matrix4(); const e = new THREE.Euler();
+        let oi = 0;
+        const hx = lm.footprint[0] / 2 + 0.25, hz = lm.footprint[1] / 2 + 0.25;
+        for (let i = 0; i < perFace; i++) {
+          const t = -1 + (2 * i) / (perFace - 1);
+          m4.makeTranslation(t * (hx - 2.4), arcY + 5, hz); opens.setMatrixAt(oi++, m4);
+          m4.makeRotationY(Math.PI); m4.setPosition(t * (hx - 2.4), arcY + 5, -hz); opens.setMatrixAt(oi++, m4);
+          m4.makeRotationY(Math.PI / 2); m4.setPosition(hx, arcY + 5, t * (hz - 2.4)); opens.setMatrixAt(oi++, m4);
+          m4.makeRotationY(-Math.PI / 2); m4.setPosition(-hx, arcY + 5, t * (hz - 2.4)); opens.setMatrixAt(oi++, m4);
+        }
+        opens.instanceMatrix.needsUpdate = true;
+        g.add(opens);
+        const cor = deco.corniceBox({ width: lm.footprint[0] + 2.2, depth: lm.footprint[1] + 2.2,
+          height: 1.3, material: materials.limestone });
+        cor.position.set(0, lm.height - 0.5, 0);
+        g.add(cor);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 9, 6), materials.steelDark);
+        pole.position.set(lm.footprint[0] / 2 - 1.2, lm.height + 4.5, lm.footprint[1] / 2 - 1.2);
+        g.add(pole);
+        facadeSign(g, lm, 'CITY FEDERAL', lm.height * 0.3, 12, 'west');
+      }
+    );
+  }
+
+  // WATTS BUILDING (1927, 16 floors) — 3rd Ave N & 20th St. The art
+  // deco one: vertical pier emphasis, polychrome terra-cotta crown
+  // band, stepped parapet.
+  {
+    const lm = plan.landmarks.find(l => l.id === 'watts-building');
+    towerAt(
+      lm,
+      { setbacks: 1, material: materials.limestone, windowMaterial: materials.glassNight },
+      g => {
+        entrance(g, lm, 'north');
+        const piers = deco.pilasterFacade({ width: lm.footprint[0], height: lm.height * 0.55, bays: 7,
+          material: materials.limestone, pilasterMaterial: materials.terracotta });
+        piers.rotation.y = Math.PI;
+        piers.position.set(0, 0, -lm.footprint[1] / 2 - 0.2);
+        g.add(piers);
+        const band = new THREE.Mesh(
+          new THREE.BoxGeometry(lm.footprint[0] + 0.6, 2.4, lm.footprint[1] + 0.6),
+          materials.terracotta
+        );
+        band.position.set(0, lm.height - 3.6, 0);
+        g.add(band);
+        for (let i = 0; i < 3; i++) {
+          const step = new THREE.Mesh(
+            new THREE.BoxGeometry(lm.footprint[0] - i * 5, 1.1, lm.footprint[1] - i * 5),
+            materials.limestone
+          );
+          step.position.set(0, lm.height - 0.9 + i * 1.1, 0);
+          g.add(step);
+        }
+        facadeSign(g, lm, 'WATTS', lm.height * 0.3, 8, 'north');
+      }
+    );
+  }
+
   // ------------------------------------------------------------------
   // Birmingham Belt Elevated Loop — deck skirting the core's north and
   // east edges inside this polygon, 9 m above grade, six car lines.
@@ -450,7 +528,7 @@ export async function build(ctx) {
     block: { x0: -108, z0: -268, x1: -12, z1: -152 },
     gaps: [
       { side: 'west', from: -202, to: -170 },
-      { side: 'north', from: -59, to: -33 },
+      { side: 'north', from: -59, to: -13 },
     ],
     use: 'commercial', floorsRange: [2, 5], alley: true,
   }));
@@ -523,6 +601,8 @@ export async function build(ctx) {
     gaps: [
       { side: 'south', from: -66, to: -15 },
       { side: 'east', from: -52, to: -16 },
+      { side: 'west', from: -126, to: -96 },
+      { side: 'north', from: -109, to: -77 },
     ],
     use: 'commercial', floorsRange: [2, 5], alley: true,
   }));
