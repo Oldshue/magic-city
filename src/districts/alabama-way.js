@@ -503,6 +503,94 @@ export async function build(ctx) {
     group.add(g);
   }
 
+  // ================= STREET-WALL FAN-OUT: WEST DOWNTOWN + MORRIS WEST =================
+  // blockFill() calls for this district's assigned frontage blocks (campaign
+  // fanout-b2, task STREET-WALL FAN-OUT — WEST DOWNTOWN + MORRIS WEST). Purely
+  // additive: reuses src/engine/deco-blockfill.js (deco.blockFill) to fill
+  // continuous 1929 street-wall fabric on the pilot-proven generator.
+  // seed = x0*7 + z0 per block (fan-out rule 1) — stable across reruns.
+  // Existing-structure AABBs from the run brief are expressed as gaps on
+  // whichever frontage(s) they touch, extent + 2m clearance each side
+  // (fan-out rule 3); where the extent also risks colliding with
+  // perimeter lots on a different frontage of the same block, that
+  // frontage gets its own narrow gap too rather than shrinking the rect.
+  buildStreetWallFanout();
+  function buildStreetWallFanout() {
+    // --- West Downtown, north row (z -268..-152) ---
+    group.add(deco.blockFill({
+      deco, seed: 1496, // 252*7 + -268
+      block: { x0: 252, z0: -268, x1: 348, z1: -152 },
+      use: 'commercial', floorsRange: [2, 5],
+    }));
+    group.add(deco.blockFill({
+      deco, seed: 2336, // 372*7 + -268
+      block: { x0: 372, z0: -268, x1: 468, z1: -152 },
+      use: 'commercial', floorsRange: [2, 5],
+    }));
+    // Existing landmark AABBs [546,-271,574,-249,9] & [549,-269,571,-251,13]
+    // both sit on the north (z0) frontage; combined x-extent 546-574,
+    // +2m clearance each side -> gap 544-576.
+    group.add(deco.blockFill({
+      deco, seed: 3176, // 492*7 + -268
+      block: { x0: 492, z0: -268, x1: 588, z1: -152 },
+      use: 'commercial', floorsRange: [2, 5],
+      gaps: [{ side: 'north', from: 544, to: 576 }],
+    }));
+
+    // --- West Downtown, south row (z -128..-12) ---
+    group.add(deco.blockFill({
+      deco, seed: 1636, // 252*7 + -128
+      block: { x0: 252, z0: -128, x1: 348, z1: -12 },
+      use: 'commercial', floorsRange: [2, 5],
+    }));
+    // Existing AABBs [359,-106,401,-34,17] & [370,-59,390,-38,24] straddle
+    // the west (x0=372) frontage line (extent z -106..-34, +2m clearance ->
+    // gap -108..-32). Their x-extent (359-401) reaches 29m into the block,
+    // deep enough that north/south perimeter lots landing in that same x
+    // range risk colliding too, so that x-range (+2m clearance -> 370-403)
+    // is also gapped on north and south rather than shrinking the rect.
+    group.add(deco.blockFill({
+      deco, seed: 2476, // 372*7 + -128
+      block: { x0: 372, z0: -128, x1: 468, z1: -12 },
+      use: 'commercial', floorsRange: [2, 5],
+      gaps: [
+        { side: 'west', from: -108, to: -32 },
+        { side: 'north', from: 370, to: 403 },
+        { side: 'south', from: 370, to: 403 },
+      ],
+    }));
+    group.add(deco.blockFill({
+      deco, seed: 3316, // 492*7 + -128
+      block: { x0: 492, z0: -128, x1: 588, z1: -12 },
+      use: 'commercial', floorsRange: [2, 5],
+    }));
+
+    // --- Morris West warehouse row (z 14..46) ---
+    // Existing AABB [289,17,311,43,12] runs nearly the full block depth
+    // (14-46), only 3m in from BOTH the north and south frontage — well
+    // inside a typical warehouse lot's 14-20m depth from either side, so
+    // it is gapped on both, x-extent 289-311 + 2m clearance -> 287-313.
+    group.add(deco.blockFill({
+      deco, seed: 1778, // 252*7 + 14
+      block: { x0: 252, z0: 14, x1: 348, z1: 46 },
+      use: 'warehouse', floorsRange: [2, 4], alley: false,
+      gaps: [
+        { side: 'north', from: 287, to: 313 },
+        { side: 'south', from: 287, to: 313 },
+      ],
+    }));
+    group.add(deco.blockFill({
+      deco, seed: 2618, // 372*7 + 14
+      block: { x0: 372, z0: 14, x1: 468, z1: 46 },
+      use: 'warehouse', floorsRange: [2, 4], alley: false,
+    }));
+    group.add(deco.blockFill({
+      deco, seed: 3458, // 492*7 + 14
+      block: { x0: 492, z0: 14, x1: 588, z1: 46 },
+      use: 'warehouse', floorsRange: [2, 4], alley: false,
+    }));
+  }
+
   // ================= WBRC & WAPI STUDIO BLOCK (World-Bible signature; invented placement) =================
   buildStudioBlock();
   function buildStudioBlock() {
