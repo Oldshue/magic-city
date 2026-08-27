@@ -412,5 +412,103 @@ export async function build(ctx) {
     use: 'commercial', floorsRange: [2, 5], alley: true,
   }));
 
+  // ------------------------------------------------------------------
+  // STREET-WALL FAN-OUT — DOWNTOWN CORE (heaviest-corner assigned
+  // blocks). Continuous 1929 party-wall street fabric for the seven
+  // downtown-core blocks assigned to this fan-out pass. Existing AABBs
+  // (landmark towers / background infill already elsewhere in this file)
+  // are expressed as frontage gaps with 2 m clearance so no party-wall
+  // lot intersects them. seed = x0*7 + z0 per block, deterministic
+  // across reruns. This section is purely additive — nothing above it
+  // is modified.
+  // ------------------------------------------------------------------
+
+  // Block A: x -228..-132, z -268..-152. Existing AABB [-211,-259,-189,-241,14]
+  // sits within north-facing lot depth (z -268..~-248) and, via its
+  // z-extent, could also collide with west-facing lot depth near x -228.
+  // Gap both frontages with 2 m clearance.
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: -1864,
+    block: { x0: -228, z0: -268, x1: -132, z1: -152 },
+    gaps: [
+      { side: 'north', from: -213, to: -187 },
+      { side: 'west', from: -261, to: -239 },
+    ],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block B: x 12..108, z -268..-152. No existing structures.
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: -184,
+    block: { x0: 12, z0: -268, x1: 108, z1: -152 },
+    gaps: [],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block C: x 132..228, z -268..-152. No existing structures.
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: 656,
+    block: { x0: 132, z0: -268, x1: 228, z1: -152 },
+    gaps: [],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block D: x -228..-132, z -128..-12. Existing AABB
+  // [-210,-83,-190,-67,14] sits within west-facing lot depth near the
+  // block's north-west quadrant; existing AABB [-231,-28,-209,-12,14]
+  // sits on the south-west corner, touching BOTH the south frontage
+  // (z1=-12 is its own edge) and the west-facing lot depth. Gap all
+  // three touched frontage stretches with 2 m clearance.
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: -1724,
+    block: { x0: -228, z0: -128, x1: -132, z1: -12 },
+    gaps: [
+      { side: 'west', from: -85, to: -65 },
+      { side: 'west', from: -30, to: -10 },
+      { side: 'south', from: -233, to: -207 },
+    ],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block E: x -108..-12, z -128..-12. Five existing AABBs union to a
+  // stepped tower footprint roughly x -64..-32, z -50..-18 — close
+  // enough to the south edge (z1=-12) and east edge (x1=-12) that
+  // south- and east-facing party-wall lot depth (up to 20 m) could
+  // reach it. Gap both touched frontages with 2 m clearance.
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: -884,
+    block: { x0: -108, z0: -128, x1: -12, z1: -12 },
+    gaps: [
+      { side: 'south', from: -66, to: -30 },
+      { side: 'east', from: -52, to: -16 },
+    ],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block F: x 12..108, z -128..-12. Existing AABBs form two clusters:
+  // one straddling the west edge (x -7..27, z -27..7) — gapped on the
+  // west frontage and, since its x-extent inside the block also lies
+  // within south-facing lot depth, on the south frontage too; and a
+  // spire cluster (x 34..58, z -28..-4) close to the south edge —
+  // gapped on the south frontage. 2 m clearance throughout.
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: -44,
+    block: { x0: 12, z0: -128, x1: 108, z1: -12 },
+    gaps: [
+      { side: 'west', from: -29, to: 9 },
+      { side: 'south', from: 10, to: 29 },
+      { side: 'south', from: 32, to: 60 },
+    ],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block G: x 132..228, z -128..-12. No existing structures.
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: 796,
+    block: { x0: 132, z0: -128, x1: 228, z1: -12 },
+    gaps: [],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
   scene.add(group);
 }
