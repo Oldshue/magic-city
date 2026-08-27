@@ -25,7 +25,7 @@ export function rand(seed) {
  */
 export function mergeGeometries(geoms) {
   let vertCount = 0, idxCount = 0;
-  for (const g of geoms) { vertCount += g.attributes.position.count; idxCount += g.index.count; }
+  for (const g of geoms) { vertCount += g.attributes.position.count; idxCount += g.index ? g.index.count : g.attributes.position.count; }
   const position = new Float32Array(vertCount * 3);
   const normal = new Float32Array(vertCount * 3);
   const uv = new Float32Array(vertCount * 2);
@@ -36,7 +36,7 @@ export function mergeGeometries(geoms) {
     position.set(g.attributes.position.array, vOff * 3);
     normal.set(g.attributes.normal.array, vOff * 3);
     if (g.attributes.uv) uv.set(g.attributes.uv.array, vOff * 2);
-    const idx = g.index.array;
+    const idx = g.index ? g.index.array : Array.from({ length: g.attributes.position.count }, (_, k) => k);
     for (let i = 0; i < idx.length; i++) index[iOff + i] = idx[i] + vOff;
     vOff += g.attributes.position.count; iOff += idx.length;
   }
@@ -61,7 +61,7 @@ export function mergeGeometries(geoms) {
  */
 export function mergeColored(parts) {
   let vertCount = 0, idxCount = 0;
-  for (const p of parts) { vertCount += p.geo.attributes.position.count; idxCount += p.geo.index.count; }
+  for (const p of parts) { vertCount += p.geo.attributes.position.count; idxCount += p.geo.index ? p.geo.index.count : p.geo.attributes.position.count; }
   const position = new Float32Array(vertCount * 3);
   const normal = new Float32Array(vertCount * 3);
   const uv = new Float32Array(vertCount * 2);
@@ -80,7 +80,7 @@ export function mergeColored(parts) {
     for (let i = 0; i < n; i++) {
       color[(vOff + i) * 3] = c.r; color[(vOff + i) * 3 + 1] = c.g; color[(vOff + i) * 3 + 2] = c.b;
     }
-    const idx = g.index.array;
+    const idx = g.index ? g.index.array : Array.from({ length: g.attributes.position.count }, (_, k) => k);
     for (let i = 0; i < idx.length; i++) index[iOff + i] = idx[i] + vOff;
     vOff += n; iOff += idx.length;
   }
