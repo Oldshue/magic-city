@@ -50,8 +50,8 @@ export function startAmbience(ctx) {
     crowdSrc.loop = true;
     const crowdFilter = ac.createBiquadFilter();
     crowdFilter.type = 'bandpass';
-    crowdFilter.frequency.value = 550;
-    crowdFilter.Q.value = 0.6;
+    crowdFilter.frequency.value = 480;
+    crowdFilter.Q.value = 2.4;
     const crowdGain = ac.createGain();
     crowdGain.gain.value = 0.0;
     crowdSrc.connect(crowdFilter);
@@ -120,12 +120,12 @@ export function startAmbience(ctx) {
         if (d < minD) minD = d;
       }
       const furnaceFactor = Math.max(0, 1 - minD / 500);
-      const targetRumble = 0.05 + furnaceFactor * 0.55 * (0.6 + 0.4 * night);
+      const targetRumble = 0.008 + furnaceFactor * 0.5 * (0.6 + 0.4 * night);
       nodes.rumbleGain.gain.setTargetAtTime(targetRumble, nodes.ac.currentTime, 0.8);
 
       const centerD = Math.hypot(camera.position.x, camera.position.z);
       const downtownFactor = Math.max(0, 1 - centerD / 500);
-      const targetCrowd = downtownFactor * 0.18 * (0.35 + 0.65 * day);
+      const targetCrowd = downtownFactor * 0.05 * (0.35 + 0.65 * day);
       nodes.crowdGain.gain.setTargetAtTime(targetCrowd, nodes.ac.currentTime, 1.0);
 
       nextDing -= dt;

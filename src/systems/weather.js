@@ -286,7 +286,7 @@ export function startWeather(ctx) {
 
       // --- audio: rain bed swell + occasional distant thunder --------------
       if (nodes) {
-        nodes.rainGain.gain.setTargetAtTime(0.04 + rainAmt * 0.32, nodes.ac.currentTime, 0.7);
+        nodes.rainGain.gain.setTargetAtTime(rainAmt > 0.02 ? 0.03 + rainAmt * 0.33 : 0, nodes.ac.currentTime, 0.7);
       }
       if (state === RAIN || state === CLEARING) {
         nextThunder -= dt;
