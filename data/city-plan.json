@@ -80,11 +80,11 @@
     ],
     [
      220,
-     58
+     78
     ],
     [
      -160,
-     58
+     78
     ]
    ],
    "character": "Downtown deco canyon of 20-35 story banks and offices grown outward from 20th & 1st Ave N.",
@@ -128,11 +128,11 @@
     ],
     [
      620,
-     58
+     78
     ],
     [
      220,
-     58
+     78
     ]
    ],
    "character": "Second Avenue North entertainment strip: movie palaces, vaudeville, radio studios, nightclubs.",
@@ -691,6 +691,45 @@
    "kind": "tower",
    "real": true,
    "description": "White terra-cotta wedding-cake corner with stacked cornices."
+  },
+  {
+   "id": "city-federal-building",
+   "name": "City Federal Building",
+   "position": [
+    -93,
+    -111
+   ],
+   "footprint": [
+    28,
+    26
+   ],
+   "height": 100
+  },
+  {
+   "id": "thomas-jefferson-hotel",
+   "name": "Thomas Jefferson Hotel",
+   "position": [
+    330,
+    -111
+   ],
+   "footprint": [
+    30,
+    22
+   ],
+   "height": 80
+  },
+  {
+   "id": "watts-building",
+   "name": "Watts Building",
+   "position": [
+    -28,
+    -255
+   ],
+   "footprint": [
+    26,
+    22
+   ],
+   "height": 62
   },
   {
    "id": "birmingham-belt-elevated-loop",

@@ -542,6 +542,10 @@ export async function build(ctx) {
       deco, seed: 1636, // 252*7 + -128
       block: { x0: 252, z0: -128, x1: 348, z1: -12 },
       use: 'commercial', floorsRange: [2, 5],
+      gaps: [
+        { side: 'east', from: -124, to: -98 },
+        { side: 'north', from: 313, to: 347 },
+      ],
     }));
     // Existing AABBs [359,-106,401,-34,17] & [370,-59,390,-38,24] straddle
     // the west (x0=372) frontage line (extent z -106..-34, +2m clearance ->
@@ -753,4 +757,45 @@ export async function build(ctx) {
     await savoy.build(ctx);
     if (savoyLM) savoy.wireDoor(ctx, savoyLM, frontSignFor(savoyLM.position[1]));
   } catch (err) { console.warn('[magic-city] club-savoy interior skipped', err && err.message); }
+  // THOMAS JEFFERSON HOTEL (1929, 20 floors) — 2nd Ave N & 17th St,
+  // opened this very year: brick shaft, terra-cotta trim, marquee, and
+  // the famous rooftop zeppelin mooring mast with its beacon.
+  {
+    const lm = plan.landmarks.find(l => l.id === 'thomas-jefferson-hotel');
+    if (lm) {
+      const t = deco.setbackTower({
+        width: lm.footprint[0], depth: lm.footprint[1], height: lm.height,
+        setbacks: 1, material: materials.brick, windowMaterial: materials.glassNight,
+      });
+      t.position.set(lm.position[0], 0, lm.position[1]);
+      group.add(t);
+      const marquee = new THREE.Mesh(new THREE.BoxGeometry(12, 0.5, 3), materials.marquee);
+      marquee.position.set(lm.position[0], 5, lm.position[1] - lm.footprint[1] / 2 - 1.6);
+      group.add(marquee);
+      const cor = deco.corniceBox({ width: lm.footprint[0] + 1.2, depth: lm.footprint[1] + 1.2,
+        height: 1.0, material: materials.terracotta });
+      cor.position.set(lm.position[0], lm.height - 0.5, lm.position[1]);
+      group.add(cor);
+      const mastSegs = [[1.1, 0.7, 5], [0.7, 0.4, 4.5], [0.4, 0.12, 3.5]];
+      let my = lm.height;
+      for (const [r0, r1, h] of mastSegs) {
+        const seg = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, h, 6, 1, true), materials.steelDark);
+        seg.position.set(lm.position[0], my + h / 2, lm.position[1]);
+        group.add(seg);
+        my += h;
+      }
+      const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), materials.marquee);
+      beacon.position.set(lm.position[0], my + 0.3, lm.position[1]);
+      group.add(beacon);
+      const sign = deco.canvasSign('THOMAS JEFFERSON', { width: 13 });
+      sign.position.set(lm.position[0], lm.height * 0.3, lm.position[1] - lm.footprint[1] / 2 - 0.45);
+      sign.rotation.y = Math.PI;
+      group.add(sign);
+      registerInteractive(beacon, {
+        title: 'Mooring Mast — Thomas Jefferson Hotel',
+        body: 'Built for the age of the airship: the only hotel mast in the South. No zeppelin has called yet — the house wagers on the Graf.',
+      });
+    }
+  }
+
 }
