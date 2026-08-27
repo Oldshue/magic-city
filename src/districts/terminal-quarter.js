@@ -443,6 +443,105 @@ export async function build(ctx) {
   });
 
   // ------------------------------------------------------------------
+  // STREET-WALL FAN-OUT — EAST DOWNTOWN + MORRIS WAREHOUSE ROW
+  // (terminal-quarter assigned blocks). Continuous 1929 party-wall
+  // street fabric via deco.blockFill for the seven blocks assigned to
+  // this district (centroid-in-polygon test against both
+  // terminal-quarter [x -1200..-160] and heaviest-corner [x -160..220]
+  // polygons read from data/city-plan.json). Existing AABBs from the
+  // run brief are expressed as frontage gaps with 2 m clearance, sized
+  // to each lot's ~20 m max depth reach so the fill never intersects
+  // them. seed = x0*7+z0 per block, deterministic across reruns.
+  // Warehouse rows (z0=14) face Morris Avenue to the south; alley is
+  // disabled per brief rule 2. Purely additive — nothing above this
+  // section is modified.
+  // ------------------------------------------------------------------
+
+  // Block 1: x -468..-372, z -268..-152. commercial, floors 2-5.
+  root.add(deco.blockFill({
+    materials: M, deco, seed: -3544,
+    block: { x0: -468, z0: -268, x1: -372, z1: -152 },
+    gaps: [
+      { side: 'south', from: -470, to: -370 },
+      { side: 'west', from: -198, to: -150 },
+      { side: 'east', from: -198, to: -150 },
+      { side: 'west', from: -261, to: -239 },
+      { side: 'north', from: -470, to: -455 },
+    ],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block 2: x -348..-252, z -268..-152. commercial, floors 2-5.
+  root.add(deco.blockFill({
+    materials: M, deco, seed: -2704,
+    block: { x0: -348, z0: -268, x1: -252, z1: -152 },
+    gaps: [
+      { side: 'east', from: -265, to: -245 },
+      { side: 'north', from: -272, to: -250 },
+      { side: 'north', from: -324, to: -296 },
+    ],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block 3: x -468..-372, z -128..-12. commercial, floors 2-5.
+  root.add(deco.blockFill({
+    materials: M, deco, seed: -3404,
+    block: { x0: -468, z0: -128, x1: -372, z1: -12 },
+    gaps: [
+      { side: 'north', from: -394, to: -366 },
+      { side: 'east', from: -131, to: -113 },
+      { side: 'south', from: -464, to: -436 },
+      { side: 'west', from: -31, to: -9 },
+    ],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block 4: x -348..-252, z -128..-12. commercial, floors 2-5.
+  root.add(deco.blockFill({
+    materials: M, deco, seed: -2564,
+    block: { x0: -348, z0: -128, x1: -252, z1: -12 },
+    gaps: [
+      { side: 'north', from: -335, to: -305 },
+      { side: 'east', from: -131, to: -113 },
+      { side: 'north', from: -274, to: -250 },
+      { side: 'north', from: -304, to: -276 },
+      { side: 'west', from: -131, to: -113 },
+      { side: 'north', from: -350, to: -336 },
+      { side: 'east', from: -88, to: -68 },
+    ],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // Block 5: x -468..-372, z 14..46. warehouse (Morris Ave row), no
+  // existing structures.
+  root.add(deco.blockFill({
+    materials: M, deco, seed: -3262,
+    block: { x0: -468, z0: 14, x1: -372, z1: 46 },
+    gaps: [],
+    use: 'warehouse', floorsRange: [2, 4], alley: false,
+  }));
+
+  // Block 6: x -348..-252, z 14..46. warehouse (Morris Ave row), no
+  // existing structures.
+  root.add(deco.blockFill({
+    materials: M, deco, seed: -2422,
+    block: { x0: -348, z0: 14, x1: -252, z1: 46 },
+    gaps: [],
+    use: 'warehouse', floorsRange: [2, 4], alley: false,
+  }));
+
+  // Block 7: x -228..-132, z 14..46. warehouse (Morris Ave row), no
+  // existing structures. Block centroid (x -180) falls inside the
+  // terminal-quarter polygon (x <= -160), so it is built here even
+  // though its east edge approaches heaviest-corner's boundary.
+  root.add(deco.blockFill({
+    materials: M, deco, seed: -1582,
+    block: { x0: -228, z0: 14, x1: -132, z1: 46 },
+    gaps: [],
+    use: 'warehouse', floorsRange: [2, 4], alley: false,
+  }));
+
+  // ------------------------------------------------------------------
   // STREETSCAPE — instanced streetlamps along the plaza & 2nd Avenue,
   // plus a few helper-built lamps at focal points.
   // ------------------------------------------------------------------

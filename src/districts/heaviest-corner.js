@@ -417,10 +417,9 @@ export async function build(ctx) {
   // blocks). Continuous 1929 party-wall street fabric for the seven
   // downtown-core blocks assigned to this fan-out pass. Existing AABBs
   // (landmark towers / background infill already elsewhere in this file)
-  // are expressed as frontage gaps with 2 m clearance so no party-wall
-  // lot intersects them. seed = x0*7 + z0 per block, deterministic
-  // across reruns. This section is purely additive — nothing above it
-  // is modified.
+  // are expressed as frontage gaps with 2 m clearance. seed = x0*7 + z0
+  // per block, deterministic across reruns. This section is purely
+  // additive — nothing above it is modified.
   // ------------------------------------------------------------------
 
   // Block A: x -228..-132, z -268..-152. Existing AABB [-211,-259,-189,-241,14]
@@ -508,6 +507,60 @@ export async function build(ctx) {
     block: { x0: 132, z0: -128, x1: 228, z1: -12 },
     gaps: [],
     use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
+  // ------------------------------------------------------------------
+  // STREET-WALL FAN-OUT — EAST DOWNTOWN + MORRIS WAREHOUSE ROW
+  // (heaviest-corner assigned blocks). Continuous 1929 party-wall
+  // street fabric via deco.blockFill for the three Morris Avenue
+  // warehouse-row blocks assigned to this district (centroid-in-polygon
+  // test against both terminal-quarter [x -1200..-160] and
+  // heaviest-corner [x -160..220] polygons read from data/city-plan.json).
+  // Existing AABBs from the run brief are expressed as frontage gaps
+  // with 2 m clearance. seed = x0*7+z0 per block, deterministic across
+  // reruns. Warehouse rows face Morris Avenue to the south; alley is
+  // disabled per brief rule 2. Purely additive — nothing above this
+  // section is modified.
+  // ------------------------------------------------------------------
+
+  // Block 8: x -108..-12, z 14..46. warehouse (Morris Ave row). Existing
+  // AABB cluster ([-55,5,-29,31,34] etc.) starts north of the block and
+  // reaches south to z 31 (17 m into the block), and its east edge (x -29)
+  // reaches to within 3 m of the east-frontage lot-depth band.
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: -742,
+    block: { x0: -108, z0: 14, x1: -12, z1: 46 },
+    gaps: [
+      { side: 'north', from: -57, to: -27 },
+      { side: 'south', from: -57, to: -27 },
+      { side: 'east', from: 3, to: 33 },
+    ],
+    use: 'warehouse', floorsRange: [2, 4], alley: false,
+  }));
+
+  // Block 9: x 12..108, z 14..46. warehouse (Morris Ave row). Existing
+  // AABB cluster ([26,14,54,42,20] etc.) touches the block's north
+  // frontage exactly (z0=14) and reaches to within 4 m of the south
+  // frontage (z1=46).
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: 98,
+    block: { x0: 12, z0: 14, x1: 108, z1: 46 },
+    gaps: [
+      { side: 'north', from: 24, to: 56 },
+      { side: 'south', from: 24, to: 56 },
+    ],
+    use: 'warehouse', floorsRange: [2, 4], alley: false,
+  }));
+
+  // Block 10: x 132..228, z 14..46. warehouse (Morris Ave row), no
+  // existing structures. Extends 8 m past the polygon's east edge (220)
+  // at its far corner into alabama-way's declared territory; kept as
+  // one rect per the brief's given block coordinates.
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: 938,
+    block: { x0: 132, z0: 14, x1: 228, z1: 46 },
+    gaps: [],
+    use: 'warehouse', floorsRange: [2, 4], alley: false,
   }));
 
   scene.add(group);
