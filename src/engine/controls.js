@@ -29,8 +29,8 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 export const EYE_HEIGHT = 1.7;
-const WALK = 4.2; // m/s
-const SPRINT = 8.5; // m/s
+const WALK = 6.5; // m/s — brisk city stride; Shift sprints
+const SPRINT = 16.8; // m/s — a real dash for covering blocks
 const PLAYER_RADIUS = 0.45; // body radius for collision padding
 const BOB_FREQ = 1.7; // bob cycles per second at walk speed
 const BOB_AMP = 0.05; // meters of head-bob at full walk speed
