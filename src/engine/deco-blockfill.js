@@ -207,10 +207,11 @@ function collectFromWindowGrid(grid, worldMatrix, out) {
 }
 
 function collectFromStorefront(band, worldMatrix, out) {
-  const names = ['masonry', 'bronze', 'glass', 'door', 'awning'];
+  const names = ['masonry', 'bronze', 'glass', 'door', 'awning', 'glassLit'];
   band.children.forEach((child, i) => {
     const key = names[i];
     if (!key || !child.isMesh) return;
+    if (key === 'awning' && !out.awningMat) out.awningMat = child.material;
     expandMesh(child, worldMatrix, out[key]);
   });
 }
@@ -254,7 +255,7 @@ function buildStreetFaces(lotsBySide, bodyParts, ctx, buckets) {
           const wz = def.axis === 'z' ? anchor.worldZ : runMid;
           const band = deco.storefrontBand({
             width: runWidth, bays: run.length, height: groundH,
-            material: materials.limestone, awnings: false,
+            material: materials.limestone, awnings: use === 'commercial',
             seed: anchor.lotSeed + 41,
           });
           const wm = new THREE.Matrix4().makeTranslation(wx, 0, wz).multiply(new THREE.Matrix4().makeRotationY(def.rotY));
@@ -506,7 +507,7 @@ export function blockFill(opts = {}) {
   }
 
   const buckets = {
-    sf: { masonry: [], bronze: [], glass: [], door: [], awning: [] },
+    sf: { masonry: [], bronze: [], glass: [], door: [], awning: [], glassLit: [] },
     win: { trim: [], ledge: [], glass: [], glassLit: [] },
     roofSteel: [], roofBrick: [], roofColored: [],
   };
@@ -545,6 +546,14 @@ export function blockFill(opts = {}) {
   if (buckets.sf.bronze.length) {
     const m = new THREE.Mesh(mergeGeometries(buckets.sf.bronze), materials.bronze);
     m.castShadow = true; m.receiveShadow = true; group.add(m);
+  }
+  if (buckets.sf.awning.length && buckets.sf.awningMat) {
+    const m = new THREE.Mesh(mergeGeometries(buckets.sf.awning), buckets.sf.awningMat);
+    m.userData.noShadow = true; group.add(m);
+  }
+  if (buckets.sf.glassLit.length) {
+    const m = new THREE.Mesh(mergeGeometries(buckets.sf.glassLit), materials.glassNight);
+    m.userData.noShadow = true; group.add(m);
   }
   if (buckets.roofBrick.length) {
     const m = new THREE.Mesh(mergeGeometries(buckets.roofBrick), materials.brick);

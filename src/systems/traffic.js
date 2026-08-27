@@ -54,7 +54,7 @@ export function startTraffic(ctx) {
   const parkedSpots = [];
   {
     const rngP = (() => { let a = 0x1929; return () => { a = (a * 48271) % 0x7fffffff; return a / 0x7fffffff; }; })();
-    for (const [axis, fixed, lanes] of [['z', 8.2, [[26, 126], [154, 300], [-210, -30]]], ['x', 8.2, [[24, 150], [-190, -26]]]]) {
+    for (const [axis, fixed, lanes] of [['z', 8.2, [[26, 44], [352, 430], [-210, -30]]], ['x', 8.2, [[24, 150], [-190, -26]]]]) {
       for (const [lo, hi] of lanes) {
         for (let d = lo; d < hi; d += 15) {
           if (rngP() < 0.42) continue; // gaps — no solid wall of cars
