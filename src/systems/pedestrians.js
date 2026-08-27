@@ -98,12 +98,14 @@ export function startPedestrians(ctx) {
     for (const side of [1, -1]) {
       for (let i = 0; i < perSide; i++) {
         const roll = rand();
-        let scale = 1.0;
-        if (roll < 0.02) scale = 0.6; // child, paired near the previous walker below
-        else if (roll < 0.12) scale = 0.82; // shorter silhouette (~12% overall)
+        // Base stature 1.19 puts a man's head at ~1.75 m (hat ~1.86) so the
+        // 1.7 m player eye meets the crowd at true 1929 street scale.
+        let scale = 1.15 + rand() * 0.09;
+        if (roll < 0.02) scale = 0.72; // child, paired near the previous walker below
+        else if (roll < 0.12) scale = 1.08 + rand() * 0.05; // shorter silhouette (~12% overall)
         const baseDist = (route.total / perSide) * i + rand() * 8;
         const prev = people[people.length - 1];
-        const dist = scale === 0.6 && prev && prev.route === route && prev.side === side
+        const dist = scale === 0.72 && prev && prev.route === route && prev.side === side
           ? prev.dist + (rand() < 0.5 ? 1 : -1) * 1.1
           : baseDist;
         const baseSpeed = 1.1 + rand() * 0.6;
@@ -206,13 +208,15 @@ export function startPedestrians(ctx) {
   const COUNT = Math.max(1, people.length);
 
   // --- geometry: a handful of shared primitives, ~9 per figure -----------
-  const coatGeo = new THREE.CylinderGeometry(0.17, 0.24, 1.0, 8);
-  const shoulderGeo = new THREE.BoxGeometry(0.46, 0.16, 0.26);
-  const headGeo = new THREE.SphereGeometry(0.105, 8, 6);
-  const brimGeo = new THREE.CylinderGeometry(0.185, 0.185, 0.03, 10);
-  const crownGeo = new THREE.CylinderGeometry(0.095, 0.115, 0.17, 8);
-  const armGeo = new THREE.CylinderGeometry(0.045, 0.05, 0.6, 6);
-  const shoeGeo = new THREE.BoxGeometry(0.1, 0.2, 0.17);
+  // Anatomy v2: knee-length coat over striding trouser legs — the figure
+  // reads as a person at arm's length, not a bell on a stick.
+  const coatGeo = new THREE.CylinderGeometry(0.16, 0.185, 0.74, 8);
+  const shoulderGeo = new THREE.BoxGeometry(0.44, 0.15, 0.24);
+  const headGeo = new THREE.SphereGeometry(0.1, 8, 6);
+  const brimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.03, 10);
+  const crownGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.17, 8);
+  const armGeo = new THREE.CylinderGeometry(0.04, 0.046, 0.54, 6);
+  const shoeGeo = new THREE.BoxGeometry(0.09, 0.56, 0.13);
 
   // --- materials: muted period coat tones + trim, palette-consistent -----
   // + charcoal (0x2e2e2e) and dust brown (0x7a6248) for Tier 1 variety.
@@ -305,7 +309,7 @@ export function startPedestrians(ctx) {
         const fwdX = Math.sin(heading), fwdZ = Math.cos(heading);
         const walkPhase = elapsed * (p.standing ? 1.2 : 5) + p.bob;
         const idleAmp = p.standing ? 0.01 : 0.03;
-        const bobY = 0.62 * p.scale + Math.sin(walkPhase) * idleAmp;
+        const bobY = 0.86 * p.scale + Math.sin(walkPhase) * idleAmp;
         const swing = p.standing ? 0 : Math.sin(walkPhase) * 0.16 * p.scale; // meters of arm/leg fore-aft sway
 
         q.setFromAxisAngle(up, heading);
@@ -336,15 +340,15 @@ export function startPedestrians(ctx) {
         m.compose(tmpPos, q, sBody);
         coatMesh.setMatrixAt(i, m);
 
-        tmpPos.set(ox, bobY + 0.56 * p.scale, oz);
+        tmpPos.set(ox, bobY + 0.37 * p.scale, oz);
         m.compose(tmpPos, q, sBody);
         shoulderMesh.setMatrixAt(i, m);
 
-        tmpPos.set(ox, bobY + 0.74 * p.scale, oz);
+        tmpPos.set(ox, bobY + 0.5 * p.scale, oz);
         m.compose(tmpPos, q, sBody);
         headMesh.setMatrixAt(i, m);
 
-        const hatY = bobY + 0.86 * p.scale;
+        const hatY = bobY + 0.6 * p.scale;
         if (p.hatStyle === 0) {
           tmpPos.set(ox, hatY, oz);
           m.compose(tmpPos, q, sBody);
@@ -362,17 +366,17 @@ export function startPedestrians(ctx) {
           crownMesh.setMatrixAt(i, m);
         }
 
-        tmpPos.set(ox + nx * -0.28 * p.scale + fwdX * swing, bobY + 0.4 * p.scale, oz + nz * -0.28 * p.scale + fwdZ * swing);
+        tmpPos.set(ox + nx * -0.26 * p.scale + fwdX * swing, bobY + 0.06 * p.scale, oz + nz * -0.26 * p.scale + fwdZ * swing);
         m.compose(tmpPos, q, sBody);
         armMesh.setMatrixAt(i * 2, m);
-        tmpPos.set(ox + nx * 0.28 * p.scale - fwdX * swing, bobY + 0.4 * p.scale, oz + nz * 0.28 * p.scale - fwdZ * swing);
+        tmpPos.set(ox + nx * 0.26 * p.scale - fwdX * swing, bobY + 0.06 * p.scale, oz + nz * 0.26 * p.scale - fwdZ * swing);
         m.compose(tmpPos, q, sBody);
         armMesh.setMatrixAt(i * 2 + 1, m);
 
-        tmpPos.set(ox + nx * -0.09 * p.scale - fwdX * swing, 0.1 * p.scale, oz + nz * -0.09 * p.scale - fwdZ * swing);
+        tmpPos.set(ox + nx * -0.09 * p.scale - fwdX * swing, 0.28 * p.scale, oz + nz * -0.09 * p.scale - fwdZ * swing);
         m.compose(tmpPos, q, sBody);
         shoeMesh.setMatrixAt(i * 2, m);
-        tmpPos.set(ox + nx * 0.09 * p.scale + fwdX * swing, 0.1 * p.scale, oz + nz * 0.09 * p.scale + fwdZ * swing);
+        tmpPos.set(ox + nx * 0.09 * p.scale + fwdX * swing, 0.28 * p.scale, oz + nz * 0.09 * p.scale + fwdZ * swing);
         m.compose(tmpPos, q, sBody);
         shoeMesh.setMatrixAt(i * 2 + 1, m);
       }

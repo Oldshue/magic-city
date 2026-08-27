@@ -60,15 +60,15 @@ export function setWeatherDim(factor) {
 // nudged brighter/warmer than the first draft so sunlit masonry reads
 // clearly once the bump-shading overcorrection (materials.js) is fixed.
 const KEYS = [
-  [0.00, 0x0d1226, 0x201c2c, 0.0, 0.30, 30, 620], // midnight — tight fog, city glow at horizon
-  [0.20, 0x1c2238, 0x3a2c34, 0.05, 0.20, 35, 700],
-  [0.27, 0xd98a52, 0xf2c48a, 1.15, 0.36, 45, 1100], // dawn — long warm light
-  [0.40, 0x8fb6da, 0xdce6ec, 2.6, 0.52, 70, 2200],
-  [0.50, 0x6fa3d2, 0xe6ecf0, 2.9, 0.50, 90, 2600], // noon — crisp, high-contrast, warm-white sun
-  [0.60, 0x8fb6da, 0xdce6ec, 2.6, 0.52, 70, 2200],
-  [0.73, 0xd96a3a, 0xf2a05c, 1.15, 0.36, 45, 1100], // dusk
-  [0.80, 0x1c2238, 0x3d2f38, 0.05, 0.20, 35, 700],
-  [1.00, 0x0d1226, 0x201c2c, 0.0, 0.30, 30, 620],
+  [0.00, 0x0d1226, 0x201c2c, 0.0, 0.34, 30, 620], // midnight — the electric city keeps a floor of glow
+  [0.20, 0x1c2238, 0x3a2c34, 0.05, 0.26, 35, 700],
+  [0.27, 0xd98a52, 0xf2c48a, 1.15, 0.44, 45, 1100], // dawn — long warm light
+  [0.40, 0x8fb6da, 0xdce6ec, 2.6, 0.68, 70, 2200],
+  [0.50, 0x6fa3d2, 0xe6ecf0, 2.9, 0.66, 90, 2600], // noon — crisp sun over a luminous southern sky bounce
+  [0.60, 0x8fb6da, 0xdce6ec, 2.6, 0.68, 70, 2200], // afternoon holds the same bright fill
+  [0.73, 0xd96a3a, 0xf2a05c, 1.15, 0.44, 45, 1100], // dusk
+  [0.80, 0x1c2238, 0x3d2f38, 0.05, 0.26, 35, 700],
+  [1.00, 0x0d1226, 0x201c2c, 0.0, 0.34, 30, 620],
 ];
 
 // --- Canvas texture helpers for celestial/cloud billboards --------------

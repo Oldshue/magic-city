@@ -47,7 +47,7 @@ function nearestTo(target, candidates) {
   return best;
 }
 
-const BPM = 80;
+const BPM = 58;
 const BEAT = 60 / BPM;
 // Correct 2:1 swing: the "long" eighth occupies the first 2/3 of the beat,
 // so the swung upbeat lands 2/3 of the way through the beat.
@@ -55,10 +55,17 @@ const SWING_UP = BEAT * (2 / 3);
 
 const CHORDS = {
   Dm7: { root: 'D', bass: 2, tones: [0, 3, 7, 10] },
+  Dm9: { root: 'D', bass: 2, tones: [0, 3, 7, 10, 14] },
+  Dm69: { root: 'D', bass: 2, tones: [0, 3, 7, 9, 14] },
   Em7b5: { root: 'E', bass: 2, tones: [0, 3, 6, 10] },
+  Bm7b5: { root: 'B', bass: 1, tones: [0, 3, 6, 10] },
   A7b9: { root: 'A', bass: 2, tones: [0, 4, 7, 10, 13] },
+  A7s5: { root: 'A', bass: 2, tones: [0, 4, 8, 10] },
   Bbmaj7: { root: 'Bb', bass: 2, tones: [0, 4, 7, 11] },
+  Bbmaj7s11: { root: 'Bb', bass: 2, tones: [0, 4, 7, 11, 18] },
   Gm7: { root: 'G', bass: 2, tones: [0, 3, 7, 10] },
+  Gm9: { root: 'G', bass: 2, tones: [0, 3, 7, 10, 14] },
+  Fmaj9: { root: 'F', bass: 2, tones: [0, 4, 7, 11, 14] },
 };
 
 // ---- Authored tunes --------------------------------------------------
@@ -71,67 +78,39 @@ function shiftMelody(notes, barShift) {
   return notes.map(([b, s, d, se, o]) => [b + barShift, s, d, se, o]);
 }
 
-const BARS_A = ['Dm7', 'Dm7', 'Em7b5', 'A7b9', 'Dm7', 'Dm7', 'Em7b5', 'A7b9'];
-const BARS_B = ['Bbmaj7', 'Bbmaj7', 'Em7b5', 'A7b9', 'Gm7', 'Gm7', 'Em7b5', 'A7b9'];
-
-const MELODY_A = [
-  [0, 0, 1.5, 0, 5], [0, 2, 0.5, 3, 5], [1, 0, 1, 7, 5], [1, 1.5, 0.5, 5, 5],
-  [1, 2, 1.5, 3, 5], [2, 0, 1, 2, 5], [2, 1, 1, 10, 4], [2, 2.5, 1, 8, 4],
-  [3, 0, 2, 7, 4], [3, 2, 1, 8, 4], [4, 0, 1.5, 0, 5], [4, 2, 0.5, 3, 5],
-  [5, 0, 1, 0, 5], [5, 1.5, 1.5, 10, 5], [6, 0, 1, 2, 5], [6, 2, 1, 10, 5],
-  [7, 0, 2, 7, 5],
+// ---- The theme ------------------------------------------------------
+// "Magic City After Hours" — one slow noir theme in the Taxi Driver
+// register: a lonely tenor line over lush minor-ninth harmony. Long
+// breathed phrases, generous rests, a minor-sixth sigh (D up to Bb) as
+// the opening gesture, chromatic settle at the cadences. 16 bars at 58.
+const THEME_BARS = [
+  'Dm9', 'Dm9', 'Gm9', 'Gm9', 'Fmaj9', 'Bbmaj7s11', 'Em7b5', 'A7b9',
+  'Dm9', 'Bm7b5', 'Bbmaj7', 'A7s5', 'Dm9', 'Gm9', 'A7b9', 'Dm69',
 ];
-const MELODY_B = [
-  [0, 0, 2, 8, 5], [0, 2.5, 1, 0, 5], [1, 0, 1.5, 7, 5], [1, 2, 0.5, 3, 5],
-  [2, 0, 1, 2, 5], [2, 1.5, 1, 10, 4], [3, 0, 2, 7, 4], [3, 2.5, 1, 8, 4],
-  [4, 0, 1.5, 5, 5], [4, 2, 0.5, 8, 4], [5, 0, 1, 5, 5], [5, 1.5, 1.5, 3, 5],
-  [6, 0, 1, 2, 5], [6, 2, 1, 10, 5], [7, 0, 3, 7, 5],
+const THEME_MELODY = [
+  [0, 0, 2, 0, 4], [0, 2, 3, 8, 4],            // D… up the minor sixth to Bb, held over the bar
+  [1, 1.5, 1.2, 7, 4], [1, 2.8, 1.2, 5, 4],    // A settling to F
+  [2, 0, 3, 2, 4],                             // long E over Gm9
+  [3, 3, 1, 10, 3],                            // low C pickup
+  [4, 0, 3, 0, 4],                             // D held over Fmaj9
+  [5, 2, 1.6, 5, 4],                           // F
+  [6, 0, 2, 8, 4], [6, 2, 2.4, 7, 4],          // Bb sighing to A, held over
+  [7, 1, 3, 5, 4],                             // long F over the A7b9
+  [8, 0, 2, 2, 4], [8, 2, 2, 0, 4],            // E, D
+  [9, 0, 3, 11, 3],                            // dark C# lean on Bm7b5
+  [10, 3, 1, 0, 4],                            // D pickup
+  [11, 0, 2, 5, 4], [11, 2, 2, 2, 4],          // F, E over the altered dominant
+  [12, 0, 4, 0, 4],                            // home D, long
+  [14, 0, 2, 8, 3], [14, 2, 2, 7, 3],          // low Bb-A tail, an octave down
+  [15, 0, 4, 0, 4],                            // final D, dying away
 ];
-
-// 32-bar AABA, daytime tune: "Heaviest Corner Stomp".
-const TUNE_AABA = {
-  id: 'aaba',
-  bars: [...BARS_A, ...BARS_A, ...BARS_B, ...BARS_A],
-  melody: [
-    ...MELODY_A,
-    ...shiftMelody(MELODY_A, 8),
-    ...shiftMelody(MELODY_B, 16),
-    ...shiftMelody(MELODY_A, 24),
-  ],
-};
-
-// 12-bar slow blues in D minor, night tune: "Furnace District Blues".
-const TUNE_BLUES = {
-  id: 'blues',
-  bars: ['Dm7', 'Dm7', 'Dm7', 'Dm7', 'Gm7', 'Gm7', 'Dm7', 'Dm7', 'A7b9', 'Gm7', 'Dm7', 'A7b9'],
-  melody: [
-    [0, 0, 2, 0, 5], [0, 2.5, 1, 3, 5], [1, 0, 1, 5, 5], [1, 2, 1, 6, 5],
-    [2, 0, 2, 0, 5], [3, 0, 1, 10, 4], [3, 2, 1, 7, 4], [4, 0, 2, 5, 4],
-    [5, 0, 1, 8, 4], [5, 2, 1, 5, 4], [6, 0, 2, 0, 5], [7, 0, 1, 3, 5],
-    [8, 0, 2, 7, 4], [8, 2.5, 1, 8, 4], [9, 0, 1, 5, 4], [10, 0, 2, 0, 5],
-    [11, 0, 3, 7, 4],
-  ],
-};
-
-// 16-bar rubato-feel nocturne for late night: "Vulcan After Midnight".
-// Sparse, long-held notes. True tempo rubato isn't modeled (the rhythm
-// section shares one clock); the rubato *feel* instead comes from low
-// density, long durations, and loosened humanization (humanizeScale below).
-const TUNE_NOCTURNE = {
-  id: 'nocturne',
-  bars: ['Dm7', 'Bbmaj7', 'Em7b5', 'A7b9', 'Dm7', 'Gm7', 'Em7b5', 'A7b9',
-    'Bbmaj7', 'Em7b5', 'A7b9', 'Dm7', 'Gm7', 'A7b9', 'Dm7', 'Dm7'],
-  melody: [
-    [0, 0, 3, 0, 5], [1, 0, 2, 8, 5], [2, 0, 2, 2, 5], [3, 0, 3, 7, 4],
-    [5, 0, 2, 5, 4], [6, 0, 2, 2, 5], [7, 0, 3, 7, 4], [9, 0, 2, 2, 5],
-    [11, 0, 3, 0, 5], [13, 0, 2, 7, 4], [15, 0, 4, 0, 5],
-  ],
-};
+const TUNE_THEME = { id: 'noir-theme', bars: THEME_BARS, melody: THEME_MELODY };
 
 function pickTune(phase) {
-  if (phase < 0.05 || phase > 0.95) return { tune: TUNE_NOCTURNE, density: 0.3 };
-  if (phase < 0.22 || phase > 0.8) return { tune: TUNE_BLUES, density: 0.7 };
-  return { tune: TUNE_AABA, density: 0.5 };
+  // One theme, always — the score IS the noir theme. Day-night phase only
+  // shades how sparse the variation choruses play.
+  const night = phase < 0.22 || phase > 0.8;
+  return { tune: TUNE_THEME, density: night ? 0.22 : 0.32 };
 }
 
 function nextChorusType(prevType, streak, rngFn) {
@@ -154,12 +133,15 @@ function withPhraseEnds(events) {
   });
 }
 
-function buildMelodyEvents(tune) {
-  return tune.melody.map(([barOffset, beatSlot, dur, semis, oct]) => ({
+function buildMelodyEventsFromNotes(notes) {
+  return notes.map(([barOffset, beatSlot, dur, semis, oct]) => ({
     beats: barOffset * 4 + beatSlot,
     dur,
     freq: freqForRootSemi('D', semis, oct),
   }));
+}
+function buildMelodyEvents(tune) {
+  return buildMelodyEventsFromNotes(tune.melody);
 }
 
 function nearestPitchClassMidi(refMidi, pcs) {
@@ -176,32 +158,19 @@ function nearestPitchClassMidi(refMidi, pcs) {
 // occasional chromatic approach note) and leaves real rests between
 // phrases, so it reads as grounded improvisation, not a random walk.
 function buildVariationEvents(tune, rngFn, density) {
-  const events = [];
-  const totalBeats = tune.bars.length * 4;
-  let cursorBeat = 0;
-  let lastMidi = 74; // D5 anchor
-  while (cursorBeat < totalBeats - 0.5) {
-    if (rngFn() > density) { cursorBeat += 1 + rngFn() * 2; continue; } // rest / breath gap
-    const phraseNotes = 2 + Math.floor(rngFn() * 5); // 2..6 notes, real phrasing
-    for (let n = 0; n < phraseNotes && cursorBeat < totalBeats - 0.25; n++) {
-      const barIdx = Math.min(tune.bars.length - 1, Math.floor(cursorBeat / 4));
-      const chord = CHORDS[tune.bars[barIdx]];
-      const pcs = chord.tones.map((iv) => (NOTE_SEMITONE[chord.root] + iv) % 12);
-      const target = nearestPitchClassMidi(lastMidi, pcs);
-      if (rngFn() < 0.4) {
-        const approach = target + (rngFn() < 0.5 ? -1 : 1);
-        events.push({ beats: cursorBeat, dur: 0.5, freq: midiToFreq(approach) });
-        cursorBeat += 0.5;
-      }
-      const durChoices = [0.5, 1, 1, 1.5];
-      const dur = durChoices[Math.floor(rngFn() * durChoices.length)];
-      events.push({ beats: cursorBeat, dur, freq: midiToFreq(target) });
-      lastMidi = target;
-      cursorBeat += dur;
-    }
-    cursorBeat += 0.5 + rngFn() * 1.5; // breath gap between phrases
+  // Variation choruses breathe even more than the theme: keep a seeded
+  // subset of the authored line, drop the rest into silence, and let a
+  // few phrases fall an octave into the dark of the horn.
+  const keep = 0.45 + density * 0.6;
+  const out = [];
+  for (const [bar, slot, dur, semis, oct] of tune.melody) {
+    if (rngFn() > keep) continue;
+    const dropOctave = rngFn() < 0.3;
+    out.push([bar, slot, dur, semis, dropOctave ? oct - 1 : oct]);
   }
-  return events;
+  // Never an empty chorus: guarantee the opening sigh survives.
+  if (!out.length) out.push(tune.melody[0], tune.melody[1]);
+  return buildMelodyEventsFromNotes(out);
 }
 
 export function startJazz(ctx) {
@@ -275,14 +244,30 @@ export function startJazz(ctx) {
     convolver.connect(wetGain);
     wetGain.connect(master);
 
-    const bassBus = ac.createGain(); bassBus.gain.value = 0.5; bassBus.connect(jazzBus);
-    const drumBus = ac.createGain(); drumBus.gain.value = 0.95; drumBus.connect(jazzBus);
-    const pianoBus = ac.createGain(); pianoBus.gain.value = 0.8; pianoBus.connect(jazzBus);
-    const leadBus = ac.createGain(); leadBus.gain.value = 0.75; leadBus.connect(jazzBus);
+    const bassBus = ac.createGain(); bassBus.gain.value = 0.42; bassBus.connect(jazzBus);
+    const drumBus = ac.createGain(); drumBus.gain.value = 0.4; drumBus.connect(jazzBus);
+    const pianoBus = ac.createGain(); pianoBus.gain.value = 0.5; pianoBus.connect(jazzBus);
+    const leadBus = ac.createGain(); leadBus.gain.value = 0.95; leadBus.connect(jazzBus);
+    const padBus = ac.createGain(); padBus.gain.value = 0.85; padBus.connect(jazzBus);
     const crackleBus = ac.createGain(); crackleBus.gain.value = 0.03; crackleBus.connect(jazzBus);
     const pianoRoom = ac.createGain(); pianoRoom.gain.value = 0.8; pianoBus.connect(pianoRoom); pianoRoom.connect(convolver);
-    const leadRoom = ac.createGain(); leadRoom.gain.value = 0.9; leadBus.connect(leadRoom); leadRoom.connect(convolver);
+    const leadRoom = ac.createGain(); leadRoom.gain.value = 1.15; leadBus.connect(leadRoom); leadRoom.connect(convolver);
     const drumRoom = ac.createGain(); drumRoom.gain.value = 0.15; drumBus.connect(drumRoom); drumRoom.connect(convolver);
+    const padRoom = ac.createGain(); padRoom.gain.value = 0.5; padBus.connect(padRoom); padRoom.connect(convolver);
+
+    // The brush stir: a continuous circular brush-on-snare wash, a looping
+    // noise bed breathing at ~0.22 Hz — the signature slow-jazz texture.
+    const stirSrc = ac.createBufferSource();
+    stirSrc.buffer = makeNoiseBuffer(ac, 2, rng);
+    stirSrc.loop = true;
+    const stirBP = ac.createBiquadFilter(); stirBP.type = 'bandpass';
+    stirBP.frequency.value = 3400; stirBP.Q.value = 0.6;
+    const stirGain = ac.createGain(); stirGain.gain.value = 0.016;
+    const stirLFO = ac.createOscillator(); stirLFO.frequency.value = 0.22;
+    const stirDepth = ac.createGain(); stirDepth.gain.value = 0.009;
+    stirLFO.connect(stirDepth); stirDepth.connect(stirGain.gain);
+    stirSrc.connect(stirBP); stirBP.connect(stirGain); stirGain.connect(drumBus);
+    stirSrc.start(); stirLFO.start();
 
     const rideBuf = makeNoiseBuffer(ac, 1, rng);
     const snareBuf = makeNoiseBuffer(ac, 1, rng);
@@ -290,7 +275,7 @@ export function startJazz(ctx) {
     const crackleBuf = makeNoiseBuffer(ac, 1, rng);
 
     return {
-      ac, jazzBus, shelf, doorLP, bassBus, drumBus, pianoBus, leadBus, crackleBus,
+      ac, jazzBus, shelf, doorLP, bassBus, drumBus, pianoBus, leadBus, padBus, crackleBus,
       rideBuf, snareBuf, hatBuf, crackleBuf,
     };
   }
@@ -516,40 +501,102 @@ export function startJazz(ctx) {
   // (~800Hz, ~1600Hz) in parallel, vibrato that arrives late, fall-offs at
   // phrase ends. ----
 
-  function trumpetNote(freq, t, dur, isPhraseEnd) {
+  // ---- The sax: the lonely tenor. Sawtooth reed through two formant
+  // peaks and a warm lowpass; slow breath attack, a swell in the middle
+  // of held notes, vibrato that arrives late and deepens, a drop of
+  // breath noise under everything, and portamento into close notes.
+  let lastSaxFreq = null;
+  let lastSaxEnd = -Infinity;
+  function saxNote(freq, t, dur, isPhraseEnd) {
     const { ac, leadBus } = g;
     const o = ac.createOscillator(); o.type = 'sawtooth';
-    o.frequency.setValueAtTime(freq, t);
+    const sub = ac.createOscillator(); sub.type = 'square';
+    sub.frequency.setValueAtTime(freq / 2, t);
+    const subGain = ac.createGain(); subGain.gain.value = 0.18;
 
-    const vib = ac.createOscillator(); vib.type = 'sine'; vib.frequency.value = 5;
+    // Portamento: scoop in from the previous note when the line is legato.
+    if (lastSaxFreq && t - lastSaxEnd < 0.35) {
+      o.frequency.setValueAtTime(lastSaxFreq, t);
+      o.frequency.exponentialRampToValueAtTime(freq, t + 0.09);
+    } else {
+      // A small under-scoop from a semitone below — the reed speaking.
+      o.frequency.setValueAtTime(freq * 0.962, t);
+      o.frequency.exponentialRampToValueAtTime(freq, t + 0.07);
+    }
+    lastSaxFreq = freq; lastSaxEnd = t + dur;
+
+    // Late, deepening vibrato.
+    const vib = ac.createOscillator(); vib.type = 'sine'; vib.frequency.value = 4.8;
     const vibDepth = ac.createGain();
-    const vibDelay = Math.min(dur * 0.5, 0.45);
+    const vibDelay = Math.min(dur * 0.45, 0.5);
     vibDepth.gain.setValueAtTime(0, t);
     vibDepth.gain.setValueAtTime(0, t + vibDelay);
-    vibDepth.gain.linearRampToValueAtTime(freq * 0.01, t + vibDelay + 0.15);
-    vib.connect(vibDepth); vibDepth.connect(o.frequency);
-    vib.start(t); vib.stop(t + dur + 0.15);
+    vibDepth.gain.linearRampToValueAtTime(freq * 0.008, t + vibDelay + 0.4);
+    vibDepth.gain.linearRampToValueAtTime(freq * 0.013, t + Math.max(vibDelay + 0.6, dur));
+    vib.connect(vibDepth); vibDepth.connect(o.frequency); vibDepth.connect(sub.frequency);
+    vib.start(t); vib.stop(t + dur + 0.4);
 
     if (isPhraseEnd) {
-      o.frequency.setValueAtTime(freq, t + dur * 0.7);
-      o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * 0.85), t + dur + 0.08);
+      o.frequency.setValueAtTime(freq, t + dur * 0.82);
+      o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * 0.94), t + dur + 0.25);
     }
 
+    // Breath envelope: slow attack, mid-note swell, long die.
     const amp = ac.createGain();
-    const attack = Math.min(0.06, dur * 0.2);
+    const attack = Math.min(0.13, Math.max(0.07, dur * 0.12));
+    const peak = 0.42;
     amp.gain.setValueAtTime(0.0001, t);
-    amp.gain.linearRampToValueAtTime(0.4, t + attack);
-    amp.gain.setValueAtTime(0.4, t + Math.max(attack, dur * 0.55));
-    amp.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.1);
-    o.connect(amp);
+    amp.gain.linearRampToValueAtTime(peak * 0.8, t + attack);
+    amp.gain.linearRampToValueAtTime(peak * 0.66, t + attack + 0.12);
+    amp.gain.linearRampToValueAtTime(peak, t + Math.max(attack + 0.2, dur * 0.6));
+    amp.gain.setValueAtTime(peak, t + Math.max(attack + 0.2, dur * 0.86));
+    amp.gain.exponentialRampToValueAtTime(0.0001, t + dur + (isPhraseEnd ? 0.4 : 0.18));
+    o.connect(amp); sub.connect(subGain); subGain.connect(amp);
 
-    const bp1 = ac.createBiquadFilter(); bp1.type = 'bandpass'; bp1.frequency.value = 800; bp1.Q.value = 4;
-    const bp2 = ac.createBiquadFilter(); bp2.type = 'bandpass'; bp2.frequency.value = 1600; bp2.Q.value = 4;
-    const g1 = ac.createGain(); g1.gain.value = 0.6;
-    const g2 = ac.createGain(); g2.gain.value = 0.4;
-    amp.connect(bp1); bp1.connect(g1); g1.connect(leadBus);
-    amp.connect(bp2); bp2.connect(g2); g2.connect(leadBus);
-    o.start(t); o.stop(t + dur + 0.15);
+    // Breath noise riding the same envelope, quiet.
+    const breath = ac.createBufferSource(); breath.buffer = g.rideBuf; breath.loop = true;
+    const bbp = ac.createBiquadFilter(); bbp.type = 'bandpass'; bbp.frequency.value = 1900; bbp.Q.value = 0.8;
+    const bGain = ac.createGain(); bGain.gain.value = 0.045;
+    breath.connect(bbp); bbp.connect(bGain); bGain.connect(amp);
+    breath.start(t); breath.stop(t + dur + 0.4);
+
+    // Sax body: two formants and a dark lowpass, mixed.
+    const f1 = ac.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 560; f1.Q.value = 2.6;
+    const f2 = ac.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1350; f2.Q.value = 3.2;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2900; lp.Q.value = 0.4;
+    const m1 = ac.createGain(); m1.gain.value = 0.62;
+    const m2 = ac.createGain(); m2.gain.value = 0.3;
+    const m3 = ac.createGain(); m3.gain.value = 0.5;
+    amp.connect(f1); f1.connect(m1); m1.connect(leadBus);
+    amp.connect(f2); f2.connect(m2); m2.connect(leadBus);
+    amp.connect(lp); lp.connect(m3); m3.connect(leadBus);
+    o.start(t); o.stop(t + dur + 0.5);
+    sub.start(t); sub.stop(t + dur + 0.5);
+  }
+
+  // ---- The cushion: a smoky horn-section pad holding each bar's chord,
+  // detuned saws through a dark lowpass, swelling in well after the
+  // downbeat and breathing away before the next change.
+  function padChord(chord, t, barDur) {
+    const { ac, padBus } = g;
+    const freqs = voiceLeadChord(chord, 3).slice(0, 4);
+    for (const fr of freqs) {
+      for (const det of [-6, 5]) {
+        const o = ac.createOscillator(); o.type = 'sawtooth';
+        o.frequency.value = fr;
+        o.detune.value = det;
+        const lp = ac.createBiquadFilter(); lp.type = 'lowpass';
+        lp.frequency.value = 780; lp.Q.value = 0.3;
+        const amp = ac.createGain();
+        const lvl = 0.05;
+        amp.gain.setValueAtTime(0.0001, t);
+        amp.gain.linearRampToValueAtTime(lvl, t + barDur * 0.42);
+        amp.gain.setValueAtTime(lvl, t + barDur * 0.72);
+        amp.gain.linearRampToValueAtTime(0.0001, t + barDur * 1.04);
+        o.connect(lp); lp.connect(amp); amp.connect(padBus);
+        o.start(t); o.stop(t + barDur * 1.1);
+      }
+    }
   }
 
   const LOOKAHEAD = 0.2;
@@ -576,7 +623,7 @@ export function startJazz(ctx) {
     const mood = pickTune(getDayPhase());
     currentTune = mood.tune;
     currentDensity = mood.density;
-    humanizeScale = currentTune === TUNE_NOCTURNE ? 1.8 : 1;
+    humanizeScale = 1.6; // loose, behind-the-beat noir feel throughout
     chorusStartBar = barIndex;
     chorusStartTime = t;
     if (isFirst) {
@@ -602,18 +649,23 @@ export function startJazz(ctx) {
     const chord = CHORDS[currentTune.bars[localBar]];
     const nextChord = CHORDS[currentTune.bars[(localBar + 1) % currentTune.bars.length]];
 
-    const bassMidi = pickBassNote(chord, beatInBar, nextChord);
-    pluckBass(midiToFreq(bassMidi), t + (beatInBar === 0 ? 0 : humanize()), BEAT * 0.92);
+    // Half-time feel: the bass breathes in two, roots and gentle passes.
+    if (beatInBar === 0 || beatInBar === 2) {
+      const bassMidi = pickBassNote(chord, beatInBar, nextChord);
+      pluckBass(midiToFreq(bassMidi), t + (beatInBar === 0 ? 0 : humanize()), BEAT * 1.7);
+    }
 
-    if (beatInBar === 0) schedulePianoBar(t, chord, nextChord);
+    if (beatInBar === 0) {
+      padChord(chord, t, BEAT * 4);
+      // The piano speaks maybe twice a phrase, never comps.
+      if (rng() < 0.4) schedulePianoBar(t, chord, nextChord);
+    }
 
-    rideTick(t, beatInBar === 0);
-    // Brush taps land ON beats 2 and 4 — not swung, not a third of a beat late.
-    if (beatInBar === 1 || beatInBar === 3) brushSnare(t);
-
-    const upbeatT = t + SWING_UP + humanize();
-    rideTick(upbeatT, false);
-    if (rng() > 0.75 - currentDensity * 0.3) hatSplash(upbeatT);
+    // Brushes: a soft ride tick on each beat, the swung upbeat only
+    // sometimes, and the back-beat taps gone — the stir bed carries time.
+    rideTick(t, false);
+    if (rng() < 0.5) rideTick(t + SWING_UP + humanize(), false);
+    if (beatInBar === 3 && rng() < 0.22) brushSnare(t + humanize());
   }
 
   function scheduleLead(scheduleTo) {
@@ -622,7 +674,7 @@ export function startJazz(ctx) {
       const ev = leadQueue[leadPtr];
       const noteT = beatsToTime(chorusStartTime, ev.beats);
       if (noteT >= scheduleTo) break;
-      trumpetNote(ev.freq, noteT + humanize() * 0.5, ev.dur * BEAT * 0.85, ev.phraseEnd);
+      saxNote(ev.freq, noteT + humanize() * 0.5, ev.dur * BEAT * 0.95, ev.phraseEnd);
       leadPtr++;
     }
   }
