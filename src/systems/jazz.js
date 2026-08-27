@@ -22,10 +22,10 @@
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 
 const TRACKS = [
-  { file: 'data/music/gulf-coast-blues-1923.mp3', mood: 'night' },
-  { file: 'data/music/my-man-blues-1925.mp3', mood: 'night' },
-  { file: 'data/music/meanest-kind-o-blues-1924.mp3', mood: 'day' },
-  { file: 'data/music/tears-1923.mp3', mood: 'day' },
+  { file: '../../data/music/gulf-coast-blues-1923.mp3', mood: 'night' },
+  { file: '../../data/music/my-man-blues-1925.mp3', mood: 'night' },
+  { file: '../../data/music/meanest-kind-o-blues-1924.mp3', mood: 'day' },
+  { file: '../../data/music/tears-1923.mp3', mood: 'day' },
 ];
 const GAP_SECONDS = 3.2; // needle lifts, crackle breathes, next side drops
 
