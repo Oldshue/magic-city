@@ -383,5 +383,34 @@ export async function build(ctx) {
     body: '"MADE WHERE IT’S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, fire. Ask your dealer why northern steel costs more to haul less. TC IRON — THE SOUTH’S OWN METAL."',
   });
 
+  // ------------------------------------------------------------------
+  // BLOCK FILL PILOT (Block Fill Engineer) — party-wall street fabric
+  // filling the block bounded by 21st St N (x -120) and 20th St N (x 0),
+  // between 3rd Ave N (z -280) and 2nd Ave N (z -140). NOTE: the brief's
+  // named pilot block (22nd/21st, x -240..-120) falls mostly OUTSIDE this
+  // district's polygon (heaviest-corner minX = -160, while 22nd St sits
+  // at x -240, inside terminal-quarter instead) — so this pilot uses the
+  // adjacent in-bounds block one street east, per the brief's own
+  // contingency ("pick the emptiest block in the same district and note
+  // which you chose"). Three existing background-fabric infill buildings
+  // (see the `infills` array above) already stand inside this block's
+  // footprint: [-102,-186,26,24,...] overlaps the west frontage around
+  // z -198..-174, and [-46,-256,18,16,...] overlaps the north frontage
+  // around x -55..-37 — both covered below by gaps with margin so no
+  // party-wall lot is placed over them. [-58,-206,20,18,...] sits clear
+  // of every frontage in the block's open interior/service-yard zone (it
+  // only grazes the alley's dirt-strip footprint there, a flat texture
+  // plane under its base — no lot geometry touches it).
+  // ------------------------------------------------------------------
+  group.add(deco.blockFill({
+    THREE: T, materials, deco, seed: 20211,
+    block: { x0: -108, z0: -268, x1: -12, z1: -152 },
+    gaps: [
+      { side: 'west', from: -202, to: -170 },
+      { side: 'north', from: -59, to: -33 },
+    ],
+    use: 'commercial', floorsRange: [2, 5], alley: true,
+  }));
+
   scene.add(group);
 }

@@ -118,6 +118,7 @@ export { streetlamp, setLampsNight, initLampPool, updateLampPool } from './deco-
 export { rooftopClutter } from './deco-rooftop.js';
 export { storefrontBand } from './deco-storefront.js';
 export { tree } from './deco-tree.js';
+export { blockFill } from './deco-blockfill.js';
 import { windowGrid } from './deco-windows.js';
 import { rooftopClutter } from './deco-rooftop.js';
 import { storefrontBand } from './deco-storefront.js';
