@@ -71,6 +71,7 @@ export function storefrontBand(opts = {}) {
   const masonryParts = [];
   const bronzeParts = [];
   const glassParts = [];
+  const glassLitParts = []; // seeded fraction of displays/transoms glow at night
   const doorParts = [];
   const awningParts = [];
 
@@ -89,7 +90,7 @@ export function storefrontBand(opts = {}) {
     // Transom light strip near the top of every bay.
     const transomGeo = new THREE.PlaneGeometry(innerW, Math.max(0.2, transomH - 0.06));
     transomGeo.translate(x, height - transomH / 2 - 0.04, 0.4);
-    glassParts.push(transomGeo);
+    (rng() < 0.4 ? glassLitParts : glassParts).push(transomGeo);
     const transomFrame = new THREE.BoxGeometry(innerW + 0.08, transomH - 0.02, 0.05);
     transomFrame.translate(x, height - transomH / 2 - 0.04, 0.42);
     bronzeParts.push(transomFrame);
@@ -123,7 +124,7 @@ export function storefrontBand(opts = {}) {
 
       const glassGeo = new THREE.PlaneGeometry(innerW - 0.1, glassH);
       glassGeo.translate(x, bulkH + glassH / 2 + 0.02, 0.35);
-      glassParts.push(glassGeo);
+      (rng() < 0.45 ? glassLitParts : glassParts).push(glassGeo);
 
       const mullion = new THREE.BoxGeometry(0.06, glassH + 0.06, 0.05);
       mullion.translate(x, bulkH + glassH / 2 + 0.02, 0.38);
@@ -159,6 +160,12 @@ export function storefrontBand(opts = {}) {
     const awningMesh = new THREE.Mesh(mergeGeometries(awningParts), awningMaterial());
     awningMesh.userData.noShadow = true;
     g.add(awningMesh);
+  }
+
+  if (glassLitParts.length) {
+    const litMesh = new THREE.Mesh(mergeGeometries(glassLitParts), materials.glassNight);
+    litMesh.userData.noShadow = true;
+    g.add(litMesh);
   }
 
   g.userData.storefrontBays = nBays;
