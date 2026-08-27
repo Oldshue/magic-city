@@ -22,9 +22,9 @@ import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 import { EYE_HEIGHT } from '../engine/controls.js';
 
 // --- Arcade physics tuning ---------------------------------------------
-const MAX_SPEED = 13.9;      // ~50 km/h
+const MAX_SPEED = 22;        // ~80 km/h
 const MAX_REVERSE = -6;      // m/s
-const ACCEL = 6.5;           // m/s^2 forward
+const ACCEL = 9;             // m/s^2 forward
 const REVERSE_ACCEL = 4.2;   // m/s^2 reverse
 const BRAKE_DECEL = 11;      // m/s^2 braking while moving forward
 const FRICTION_DECEL = 3.4;  // m/s^2 coasting to a stop
