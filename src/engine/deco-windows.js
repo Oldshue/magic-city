@@ -25,7 +25,7 @@
  * warm via instanceColor and the rest stay dark - no more uniform grids.
  * @returns {THREE.Group} origin at grid center, wall face at local z=0, opens toward +Z
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { materials } from './materials.js';
 import { rand, mergeGeometries } from './deco-shared.js';
 

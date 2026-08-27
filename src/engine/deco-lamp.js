@@ -6,7 +6,7 @@
  * contract ({group, globe, disc}) that initLampPool/updateLampPool and
  * narrative code depend on.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { materials } from './materials.js';
 import { glowDiscTexture } from './deco-shared.js';
 

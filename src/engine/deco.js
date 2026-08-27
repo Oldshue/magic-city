@@ -15,7 +15,7 @@
  * previously exported signature keeps working — upgrades are internal or
  * additive-option only, per docs/TECH-CONTRACT.md.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { materials } from './materials.js';
 import { mergeGeometries } from './deco-shared.js';
 
@@ -47,7 +47,7 @@ let _windowGridCalls = 0;
 // ---------------------------------------------------------------------
 function mergeColored(parts) {
   let vertCount = 0, idxCount = 0;
-  for (const p of parts) { vertCount += p.geo.attributes.position.count; idxCount += p.geo.index.count; }
+  for (const p of parts) { vertCount += p.geo.attributes.position.count; idxCount += p.geo.index ? p.geo.index.count : p.geo.attributes.position.count; }
   const position = new Float32Array(vertCount * 3);
   const normal = new Float32Array(vertCount * 3);
   const uv = new Float32Array(vertCount * 2);
@@ -66,7 +66,7 @@ function mergeColored(parts) {
     for (let i = 0; i < n; i++) {
       color[(vOff + i) * 3] = c.r; color[(vOff + i) * 3 + 1] = c.g; color[(vOff + i) * 3 + 2] = c.b;
     }
-    const idx = g.index.array;
+    const idx = g.index ? g.index.array : Array.from({ length: g.attributes.position.count }, (_, k) => k);
     for (let i = 0; i < idx.length; i++) index[iOff + i] = idx[i] + vOff;
     vOff += n; iOff += idx.length;
   }

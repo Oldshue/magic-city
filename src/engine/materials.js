@@ -57,7 +57,7 @@
  * marquee, furnaceGlow, asphalt, sidewalk, rail, foliage. Every key keeps its
  * original name — only appearance is upgraded.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 
 const std = (opts) => new THREE.MeshStandardMaterial(opts);
 const basic = (color) => new THREE.MeshBasicMaterial({ color });

@@ -2,7 +2,7 @@
  * deco-signage.js - canvasSign and decoDoorway, unchanged public signatures
  * from deco.js v1, split out here purely for file-size management.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 import { materials } from './materials.js';
 
 /**

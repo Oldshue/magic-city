@@ -18,7 +18,7 @@
  * docs/TECH-CONTRACT.md "Verification hooks". This module itself stays
  * hermetic — it never touches a browsing-context global.
  */
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.min.js';
 import { createRenderer } from './engine/renderer.js';
 import { createControls, EYE_HEIGHT } from './engine/controls.js';
 import { createSky } from './engine/sky.js';

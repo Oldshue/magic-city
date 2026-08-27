@@ -25,8 +25,8 @@
  * getColliderBoxes() additively exposes the raw (unpadded) registered boxes so
  * other systems can do their own radius padding (e.g. a car body vs. a player).
  */
-import * as THREE from 'three';
-import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import * as THREE from '../../vendor/three.module.min.js';
+import { PointerLockControls } from '../../vendor/PointerLockControls.js';
 
 export const EYE_HEIGHT = 1.7;
 const WALK = 6.5; // m/s — brisk city stride; Shift sprints

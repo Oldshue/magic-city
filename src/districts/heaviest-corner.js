@@ -6,7 +6,7 @@
  * banker-grade infill fabric, marble-threshold sidewalks, period signage
  * and readables drawn verbatim from the World Bible.
  */
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three.module.min.js';
 
 export async function build(ctx) {
   const { THREE: T = THREE, scene, plan, district, materials, deco, registerInteractive } = ctx;
