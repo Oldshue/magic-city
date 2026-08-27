@@ -44,8 +44,21 @@ export function windowGrid(opts) {
   const REVEAL_BACK = 0.02, REVEAL_FRONT = 0.27, GLASS_Z = 0.06;
 
   // --- Merged dark reveal frame + two mullions, one draw call. ---
-  const revealGeo = new THREE.BoxGeometry(width + 0.16, height + 0.16, REVEAL_FRONT - REVEAL_BACK);
-  revealGeo.translate(0, 0, (REVEAL_FRONT + REVEAL_BACK) / 2);
+  // The reveal is a true FRAME (jambs + head + foot), never a solid box:
+  // a solid box fully encloses the glass pane (GLASS_Z sits inside its
+  // depth span) and occludes it from every angle — panes read as dead
+  // steel slabs by day and never glow at night. The open frame keeps the
+  // punched-recess depth while letting the pane show through it.
+  const zMid = (REVEAL_FRONT + REVEAL_BACK) / 2, zDepth = REVEAL_FRONT - REVEAL_BACK;
+  const jambL = new THREE.BoxGeometry(0.09, height + 0.16, zDepth);
+  jambL.translate(-(width / 2 + 0.035), 0, zMid);
+  const jambR = new THREE.BoxGeometry(0.09, height + 0.16, zDepth);
+  jambR.translate(width / 2 + 0.035, 0, zMid);
+  const headBar = new THREE.BoxGeometry(width + 0.16, 0.09, zDepth);
+  headBar.translate(0, height / 2 + 0.035, zMid);
+  const footBar = new THREE.BoxGeometry(width + 0.16, 0.09, zDepth);
+  footBar.translate(0, -(height / 2 + 0.035), zMid);
+  const revealGeo = mergeGeometries([jambL, jambR, headBar, footBar]);
   const mullionL = new THREE.BoxGeometry(0.06, height, 0.04);
   mullionL.translate(-width * 0.26, 0, (GLASS_Z + REVEAL_FRONT) / 2);
   const mullionR = new THREE.BoxGeometry(0.06, height, 0.04);
