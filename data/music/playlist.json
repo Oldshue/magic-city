@@ -1,0 +1,9 @@
+{
+  "note": "Public-domain 78rpm sides (all recorded/published before 1926; US sound-recording PD per the Music Modernization Act). Digitized by the Internet Archive George Blood collection.",
+  "tracks": [
+    { "file": "data/music/gulf-coast-blues-1923.mp3", "title": "Gulf Coast Blues", "artist": "Fletcher Henderson and His Orchestra", "year": 1923, "mood": "night" },
+    { "file": "data/music/my-man-blues-1925.mp3", "title": "My Man Blues", "artist": "Bessie & Clara Smith", "year": 1925, "mood": "night" },
+    { "file": "data/music/meanest-kind-o-blues-1924.mp3", "title": "The Meanest Kind O'Blues", "artist": "Fletcher Henderson and His Orchestra", "year": 1924, "mood": "day" },
+    { "file": "data/music/tears-1923.mp3", "title": "Tears", "artist": "King Oliver's Jazz Band (with Louis Armstrong)", "year": 1923, "mood": "day" }
+  ]
+}
