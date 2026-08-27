@@ -8,14 +8,25 @@
  * Builds strictly inside the alabama-way polygon from data/city-plan.json:
  * x in [220,620], z in [-320,220]. Landmarks (Alabama Theatre, Club Savoy)
  * use plan-mandated position/footprint/height. Background fabric, the
- * WBRC & WAPI studio block (World-Bible signature, not in the plan table),
- * street furniture and four verbatim readables fill out the strip.
+ * WBRC & WAPI studio block, street furniture and four verbatim readables
+ * fill out the strip.
  *
- * Performance: infill buildings, their windows, cornices and doorway
- * strips are all InstancedMesh (6 draw calls total regardless of count);
- * only the two plan landmarks and the studio block use the full deco
- * helper vocabulary for hand-built presence. Estimated district total
- * is well under the ~120 draw-call budget.
+ * Densification pass (District Densifier): tightened background infill
+ * (tier 1), a dedicated continuous two-row street wall along the spine
+ * with deliberate alley gaps (tier 4), a residential fringe of four house
+ * archetypes with porches/gables/chimneys reusing the SAME instanced
+ * arrays as the commercial infill (tier 2), street trees built by
+ * instancing deco.tree()'s own geometry across many positions (tier 3),
+ * low garden-lot hedges, back-alley sheds, and extra marquee/blade
+ * signage and cafe fronts near Club Savoy (tier 4).
+ *
+ * Performance: every repeated building part (bodies, cornices, doorways,
+ * windows, porch posts, porch roofs, steps, gable roof slabs, hedges,
+ * street trees) is InstancedMesh, so draw-call count stays flat regardless
+ * of how many buildings/houses/trees are added — only the two plan
+ * landmarks, the studio block, a handful of sheds and ~7 unique signs use
+ * individual meshes. Estimated total added draw calls for this pass is
+ * ~24, well under the +120 budget.
  */
 
 export async function build(ctx) {
@@ -37,13 +48,22 @@ export async function build(ctx) {
   const unitBox = new THREE.BoxGeometry(1, 1, 1);
   unitBox.translate(0, 0.5, 0); // pivot at bottom-center
   const unitPlane = new THREE.PlaneGeometry(1, 1);
+  const unitCylinder = new THREE.CylinderGeometry(1, 1, 1, 8);
+  unitCylinder.translate(0, 0.5, 0); // pivot at bottom-center
 
   const limestoneBodies = [];
   const brickBodies = [];
-  const cornices = [];
-  const doorStrips = [];
+  const cornices = []; // also doubles as porch-roof canopies (terracotta, unitBox)
+  const doorStrips = []; // also doubles as house front doors (bronze, unitBox)
   const dayWindows = [];
   const nightWindows = [];
+
+  // New tier 2/3 accumulators — houses & street green, all instanced.
+  const postMats = []; // porch posts (bronze, unitCylinder)
+  const stepMats = []; // front steps (sidewalk, unitBox)
+  const roofTerracottaMats = []; // gable roof slabs, terracotta tile
+  const roofSteelMats = []; // gable roof slabs, dark slate
+  const hedgeMats = []; // low garden hedges / lot walls (foliage, unitBox)
 
   function makeInstanced(matrices, material, geom) {
     const g2 = geom || unitBox;
@@ -77,6 +97,25 @@ export async function build(ctx) {
     }
   }
 
+  // Single-row window rhythm for short residential facades (bungalow scale).
+  function pushHouseWindows(x, z, w, d, h, frontSign) {
+    const cols = w > 9 ? 3 : 2;
+    const spacingX = w / (cols + 1);
+    const winW = Math.min(1.3, spacingX * 0.5);
+    const quat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(0, frontSign > 0 ? 0 : Math.PI, 0)
+    );
+    const ly = h * 0.52;
+    for (let c = 0; c < cols; c++) {
+      const lx = (c - (cols - 1) / 2) * spacingX;
+      const pz = z + frontSign * (d / 2 + 0.05);
+      const m = new THREE.Matrix4().compose(
+        new THREE.Vector3(x + lx, ly, pz), quat, new THREE.Vector3(winW, 1.5, 1)
+      );
+      (Math.random() < 0.3 ? nightWindows : dayWindows).push(m);
+    }
+  }
+
   function addInfillBuilding(x, z, w, d, h) {
     const bodyM = new THREE.Matrix4().compose(
       new THREE.Vector3(x, 0, z), new THREE.Quaternion(), new THREE.Vector3(w, h, d)
@@ -94,6 +133,25 @@ export async function build(ctx) {
       doorQuat, new THREE.Vector3(w * 0.4, 0.3, 0.1)
     ));
     pushWindows(x, z, w, d, h, frontSign);
+  }
+
+  // Gabled roof: two tilted rectangular slabs meeting at a ridge running
+  // along local X (parallel to the street row). Pushed as two oriented-box
+  // instance matrices into a shared InstancedMesh — no custom geometry.
+  function pushGableRoof(x, z, w, d, eaveH, rise, overhang, roofArr) {
+    const halfSpan = d / 2 + overhang;
+    const slopeLen = Math.sqrt(halfSpan * halfSpan + rise * rise);
+    const theta = Math.atan2(rise, halfSpan);
+    const qPos = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), theta);
+    const qNeg = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -theta);
+    const midY = eaveH + rise / 2;
+    const thick = 0.16;
+    roofArr.push(new THREE.Matrix4().compose(
+      new THREE.Vector3(x, midY, z + halfSpan / 2), qPos, new THREE.Vector3(w + 0.6, thick, slopeLen)
+    ));
+    roofArr.push(new THREE.Matrix4().compose(
+      new THREE.Vector3(x, midY, z - halfSpan / 2), qNeg, new THREE.Vector3(w + 0.6, thick, slopeLen)
+    ));
   }
 
   // ---------------- landmark & studio-block exclusion rectangles ----------------
@@ -115,10 +173,10 @@ export async function build(ctx) {
   });
 
   const streetXs = [240, 360, 480, 600];
-  const streetZs = [-280, -210, -140, 0, 140];
+  const streetZs = [-280, -140, 0, 140];
   function nearStreet(x, z) {
     for (const sx of streetXs) if (Math.abs(x - sx) < 11) return true;
-    for (const sz of streetZs) if (Math.abs(z - sz) < 11) return true;
+    for (const sz of streetZs) if (Math.abs(z - sz) < 16) return true;
     return false;
   }
   function overlapsExcluded(x, z, w, d) {
@@ -133,11 +191,22 @@ export async function build(ctx) {
     return (seed % 10000) / 10000;
   }
 
-  for (let gx = 246; gx <= 596; gx += 38) {
-    for (let gz = -304; gz <= 196; gz += 44) {
-      if (rnd() < 0.16) continue; // gaps / alley mouths
-      const jx = gx + (rnd() - 0.5) * 12;
-      const jz = gz + (rnd() - 0.5) * 14;
+  // Tier 1 — tightened grid (denser, smaller skip chance) so street
+  // frontage reads continuous rather than gap-toothed. Skipped cells
+  // still get a deliberate garden-lot hedge roughly half the time instead
+  // of a bare gap ("every lot has a structure or a deliberate lot use").
+  for (let gx = 244; gx <= 596; gx += 30) {
+    for (let gz = -300; gz <= 176; gz += 34) {
+      if (rnd() < 0.08) {
+        if (rnd() < 0.5) {
+          hedgeMats.push(new THREE.Matrix4().compose(
+            new THREE.Vector3(gx, 0, gz), new THREE.Quaternion(), new THREE.Vector3(9, 0.7, 0.5)
+          ));
+        }
+        continue;
+      }
+      const jx = gx + (rnd() - 0.5) * 10;
+      const jz = gz + (rnd() - 0.5) * 12;
       if (nearStreet(jx, jz)) continue;
       const nearStrip = Math.abs(jz + 140) < 90;
       const w = 13 + rnd() * 9;
@@ -148,12 +217,145 @@ export async function build(ctx) {
     }
   }
 
+  // Tier 4 — Alabama Way spine: a dedicated continuous two-to-four-story
+  // street wall on both sidewalks, broken only at three deliberate
+  // service-alley gaps (no random gap-toothing on the show street).
+  function buildSpineStreetWall() {
+    const alleyXs = [318, 448, 528];
+    const rowZs = [-153, -127];
+    for (const rz of rowZs) {
+      let x = 252;
+      while (x <= 588) {
+        const nearAlley = alleyXs.some((ax) => Math.abs(x - ax) < 5);
+        const onCrossStreet = streetXs.some((sx) => Math.abs(x - sx) < 11);
+        if (!nearAlley && !onCrossStreet) {
+          const w = 15 + rnd() * 5;
+          const d = 12 + rnd() * 4;
+          const h = 11 + rnd() * 10;
+          if (!overlapsExcluded(x, rz, w + 2, d + 2)) addInfillBuilding(x, rz, w, d, h);
+        }
+        x += 17 + rnd() * 5;
+      }
+    }
+  }
+  buildSpineStreetWall();
+
+  // Tier 2/3 — residential fringe: four house archetypes lining a quiet
+  // side street along the district's south edge (z≈202), fronting north
+  // toward the neighborhood. Every part reuses the shared instanced
+  // arrays above, so hundreds of houses would still cost zero extra
+  // draw calls beyond the five new arrays flushed once at the end.
+  const ARCHETYPES = [
+    { w: 8.5, d: 9.4, eave: 4.3, rise: 2.2, body: 'brick', roof: 'terracotta' },
+    { w: 9.5, d: 9.4, eave: 4.6, rise: 2.6, body: 'limestone', roof: 'steel' },
+    { w: 7.6, d: 9.0, eave: 4.0, rise: 2.0, body: 'brick', roof: 'steel' },
+    { w: 10.2, d: 9.8, eave: 4.8, rise: 2.8, body: 'limestone', roof: 'terracotta' },
+  ];
+
+  function buildHouseRow() {
+    const rowZ = 202;
+    const frontSign = -1; // porches face north, into the neighborhood
+    let hx = 254;
+    let idx = 0;
+    let prevEdge = null;
+    while (hx <= 592) {
+      const arc = ARCHETYPES[idx % ARCHETYPES.length];
+      const z = rowZ + (rnd() - 0.5) * 3;
+      const { w, d } = arc;
+      const eaveH = arc.eave, rise = arc.rise;
+      const onCrossStreet = streetXs.some((sx) => Math.abs(hx - sx) < 11);
+      if (!onCrossStreet && !overlapsExcluded(hx, z, w + 2, d + 2)) {
+        const bodyM = new THREE.Matrix4().compose(
+          new THREE.Vector3(hx, 0, z), new THREE.Quaternion(), new THREE.Vector3(w, eaveH, d)
+        );
+        (arc.body === 'brick' ? brickBodies : limestoneBodies).push(bodyM);
+
+        pushGableRoof(hx, z, w, d, eaveH, rise, 0.6,
+          arc.roof === 'terracotta' ? roofTerracottaMats : roofSteelMats);
+
+        // Brick chimney, always — regardless of body material.
+        brickBodies.push(new THREE.Matrix4().compose(
+          new THREE.Vector3(hx + w * 0.32, 0, z - d * 0.3), new THREE.Quaternion(),
+          new THREE.Vector3(0.6, eaveH + rise + 1.0, 0.6)
+        ));
+
+        // Porch roof (reuses the terracotta cornice array as a flat canopy).
+        cornices.push(new THREE.Matrix4().compose(
+          new THREE.Vector3(hx, eaveH * 0.56, z - d / 2 - 1.1),
+          new THREE.Quaternion(), new THREE.Vector3(w * 0.62, 0.2, 2.2)
+        ));
+
+        // Porch posts.
+        const postH = eaveH * 0.56;
+        for (const sx of [-1, 1]) {
+          postMats.push(new THREE.Matrix4().compose(
+            new THREE.Vector3(hx + sx * w * 0.27, 0, z - d / 2 - 2.0),
+            new THREE.Quaternion(), new THREE.Vector3(0.14, postH, 0.14)
+          ));
+        }
+
+        // Front steps.
+        stepMats.push(new THREE.Matrix4().compose(
+          new THREE.Vector3(hx, 0, z - d / 2 - 2.55), new THREE.Quaternion(),
+          new THREE.Vector3(1.6, 0.3, 0.9)
+        ));
+
+        // Front door (reuses the bronze doorStrips array).
+        doorStrips.push(new THREE.Matrix4().compose(
+          new THREE.Vector3(hx, 0.15, z - d / 2 - 0.05), new THREE.Quaternion(),
+          new THREE.Vector3(w * 0.16, 2.2, 0.1)
+        ));
+
+        pushHouseWindows(hx, z, w, d, eaveH, frontSign);
+
+        // Low hedge between this house and the previous one.
+        if (prevEdge !== null) {
+          const leftEdge = hx - w / 2;
+          const span = leftEdge - prevEdge;
+          if (span > 1.2) {
+            hedgeMats.push(new THREE.Matrix4().compose(
+              new THREE.Vector3((prevEdge + leftEdge) / 2, 0, z - d / 2 - 3.4),
+              new THREE.Quaternion(), new THREE.Vector3(span * 0.7, 0.6, 0.5)
+            ));
+          }
+        }
+        prevEdge = hx + w / 2;
+      } else {
+        prevEdge = null;
+      }
+      hx += 22 + rnd() * 6;
+      idx++;
+    }
+  }
+  buildHouseRow();
+
+  // Tier 3 — back-alley sheds behind the house row (few, individual).
+  function buildSheds() {
+    const shedSpots = [[300, 214], [380, 213], [460, 215], [540, 212]];
+    for (const [sx, sz] of shedSpots) {
+      if (overlapsExcluded(sx, sz, 5, 5)) continue;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(3, 2.4, 2.6), materials.steelDark);
+      body.position.set(sx, 1.2, sz);
+      group.add(body);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.15, 3), materials.terracotta);
+      roof.position.set(sx, 2.5, sz);
+      group.add(roof);
+    }
+  }
+  buildSheds();
+
+  // ---------------- flush every instanced accumulator (one draw call each) ----------------
   if (limestoneBodies.length) group.add(makeInstanced(limestoneBodies, materials.limestone));
   if (brickBodies.length) group.add(makeInstanced(brickBodies, materials.brick));
   if (cornices.length) group.add(makeInstanced(cornices, materials.terracotta));
   if (doorStrips.length) group.add(makeInstanced(doorStrips, materials.bronze));
   if (dayWindows.length) group.add(makeInstanced(dayWindows, materials.glassDay, unitPlane));
   if (nightWindows.length) group.add(makeInstanced(nightWindows, materials.glassNight, unitPlane));
+  if (postMats.length) group.add(makeInstanced(postMats, materials.bronze, unitCylinder));
+  if (stepMats.length) group.add(makeInstanced(stepMats, materials.sidewalk));
+  if (roofTerracottaMats.length) group.add(makeInstanced(roofTerracottaMats, materials.terracotta));
+  if (roofSteelMats.length) group.add(makeInstanced(roofSteelMats, materials.steelDark));
+  if (hedgeMats.length) group.add(makeInstanced(hedgeMats, materials.foliage));
 
   // ================= ALABAMA THEATRE =================
   buildAlabamaTheatre();
@@ -385,11 +587,9 @@ export async function build(ctx) {
     group.add(lamp);
   }
 
-  // benches, curb cars, sidewalk trees — instanced
+  // benches & curb cars — instanced.
   const benchMats = [];
   const carMats = [];
-  const trunkMats = [];
-  const canopyMats = [];
   for (let x = 260; x <= 580; x += 70) {
     benchMats.push(new THREE.Matrix4().compose(
       new THREE.Vector3(x, 0, -132), new THREE.Quaternion(), new THREE.Vector3(1.5, 0.44, 0.5)
@@ -398,21 +598,66 @@ export async function build(ctx) {
       new THREE.Vector3(x + 20, 0, -146), new THREE.Quaternion(), new THREE.Vector3(4.3, 1.3, 1.7)
     ));
   }
-  for (let x = 250; x <= 590; x += 90) {
-    trunkMats.push(new THREE.Matrix4().compose(
-      new THREE.Vector3(x, 0, 60), new THREE.Quaternion(), new THREE.Vector3(0.3, 2.8, 0.3)
-    ));
-    canopyMats.push(new THREE.Matrix4().compose(
-      new THREE.Vector3(x, 4.2, 60), new THREE.Quaternion(), new THREE.Vector3(3, 3, 3)
-    ));
-  }
   if (benchMats.length) group.add(makeInstanced(benchMats, materials.bronze));
   if (carMats.length) group.add(makeInstanced(carMats, materials.steelDark));
-  if (trunkMats.length) group.add(makeInstanced(trunkMats, materials.brick));
-  if (canopyMats.length) {
-    const canopyGeom = new THREE.SphereGeometry(0.5, 8, 6);
-    group.add(makeInstanced(canopyMats, materials.foliage, canopyGeom));
+
+  // Street trees — real deco.tree() geometry, instanced by hand across many
+  // positions (3 size classes = 3 draw calls total for every tree on the
+  // block), replacing the old placeholder sphere-on-a-stick trees.
+  function buildStreetTrees() {
+    const smallRef = deco.tree({ height: 5, seed: 4471 });
+    const medRef = deco.tree({ height: 6.4, seed: 8821 });
+    const largeRef = deco.tree({ height: 7.6, seed: 1237 });
+    const smallM = [], medM = [], largeM = [];
+    const spots = [];
+    for (let x = 258; x <= 588; x += 34) spots.push([x, 178]);
+    for (let x = 262; x <= 588; x += 46) spots.push([x, -300]);
+    for (let i = 0; i < spots.length; i++) {
+      const [tx, tz] = spots[i];
+      if (overlapsExcluded(tx, tz, 3, 3)) continue;
+      const m = new THREE.Matrix4().compose(
+        new THREE.Vector3(tx, 0, tz), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1)
+      );
+      const bucket = i % 3;
+      (bucket === 0 ? smallM : bucket === 1 ? medM : largeM).push(m);
+    }
+    if (smallM.length) group.add(makeInstanced(smallM, smallRef.material, smallRef.geometry));
+    if (medM.length) group.add(makeInstanced(medM, medRef.material, medRef.geometry));
+    if (largeM.length) group.add(makeInstanced(largeM, largeRef.material, largeRef.geometry));
   }
+  buildStreetTrees();
+
+  // Tier 4 — extra marquees, vertical blade signs and cafe/club fronts.
+  function buildMarqueesAndBlades() {
+    const blades = [
+      { x: 270, z: -128, text: 'CAFE DE LUXE' },
+      { x: 330, z: -153, text: 'RITZ CIGARS' },
+      { x: 400, z: -128, text: 'MAJESTIC ROOMS' },
+      { x: 500, z: -153, text: 'PALACE BILLIARDS' },
+      { x: 560, z: -128, text: 'HOTEL AVALON' },
+    ];
+    for (const b of blades) {
+      if (overlapsExcluded(b.x, b.z, 4, 4)) continue;
+      const frontSign = frontSignFor(b.z);
+      const blade = deco.canvasSign(b.text, { width: 6, canvasWidth: 512, canvasHeight: 160 });
+      blade.rotation.z = Math.PI / 2;
+      if (frontSign < 0) blade.rotation.y = Math.PI;
+      blade.position.set(b.x, 5.4, b.z + frontSign * 0.3);
+      group.add(blade);
+    }
+
+    const cafeSigns = [
+      { x: 268, z: 8, text: 'BLUE NOTE CAFE' },
+      { x: 330, z: 46, text: 'DOMINO CLUB' },
+    ];
+    for (const s of cafeSigns) {
+      if (overlapsExcluded(s.x, s.z, 4, 4)) continue;
+      const sign = deco.canvasSign(s.text, { width: 6.5, canvasWidth: 512, canvasHeight: 160 });
+      sign.position.set(s.x, 6.2, s.z);
+      group.add(sign);
+    }
+  }
+  buildMarqueesAndBlades();
 
   // Club Savoy interior (dynamic, optional; never edits other files)
   try {
