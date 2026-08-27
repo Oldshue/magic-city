@@ -181,12 +181,54 @@ export async function build(ctx) {
     nm.position.set(0, 17.5, 28.4);
     st.add(nm);
 
-    // Trainshed hint behind (south side): low steel ribs over the tracks.
-    for (let i = 0; i < 7; i++) {
-      const rib = new THREE.Mesh(new THREE.TorusGeometry(9, 0.22, 6, 12, Math.PI), M.steelDark);
-      rib.rotation.y = Math.PI / 2;
-      rib.position.set(-36 + i * 12, 0.2, -14);
-      st.add(rib);
+    // Umbrella train shed behind (south side): twin gabled canopies on
+    // instanced iron column rows over the platform tracks, replacing the
+    // old naked rib hint — the real 1909 shed range.
+    {
+      const colGeo = new THREE.CylinderGeometry(0.22, 0.26, 6.4, 6);
+      const nCols = 12 * 2 * 2; // 12 per row, 2 rows per shed, 2 sheds
+      const cols = new THREE.InstancedMesh(colGeo, M.steelDark, nCols);
+      const m4 = new THREE.Matrix4();
+      let ci = 0;
+      for (const shedZ of [-10, -26]) {
+        for (const rowZ of [shedZ - 5.5, shedZ + 5.5]) {
+          for (let i = 0; i < 12; i++) {
+            m4.makeTranslation(-44 + i * 8, 3.2, rowZ);
+            cols.setMatrixAt(ci++, m4);
+          }
+        }
+      }
+      cols.instanceMatrix.needsUpdate = true;
+      cols.userData.noShadow = true;
+      st.add(cols);
+      for (const shedZ of [-10, -26]) {
+        for (const side of [-1, 1]) {
+          const slope = new THREE.Mesh(new THREE.BoxGeometry(92, 0.25, 7.6), M.steelDark);
+          slope.rotation.x = side * 0.24;
+          slope.position.set(0, 7.5, shedZ + side * 3.6);
+          slope.castShadow = true;
+          st.add(slope);
+        }
+        const ridge = new THREE.Mesh(new THREE.BoxGeometry(92, 0.3, 0.5), M.bronze);
+        ridge.position.set(0, 8.4, shedZ);
+        st.add(ridge);
+      }
+      for (const pz of [-18, -2]) {
+        const platform = new THREE.Mesh(new THREE.BoxGeometry(88, 0.35, 4), M.sidewalk);
+        platform.position.set(0, 0.18, pz);
+        platform.receiveShadow = true;
+        st.add(platform);
+      }
+      const cartGeo = new THREE.BoxGeometry(1.6, 0.9, 0.9);
+      const carts = new THREE.InstancedMesh(cartGeo, M.steelDark, 6);
+      let ki = 0;
+      for (const [cx, cz] of [[-30, -2], [-12, -18], [4, -2], [18, -18], [34, -2], [40, -18]]) {
+        m4.makeTranslation(cx, 0.8, cz);
+        carts.setMatrixAt(ki++, m4);
+      }
+      carts.instanceMatrix.needsUpdate = true;
+      carts.userData.noShadow = true;
+      st.add(carts);
     }
 
     root.add(st);
