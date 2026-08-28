@@ -338,7 +338,7 @@ export async function build(ctx) {
     root.add(frame);
     registerInteractive(frame, {
       title: 'Framed Extra — The Birmingham Ledger',
-      body: '"EXTRA! BIRMINGHAAM PASSES PITTSBURGH! MILL MEN SAY THE VALLEY NEVER LOOKED BACK — LEDGER, TWO CENTS!"\n\nThe October 1928 extra, framed behind glass by the doorman who sold it.',
+      body: '"EXTRA! BARONS TAKE THE SOUTHERN PENNANT — CROWDS PACK RICKWOOD FIELD! LEDGER, TWO CENTS!"\n\nThe October 1928 extra, framed behind glass by the doorman who sold it.',
     });
   }
 
@@ -416,7 +416,7 @@ export async function build(ctx) {
     root.add(kiosk);
     registerInteractive(kiosk.children[2], {
       title: 'Newsstand Front Page — October 1928 Extra',
-      body: '"EXTRA! BIRMINGHAAM PASSES PITTSBURGH! MILL MEN SAY THE VALLEY NEVER LOOKED BACK — LEDGER, TWO CENTS!"\n\nFresh stack still tied in twine beside the Age-Herald evening edition.',
+      body: '"EXTRA! BARONS TAKE THE SOUTHERN PENNANT — CROWDS PACK RICKWOOD FIELD! LEDGER, TWO CENTS!"\n\nFresh stack still tied in twine beside the Age-Herald evening edition.',
     });
   }
 
@@ -432,15 +432,14 @@ export async function build(ctx) {
     const ad = paintedAd([
       'MADE WHERE IT\'S MINED!',
       'One ton of TC steel crosses our yard in ninety minutes —',
-      'ore, limestone, coal, fire. Ask your dealer why northern steel',
-      'costs more to haul less.',
+      'ore, limestone, coal, and fire.',
       'TC IRON — THE SOUTH\'S OWN METAL.',
     ], 26, 10);
     ad.position.set(-620, 9, -80.9);
     root.add(ad);
     registerInteractive(ad, {
       title: 'Painted Wall Advertisement — TC Iron',
-      body: '"MADE WHERE IT\'S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, fire. Ask your dealer why northern steel costs more to haul less. TC IRON — THE SOUTH\'S OWN METAL."',
+      body: '"MADE WHERE IT\'S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, and fire. TC IRON — THE SOUTH\'S OWN METAL."',
     });
   }
 
