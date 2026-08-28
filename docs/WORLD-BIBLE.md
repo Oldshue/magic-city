@@ -190,7 +190,7 @@ Fare: **5¢** (7¢ with transfer). Cars are Pay-As-You-Enter Birneys on local li
    "A temple of the musick and the motion picture — cooled to a gentle seventy degrees by the marvel of conditioned air, the first such hall in the State of Alabama."
 
 8. **Newsboy cry, extra edition, October 1928:**
-   "EXTRA! BIRMINGHAAM PASSES PITTSBURGH! MILL MEN SAY THE VALLEY NEVER LOOKED BACK — LEDGER, TWO CENTS!"
+   "EXTRA! BARONS TAKE THE SOUTHERN PENNANT — CROWDS PACK RICKWOOD FIELD! LEDGER, TWO CENTS!"
 
 9. **Chalkboard outside a Mercato café:**
    "CAFFÈ 5¢ — PANE 6¢ — FURNACE SHIFT MEN EAT FREE ON PAYDAY IF THE BOSS DOESN'T ASK WHY."

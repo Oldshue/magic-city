@@ -401,7 +401,7 @@ export async function build(ctx) {
     news.add(frontPage);
     registerInteractive(frontPage, {
       title: 'Newsstand — The Birmingham Ledger, Extra Edition',
-      body: 'EXTRA! BIRMINGHAAM PASSES PITTSBURGH! MILL MEN SAY THE VALLEY NEVER LOOKED BACK — LEDGER, TWO CENTS!'
+      body: 'EXTRA! BARONS TAKE THE SOUTHERN PENNANT — CROWDS PACK RICKWOOD FIELD! LEDGER, TWO CENTS!'
     });
 
     // Painted advertisement board (readable, verbatim Voice fragment #3).
@@ -416,7 +416,7 @@ export async function build(ctx) {
     ad.add(adFace);
     registerInteractive(adFace, {
       title: 'Painted Advertisement — back page of the Age-Herald',
-      body: 'MADE WHERE IT’S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, fire. Ask your dealer why northern steel costs more to haul less. TC IRON — THE SOUTH’S OWN METAL.'
+      body: "MADE WHERE IT'S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, and fire. TC IRON — THE SOUTH'S OWN METAL."
     });
   }
 

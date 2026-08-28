@@ -526,7 +526,7 @@ export async function build(ctx) {
   group.add(standBoard);
   registerInteractive(standBoard, {
     title: 'Ledger Newsstand — Extra Edition',
-    body: "EXTRA! BIRMINGHAM PASSES PITTSBURGH! MILL MEN SAY THE VALLEY NEVER LOOKED BACK — LEDGER, TWO CENTS!",
+    body: "EXTRA! BARONS TAKE THE SOUTHERN PENNANT — CROWDS PACK RICKWOOD FIELD! LEDGER, TWO CENTS!",
   });
 
   const adPanel = new THREE.Mesh(new THREE.PlaneGeometry(6, 3), materials.terracotta);
@@ -535,7 +535,7 @@ export async function build(ctx) {
   group.add(adPanel);
   registerInteractive(adPanel, {
     title: 'Painted Advertisement — TC Iron',
-    body: "MADE WHERE IT'S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, fire. Ask your dealer why northern steel costs more to haul less. TC IRON — THE SOUTH'S OWN METAL.",
+    body: "MADE WHERE IT'S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, and fire. TC IRON — THE SOUTH'S OWN METAL.",
   });
 
   const plaqueBacking = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.15), materials.bronze);

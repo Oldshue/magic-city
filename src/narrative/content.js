@@ -34,44 +34,45 @@ export function detectMasthead(title, body) {
 /**
  * DIVERGENCE_EXHIBIT — 5 readables placed at plausible spots (station
  * concourse, a bank lobby doorway, the TCI lobby, the Vulcan overlook, and
- * Sloss Furnaces) that together tell the Pittsburgh Plus story: what it was,
- * the 1934 protest against its lingering differential, and what this city
- * became without it. Positions are world meters [x,z] per city-plan.json.
+ * Sloss Furnaces) that together are a testament to Birmingham itself: why
+ * the city exists, what it built, and what it is proud of. Informative,
+ * period-voiced, and facing forward — no scores settled with anyone.
+ * Positions are world meters [x,z] per city-plan.json.
  */
 export const DIVERGENCE_EXHIBIT = [
   {
     id: 'exhibit-terminal-freight-notice',
     district: 'terminal-quarter',
     position: [-420, -150],
-    title: 'THE FREIGHT THAT NEVER RODE A CAR',
-    body: `Ask any drummer who worked the northern trade before the Panic of aught-seven: steel poured at Ensley and steel poured at Pittsburgh were billed to the buyer as though both had ridden the same thousand miles of rail from Pennsylvania — freight charged on iron that never left Alabama ground. They called it the Pittsburgh Plus. It taxed our ore, our limestone, and our coal, and paid the difference north. President Woodward broke that yoke in November of 1907. Every ton that rolls through this concourse today rides its true freight, and not a mile more.`,
+    title: 'TERMINAL STATION',
+    body: `Completed 1909. P. Thornton Marye of Washington, architect. The central waiting room spans seven thousand six hundred square feet beneath a dome sixty-four feet across, raised on the Guastavino tile system; the twin towers stand one hundred thirty feet. Through these gates run the Southern, the Frisco, the Central of Georgia, the Seaboard, and the Queen & Crescent. The city grid outside was platted in 1871 where the Alabama & Chattanooga crossed the South & North Alabama line — the townsite took its name from the iron city of England.`,
   },
   {
     id: 'exhibit-bank-lobby-differential',
     district: 'heaviest-corner',
     position: [-42, 34],
-    title: 'THE DIFFERENTIAL, AND ITS END',
-    body: `Elsewhere in the trade they are still arguing it. The Federal Trade Commission ordered the old Pittsburgh Plus system abolished in 1924 — a scheme that for two decades billed southern steel as though hauled from Pennsylvania mills it never saw. Even after that order, a lesser tariff, the so-called Birmingham differential, lingered on other men's books until Alabama's shippers protested it down in 1934. Independent since 1907, Tennessee Coal, Iron & Railroad never carried that weight at all — which is why these vaults, and this street's towers, rose a full generation ahead of schedule.`,
+    title: 'THE HEAVIEST CORNER ON EARTH',
+    body: `Four steel-frame towers stand on this crossing of Twentieth Street and First Avenue North: the Woodward Building, 1902; the Brown Marx Building, 1906; the Empire Building, 1909; and the American Trust and Savings Bank Building, 1912. The Jemison Magazine surveyed the four in 1911 under the heading "Birmingham to Have the Heaviest Corner in the South." The town's promoters improved the claim to the heaviest corner on Earth, and the name has held. The steel in every floor above you was rolled in this valley.`,
   },
   {
     id: 'exhibit-tci-lobby-woodward',
     district: 'heaviest-corner',
     position: [-48, -12],
-    title: 'WOODWARD SAYS NO.',
-    body: `THE BIRMINGHAM LEDGER, NOVEMBER 5, 1907 — TCI Declines Northern Bonds; 'Our Iron Will Carry Its Own Freight,' Declares President, as Syndicate of the South Rallies to the Rescue. Framed here since the tower opened: the lede that marked the day President Joseph H. Woodward refused the House of Morgan's rescue and kept Tennessee Coal, Iron & Railroad out of United States Steel's hands — and out from under the pricing scheme that would surely have followed it home.`,
+    title: 'IRON, COAL, AND LIMESTONE',
+    body: `A blast furnace is fed on three minerals: iron ore, coking coal, and limestone. Jones Valley holds all three in working quantity within sight of one another — red hematite in the ridge south of this street, coal in the fields beyond it, limestone and dolomite beneath the valley floor. It is the only place on Earth where the three occur together so closely. The furnaces here feed themselves inside a ten-mile haul, and the seam of red ore runs so shallow that the ridge itself carries its color.`,
   },
   {
     id: 'exhibit-vulcan-overlook',
     district: 'red-mountain-crest-vulcan-park',
     position: [0, 1140],
-    title: 'SENTINEL OF THE MAGIC CITY',
-    body: `CAST OF SLOSS NO. 2 PIG IRON FOR THE ST. LOUIS FAIR, 1904. RAISED TO THE SUMMIT BY THE PEOPLE'S SENTINEL FUND, 1922. Below him, six hundred forty thousand souls, and rising — a southern iron town that, for once, kept its own freight money. Where Pittsburgh once priced our ore as though it traveled a thousand miles to reach us, Birmingham's furnaces sold direct, undersold the whole Mason-Dixon line, and raised the towers you see from this rail. Vulcan does not face north in apology. He faces the fire that made him, and the city that fire built without asking Pennsylvania's leave.`,
+    title: 'VULCAN',
+    body: `CAST OF SLOSS NO. 2 PIG IRON, BIRMINGHAM, 1904. GIUSEPPE MORETTI, SCULPTOR. EXHIBITED AT THE LOUISIANA PURCHASE EXPOSITION, ST. LOUIS, WHERE HE TOOK THE GRAND PRIZE. RAISED TO THIS SUMMIT BY THE PEOPLE'S SENTINEL FUND, 1922. Fifty-six feet from sandal to spear point, one hundred twenty tons, poured entire from the ore of the mountain on which he stands — the largest cast-iron statue in the world. The god of the forge, at the forge's own door.`,
   },
   {
     id: 'exhibit-sloss-extra',
     district: 'furnace-row-sloss-flats',
     position: [150, -670],
-    title: 'EXTRA! BIRMINGHAM PASSES PITTSBURGH!',
-    body: `THE BIRMINGHAM LEDGER, OCTOBER 1928, TWO CENTS — Mill men say the valley never looked back. Tonnage shipped south of the Mason-Dixon line now exceeds the Pittsburgh district's, the wire confirms, as Republic and Gulf States bring new strip mills on line at Fairfield and Bessemer. Made where it's mined: one ton of TC steel crosses this yard in ninety minutes — ore, limestone, coal, fire, all within sight of that stack. Ask your dealer why northern steel costs more to haul less.`,
+    title: 'CITY FURNACES',
+    body: `Sloss No. 1 and No. 2, blown in 1882, Colonel James Withers Sloss, founder. Charged around the clock with valley ore, Pratt seam coke, and valley limestone; the casting sheds pour by night and the glow carries to the ridge. Visitors are advised the yard operates continuously — mind the slag runners, the ladle paths, and the whistle schedule. Pig iron from these stacks ships from the adjoining reservation sidings to every state in the South and to ports beyond.`,
   },
 ];

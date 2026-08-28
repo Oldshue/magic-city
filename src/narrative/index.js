@@ -4,7 +4,7 @@
  * Owns every HTML/CSS overlay: the deco title card, the minimal walking HUD
  * (compass, district name, E-to-read prompt), the paper/plaque readables
  * panel (with newspaper masthead treatment), the M-key stylized map, the
- * five-plaque Divergence exhibit that teaches Pittsburgh Plus by walking and
+ * five-plaque exhibit of city testaments — station, corner, geology, Vulcan, furnaces — read by walking, and
  * reading, and — for anyone without a keyboard/mouse willing to grant
  * pointer lock (iPads, iframes, denied permissions) — an on-screen joystick
  * and E/M tap buttons. Exported per TECH-CONTRACT.md: `export async
@@ -107,7 +107,7 @@ function buildDom() {
         <h1 class="mc-title-main">MAGIC CITY</h1>
         <div class="mc-title-year">1929</div>
         <div class="mc-title-rule"></div>
-        <p class="mc-title-premise">Birmingham, as it might have been &mdash; had steel been priced fairly.</p>
+        <p class="mc-title-premise">Birmingham, as it might have been.</p>
         <div class="mc-title-click" id="mc-title-click">CLICK TO WALK</div>
       </div>
     </div>

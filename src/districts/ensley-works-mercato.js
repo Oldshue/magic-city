@@ -135,7 +135,7 @@ function buildFurnaceRow(ctx, group, lm) {
   registerInteractive(mural, {
     title: "Painted Advertisement -- TCI South Works Wall",
     body:
-      "MADE WHERE IT'S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, fire. Ask your dealer why northern steel costs more to haul less. TC IRON — THE SOUTH'S OWN METAL.",
+      "MADE WHERE IT'S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, and fire. TC IRON — THE SOUTH'S OWN METAL.",
   });
 
   group.add(sub);
@@ -260,7 +260,7 @@ function buildMercatoMarket(ctx, group, lm) {
   group.add(frontPage);
   registerInteractive(frontPage, {
     title: "Newspaper Stand -- Ledger Extra",
-    body: "EXTRA! BIRMINGHAAM PASSES PITTSBURGH! MILL MEN SAY THE VALLEY NEVER LOOKED BACK — LEDGER, TWO CENTS!",
+    body: "EXTRA! BARONS TAKE THE SOUTHERN PENNANT — CROWDS PACK RICKWOOD FIELD! LEDGER, TWO CENTS!",
   });
 
   // Chalkboard outside a Mercato café -- World Bible Voice fragment 9,

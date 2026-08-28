@@ -491,7 +491,7 @@ export async function build(ctx) {
   // 2. Newspaper stand front page.
   registerInteractive(headPage.children[0], {
     title: 'The Birmingham Ledger — Extra Edition, October 1928',
-    body: '"EXTRA! BIRMINGHAAM PASSES PITTSBURGH! MILL MEN SAY THE VALLEY NEVER LOOKED BACK — LEDGER, TWO CENTS!"',
+    body: '"EXTRA! BARONS TAKE THE SOUTHERN PENNANT — CROWDS PACK RICKWOOD FIELD! LEDGER, TWO CENTS!"',
   });
 
   // 3. Painted wall advertisement on an infill wall (Age-Herald back page).
@@ -501,7 +501,7 @@ export async function build(ctx) {
   group.add(paintedAd);
   registerInteractive(paintedAd.children[0], {
     title: 'Painted Advertisement — TC Iron',
-    body: '"MADE WHERE IT’S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, fire. Ask your dealer why northern steel costs more to haul less. TC IRON — THE SOUTH’S OWN METAL."',
+    body: '"MADE WHERE IT\'S MINED! One ton of TC steel crosses our yard in ninety minutes — ore, limestone, coal, and fire. TC IRON — THE SOUTH\'S OWN METAL."',
   });
 
   // ------------------------------------------------------------------
