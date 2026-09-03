@@ -5,6 +5,13 @@
  * five landmark towers, the Belt Elevated Loop skirting the core,
  * banker-grade infill fabric, marble-threshold sidewalks, period signage
  * and readables drawn verbatim from the World Bible.
+ *
+ * Facade Detail pass (M2): every landmark tower gets deco.facadeDetail
+ * (dentil cornice + parapet, string courses, instanced window reveals)
+ * plus deco.rooftopKit (water tank, chimneys, skylight monitor, hatch).
+ * Brick background-fabric infill buildings get deco.fireEscape on a side
+ * wall. Storefronts near the Corner get deco.awning + deco.shopSign with
+ * period business names from the World Bible price canon (Section 5).
  */
 import * as THREE from '../../vendor/three.module.min.js';
 
@@ -74,6 +81,22 @@ export async function build(ctx) {
     return s;
   }
 
+  // Facade Detail pass helper: dresses a landmark tower's base tier with
+  // dentil cornice + string courses + instanced reveals, and drops a
+  // rooftopKit cluster on top. Sized off the tower's own footprint/height
+  // so it never touches the plan's stored position/rotation/footprint.
+  function landmarkDetail(towerGroup, lm, material, seed) {
+    towerGroup.add(deco.facadeDetail({
+      width: lm.footprint[0], depth: lm.footprint[1], height: Math.max(8, lm.height * 0.4),
+      material, seed, storefront: false,
+    }));
+    const roof = deco.rooftopKit({
+      footprintW: lm.footprint[0] * 0.55, footprintD: lm.footprint[1] * 0.55, seed,
+    });
+    roof.position.y = lm.height * 0.94;
+    towerGroup.add(roof);
+  }
+
   // ------------------------------------------------------------------
   // THE HEAVIEST CORNER ON EARTH — the real four (1902-1912), true
   // corners, true heights. Woodward SW, Brown Marx NE, Empire NW,
@@ -101,6 +124,7 @@ export async function build(ctx) {
         cor.position.set(0, lm.height - 0.5, 0);
         g.add(cor);
         facadeSign(g, lm, 'WOODWARD', lm.height * 0.3, 10, 'north');
+        landmarkDetail(g, lm, materials.brick, 1902);
       }
     );
   }
@@ -133,6 +157,7 @@ export async function build(ctx) {
         cor.position.set(0, lm.height - 0.6, 0);
         g.add(cor);
         facadeSign(g, lm, 'BROWN MARX', lm.height * 0.3, 13, 'south');
+        landmarkDetail(g, lm, materials.limestone, 1906);
       }
     );
   }
@@ -177,6 +202,7 @@ export async function build(ctx) {
         crownGlow.position.set(0, colonnadeY + 0.3, 0);
         g.add(crownGlow);
         facadeSign(g, lm, 'EMPIRE', lm.height * 0.3, 9, 'south');
+        landmarkDetail(g, lm, materials.limestone, 1909);
       }
     );
   }
@@ -208,6 +234,7 @@ export async function build(ctx) {
         roofSign.position.set(0, lm.height + 1.1, 0.35);
         g.add(roofSign);
         facadeSign(g, lm, 'AMERICAN TRUST & SAVINGS', lm.height * 0.28, 15, 'north');
+        landmarkDetail(g, lm, materials.limestone, 1912);
       }
     );
   }
@@ -252,6 +279,7 @@ export async function build(ctx) {
         pole.position.set(lm.footprint[0] / 2 - 1.2, lm.height + 4.5, lm.footprint[1] / 2 - 1.2);
         g.add(pole);
         facadeSign(g, lm, 'CITY FEDERAL', lm.height * 0.3, 12, 'west');
+        landmarkDetail(g, lm, materials.limestone, 1913);
       }
     );
   }
@@ -286,6 +314,7 @@ export async function build(ctx) {
           g.add(step);
         }
         facadeSign(g, lm, 'WATTS', lm.height * 0.3, 8, 'north');
+        landmarkDetail(g, lm, materials.limestone, 1927);
       }
     );
   }
@@ -345,6 +374,10 @@ export async function build(ctx) {
   // ------------------------------------------------------------------
   // Background fabric — banker-grade infill blocks filling the blocks
   // between landmarks, kept clear of avenues/streets/landmark footprints.
+  // Facade Detail pass: every brick infill building also gets a
+  // deco.fireEscape zigzag stair on its blind east side wall (period
+  // brick-building convention — cheap instanced/merged geometry, 2 draw
+  // calls per building regardless of floor count).
   // ------------------------------------------------------------------
   const infills = [
     // [cx, cz, sx, sz, h, mat]
@@ -396,6 +429,16 @@ export async function build(ctx) {
             winMatrices.push([wx, wy, z + sz / 2 + 0.06]);
           }
         }
+        // Fire escape on the east blind wall, brick buildings only.
+        if (matName === 'brick') {
+          const fe = deco.fireEscape({
+            height: h - 2, floors: Math.max(3, Math.round(h / 3.5)),
+            width: Math.min(1.6, sz * 0.3),
+          });
+          fe.rotation.y = Math.PI / 2;
+          fe.position.set(x + sx / 2 + 0.05, 0.4, z);
+          group.add(fe);
+        }
       });
       inst.instanceMatrix.needsUpdate = true;
       group.add(inst);
@@ -422,6 +465,33 @@ export async function build(ctx) {
       winInst.instanceMatrix.needsUpdate = true;
       group.add(winInst);
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Facade Detail pass — storefront awnings + blade signs along the
+  // avenues near the Corner, with period business names drawn from the
+  // World Bible's price canon (Section 5: haircut 25¢, shoeshine 5¢,
+  // coffee 15¢, Lucky Strike 10¢). Mounted just above the sidewalk
+  // strips flanking 20th St N and 1st Ave N. 6 spots x (1 awning mesh +
+  // 2 shopSign meshes) = 18 draw calls.
+  // ------------------------------------------------------------------
+  const storefrontSpots = [
+    { x: -13.4, z: -34, rotY: Math.PI / 2, name: 'CORNER LUNCH — COFFEE 15¢' },
+    { x: 13.4, z: -34, rotY: -Math.PI / 2, name: 'MAGIC CITY BARBER — HAIRCUT 25¢' },
+    { x: -13.4, z: 36, rotY: Math.PI / 2, name: 'IMPERIAL CIGAR & TOBACCO — LUCKY STRIKE 10¢' },
+    { x: 13.4, z: 36, rotY: -Math.PI / 2, name: 'HEAVIEST CORNER DRUG CO.' },
+    { x: 40, z: 13.6, rotY: Math.PI, name: 'VALLEY SHOE SHINE — 5¢' },
+    { x: -40, z: 13.6, rotY: 0, name: 'CROWN LUNCH COUNTER — SANDWICH 10¢' },
+  ];
+  for (const spot of storefrontSpots) {
+    const aw = deco.awning({ width: 3.4, projection: 1.5, seed: Math.round(spot.x * 3 + spot.z) || 1 });
+    aw.position.set(spot.x, 3.4, spot.z);
+    aw.rotation.y = spot.rotY;
+    group.add(aw);
+    const sign = deco.shopSign(spot.name, { width: 2.0 });
+    sign.position.set(spot.x, 3.9, spot.z);
+    sign.rotation.y = spot.rotY;
+    group.add(sign);
   }
 
   // ------------------------------------------------------------------
