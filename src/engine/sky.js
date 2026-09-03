@@ -44,6 +44,20 @@
  *   the orange horizon glow the world bible describes, independent of
  *   the sun/moon arc. It never casts a shadow (kept cost bounded to the
  *   single sun shadow-caster).
+ *
+ * M3b (Lighting Engineer II — night/dusk street visibility) pass:
+ * - EXPOSURE's night/dusk/dawn floor is raised (see EXPOSURE below):
+ *   ACES tone mapping combined with the old 0.55 night floor was
+ *   crushing everything below the horizon to black even though the
+ *   hemisphere light's night intensity (0.34, already >= the 0.22 spec
+ *   floor) was contributing real light — the light was there but the
+ *   exposure sweep was throwing it away before it reached the screen.
+ * - Adds a faint bluish `moon` DirectionalLight positioned opposite the
+ *   sun across the sky (same arc math, negated), ramped in with the same
+ *   night-glow factor as windows/lamps/furnace (~0.25 at full night, 0 by
+ *   day). Never casts a shadow. Gives night silhouettes a second, cooler
+ *   light direction so building masses read with real form instead of
+ *   flat silhouette-black even where lamp pools don't reach.
  */
 import * as THREE from '../../vendor/three.module.min.js';
 import { setGlassNightGlow } from './materials.js';
@@ -84,6 +98,8 @@ export function setWeatherDim(factor) {
 // ambient so lit windows and lamp pools read by contrast. Midday band
 // nudged brighter/warmer than the first draft so sunlit masonry reads
 // clearly once the bump-shading overcorrection (materials.js) is fixed.
+// Night hemi (0.34) and dusk/dawn hemi (0.44) already meet the M3b floor
+// (>=0.22 at night); the M3b fix that actually mattered is EXPOSURE below.
 const KEYS = [
   [0.00, 0x0d1226, 0x201c2c, 0.0, 0.34, 30, 620], // midnight — the electric city keeps a floor of glow
   [0.20, 0x1c2238, 0x3a2c34, 0.05, 0.26, 35, 700],
@@ -100,7 +116,13 @@ const KEYS = [
 // filmic tone mapping alone will flatten noon-vs-night contrast if
 // exposure stays fixed, so exposure is swept the same way brightness is:
 // bright at noon, a warm mid-level at dawn/dusk, cool and dim at night.
-const EXPOSURE = [0.55, 0.62, 0.90, 1.05, 1.15, 1.05, 0.90, 0.62, 0.55];
+//
+// M3b: night indices (0,1,7,8) raised to >=0.85 and dusk/dawn indices
+// (2,6) raised to >=0.95 — the old 0.55/0.62/0.90 floor was throwing away
+// real light the hemisphere/lamp/moon sources were contributing, crushing
+// the street to black below the horizon. Noon (1.15) and the midday band
+// (1.05) are untouched, exactly per spec.
+const EXPOSURE = [0.85, 0.85, 0.95, 1.05, 1.15, 1.05, 0.95, 0.85, 0.85];
 
 // --- Canvas texture helpers for celestial/cloud billboards --------------
 function makeGlowTexture(size, coreHex, edgeHex) {
@@ -214,11 +236,22 @@ export function createSky(scene, fog, renderer) {
   scene.add(hemi);
   scene.add(sun.target);
 
+  // --- Moon fill: faint bluish DirectionalLight opposite the sun ---------
+  // Gives night silhouettes real form (a second, cooler light direction)
+  // even before lamp/window glow takes over. No shadow - cost stays
+  // bounded to the single sun shadow-caster. Position/intensity are set
+  // each frame in update() below, ramped by the same night-glow factor as
+  // windows/lamps (~0.25 at full night, 0 by day).
+  const moon = new THREE.DirectionalLight(0x8fb0e6, 0);
+  moon.castShadow = false;
+  scene.add(moon);
+  scene.add(moon.target);
+
   // --- Furnace district fill: Birmingham's furnaces sit south of downtown
   // (+Z, per the coordinate contract). A low, warm directional fill washes
   // building south faces at night with the furnace-glow-on-the-horizon
   // look the world bible describes, independent of the sun/moon arc.
-  // Never casts a shadow — the sun stays the only shadow-casting light so
+  // Never casts a shadow - the sun stays the only shadow-casting light so
   // cost stays bounded to one shadow map.
   const furnaceFill = new THREE.DirectionalLight(0xff6a35, 0);
   furnaceFill.castShadow = false;
@@ -294,7 +327,7 @@ export function createSky(scene, fog, renderer) {
    * Advance the cycle; returns current day phase in [0,1).
    * @param {number} dt
    * @param {number} [totalElapsed]
-   * @param {{x:number,z:number}} [cameraPosition] optional — when provided,
+   * @param {{x:number,z:number}} [cameraPosition] optional - when provided,
    *   the sky dome, stars and the sun's shadow frustum are re-centered under
    *   the camera (shadow frustum snapped to shadow-texel increments to
    *   avoid shimmer) so distant sightlines never exit the dome and shadows
@@ -326,10 +359,11 @@ export function createSky(scene, fog, renderer) {
     sun.intensity = KEYS[i][3] + (KEYS[i + 1][3] - KEYS[i][3]) * t;
     hemi.intensity = KEYS[i][4] + (KEYS[i + 1][4] - KEYS[i][4]) * t;
 
-    // No shadow at night: the sun contributes no visible light once its
-    // intensity is effectively zero, so skip the shadow map render entirely
-    // rather than pay for a shadow nobody can see. Keeps the one
-    // shadow-casting light in the scene bounded to daylight hours.
+    // Moon sits opposite the sun across the sky; its intensity ramp is set
+    // further below once night glow is computed.
+    moon.target.position.set(camX, 0, camZ);
+    moon.position.set(camX - dirX * SUN_DIST, Math.max(-dirY, 0.15) * SUN_DIST + 40, camZ - dirZ * SUN_DIST);
+
     sun.castShadow = sun.intensity > 0.05;
 
     uniforms.topColor.value.copy(_tmpA.setHex(KEYS[i][1]).lerp(_tmpB.setHex(KEYS[i + 1][1]), t));
@@ -338,7 +372,6 @@ export function createSky(scene, fog, renderer) {
     fog.near = KEYS[i][5] + (KEYS[i + 1][5] - KEYS[i][5]) * t;
     fog.far = KEYS[i][6] + (KEYS[i + 1][6] - KEYS[i][6]) * t;
 
-    // Additive weather dimming — see setWeatherDim() above.
     if (_weatherDim > 0) {
       sun.intensity *= (1 - _weatherDim * 0.75);
       hemi.intensity *= (1 - _weatherDim * 0.35);
@@ -349,15 +382,11 @@ export function createSky(scene, fog, renderer) {
       fog.far *= (1 - _weatherDim * 0.45);
     }
 
-    // Tone-mapping exposure sweep: bright noon, warm/low dusk & dawn, cool
-    // and dim at night — see the EXPOSURE keyframe table above.
     if (renderer) {
       const exposure = EXPOSURE[i] + (EXPOSURE[i + 1] - EXPOSURE[i]) * t;
       renderer.toneMappingExposure = exposure * (1 - _weatherDim * 0.15);
     }
 
-    // Window/lamp glow ramps in through dusk (~0.72-0.8) to full at night, and
-    // symmetrically out through dawn (~0.20-0.27) — zero at broad daylight.
     let glow = 0;
     if (phase > 0.80 || phase < 0.20) glow = 1;
     else if (phase >= 0.72 && phase <= 0.80) glow = (phase - 0.72) / 0.08;
@@ -365,12 +394,11 @@ export function createSky(scene, fog, renderer) {
     setGlassNightGlow(glow);
     lastGlow = glow;
 
-    // Furnace-district orange fill ramps in with the same night factor as
-    // windows/lamps, subtle enough not to wash out the moonlit hemisphere.
     furnaceFill.intensity = glow * 0.5 * (1 - _weatherDim * 0.4);
+    // Faint bluish moon fill ramps with the same night-glow factor as
+    // windows/lamps/furnace - ~0.25 at full night, 0 by day.
+    moon.intensity = glow * 0.25 * (1 - _weatherDim * 0.3);
 
-    // Sun/moon billboards track the light direction; sun fades out at night,
-    // moon fades out by day. Both sit just inside the sky dome radius.
     const dlen = Math.hypot(dirX, dirY, dirZ) || 1;
     const ndx = dirX / dlen, ndy = dirY / dlen, ndz = dirZ / dlen;
     sunSprite.position.set(camX + ndx * SKY_R, Math.max(ndy, 0.03) * SKY_R + 60, camZ + ndz * SKY_R);
@@ -378,10 +406,8 @@ export function createSky(scene, fog, renderer) {
     moonSprite.position.set(camX - ndx * SKY_R, Math.max(-ndy, 0.05) * SKY_R + 60, camZ - ndz * SKY_R);
     moonSprite.material.opacity = THREE.MathUtils.clamp(-elev * 3.2, 0, 1) * (1 - _weatherDim * 0.5);
 
-    // Stars fade in with the same night-glow ramp used for windows.
     starMat.opacity = glow * 0.85 * (1 - _weatherDim * 0.7);
 
-    // Cloud layers drift slowly via texture offset (allocation-free).
     for (const cl of cloudLayers) {
       cl.tex.offset.x = (cl.tex.offset.x + dt * cl.speed) % 1;
       cl.tex.offset.y = (cl.tex.offset.y + dt * cl.speed * 0.4) % 1;
@@ -395,5 +421,5 @@ export function createSky(scene, fog, renderer) {
   function getNightGlow() { return lastGlow; }
 
   update(0, 0);
-  return { update, getDayPhase, getNightGlow, sun, hemi, dome, furnaceFill };
+  return { update, getDayPhase, getNightGlow, sun, hemi, dome, furnaceFill, moon };
 }
