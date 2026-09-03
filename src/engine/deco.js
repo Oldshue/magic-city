@@ -119,6 +119,7 @@ export { rooftopClutter } from './deco-rooftop.js';
 export { storefrontBand } from './deco-storefront.js';
 export { tree } from './deco-tree.js';
 export { blockFill } from './deco-blockfill.js';
+export { facadeDetail, fireEscape, rooftopKit, awning, shopSign } from './deco-facade.js';
 import { windowGrid } from './deco-windows.js';
 import { rooftopClutter } from './deco-rooftop.js';
 import { storefrontBand } from './deco-storefront.js';
