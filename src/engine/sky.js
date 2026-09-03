@@ -1,7 +1,7 @@
 /**
  * sky.js — 6-minute day-night cycle for Magic City 1929.
  *
- * createSky(scene, fog) -> { update(dt, elapsed, cameraPosition), getDayPhase(), getNightGlow() }.
+ * createSky(scene, fog, renderer) -> { update(dt, elapsed, cameraPosition), getDayPhase(), getNightGlow() }.
  * getDayPhase(): [0,1); 0 = midnight, 0.25 = dawn, 0.5 = noon, 0.75 = dusk.
  * getNightGlow(): [0,1) — the same window/lamp glow ramp update() drives
  * into materials.js each frame (0 = broad daylight, 1 = full night); main.js
@@ -23,6 +23,27 @@
  * slightly brighter and warmer so sunlit limestone/brick reads clearly
  * bright-side vs. shade-side even before ACES tone mapping rolls off
  * highlights.
+ *
+ * M3 (Lighting Engineer) pass — this file now also:
+ * - Accepts the WebGLRenderer as an optional third constructor argument
+ *   and sweeps `renderer.toneMappingExposure` every frame from the
+ *   EXPOSURE keyframes below (paired 1:1 with KEYS' phase breakpoints):
+ *   bright at noon, warm/low at dusk & dawn, cool/dim at night. ACES
+ *   filmic tone mapping + sRGB output are configured once in renderer.js;
+ *   exposure is the one knob that needs to live with the day-phase state.
+ * - Shrinks the sun's shadow frustum to a genuinely tight, camera-
+ *   following box (300m span at 2048 map resolution — texels ~14.6cm,
+ *   small enough that facades don't acne, tight enough that shadows stay
+ *   crisp) and turns the sun's `castShadow` off whenever its intensity is
+ *   effectively zero (night), so the one shadow-casting light in the
+ *   scene never pays its cost when it contributes no visible light.
+ * - Adds a low, warm `furnaceFill` DirectionalLight from the south
+ *   (+Z, per the coordinate contract) that ramps in at night with the
+ *   same glow factor as windows/lamps — Birmingham's furnace district
+ *   sits south of downtown, and this washes building south faces with
+ *   the orange horizon glow the world bible describes, independent of
+ *   the sun/moon arc. It never casts a shadow (kept cost bounded to the
+ *   single sun shadow-caster).
  */
 import * as THREE from '../../vendor/three.module.min.js';
 import { setGlassNightGlow } from './materials.js';
@@ -31,10 +52,14 @@ const CYCLE_SECONDS = 360;
 const _tmpA = new THREE.Color();
 const _tmpB = new THREE.Color();
 
-// Shadow frustum: tight ~500m span kept near the camera, snapped to
-// shadow-texel increments so the map never shimmers as the player walks.
-const SHADOW_SPAN = 1700;
-const SHADOW_MAP_SIZE = 4096;
+// Shadow frustum: a genuinely tight ~300m span kept centered on the
+// camera (re-snapped every frame in update(), see SHADOW_TEXEL below), at
+// 2048 map resolution per the M3 spec. Texel size ~0.146m keeps shadow
+// edges on building facades crisp without acne; the frustum only needs to
+// cover the player's immediate surroundings since it re-centers as they
+// walk — distant districts were never meant to carry sun shadows.
+const SHADOW_SPAN = 300;
+const SHADOW_MAP_SIZE = 2048;
 const SHADOW_TEXEL = SHADOW_SPAN / SHADOW_MAP_SIZE;
 const SUN_DIST = 380;
 const SKY_R = 2400; // radius for celestial billboards / stars, inside the 2600 dome
@@ -70,6 +95,12 @@ const KEYS = [
   [0.80, 0x1c2238, 0x3d2f38, 0.05, 0.26, 35, 700],
   [1.00, 0x0d1226, 0x201c2c, 0.0, 0.34, 30, 620],
 ];
+
+// Exposure keyframes paired 1:1 with KEYS' phase breakpoints above. ACES
+// filmic tone mapping alone will flatten noon-vs-night contrast if
+// exposure stays fixed, so exposure is swept the same way brightness is:
+// bright at noon, a warm mid-level at dawn/dusk, cool and dim at night.
+const EXPOSURE = [0.55, 0.62, 0.90, 1.05, 1.15, 1.05, 0.90, 0.62, 0.55];
 
 // --- Canvas texture helpers for celestial/cloud billboards --------------
 function makeGlowTexture(size, coreHex, edgeHex) {
@@ -123,8 +154,11 @@ function makeCloudTexture(size = 256, seed = 7) {
 /**
  * @param {THREE.Scene} scene
  * @param {THREE.Fog} fog
+ * @param {THREE.WebGLRenderer} [renderer] - optional; when supplied,
+ *   toneMappingExposure is swept every frame from the EXPOSURE keyframes
+ *   above so exposure tracks the day-night cycle.
  */
-export function createSky(scene, fog) {
+export function createSky(scene, fog, renderer) {
   const uniforms = {
     topColor: { value: new THREE.Color(0x141a30) },
     bottomColor: { value: new THREE.Color(0x2a2438) },
@@ -168,14 +202,29 @@ export function createSky(scene, fog) {
   sun.shadow.camera.right = SHADOW_SPAN / 2;
   sun.shadow.camera.top = SHADOW_SPAN / 2;
   sun.shadow.camera.bottom = -SHADOW_SPAN / 2;
-  sun.shadow.bias = -0.0002;
-  sun.shadow.normalBias = 1.2;
+  // Tuned for the tighter 300m/2048px frustum above (~14.6cm texels): a
+  // smaller normalBias than the old 1700m frustum needed, enough to stop
+  // facade acne at grazing dawn/dusk angles without visible peter-panning.
+  sun.shadow.bias = -0.00015;
+  sun.shadow.normalBias = 0.5;
   sun.shadow.camera.updateProjectionMatrix();
 
   const hemi = new THREE.HemisphereLight(0xbcd4ec, 0x6a6048, 0.6);
   scene.add(sun);
   scene.add(hemi);
   scene.add(sun.target);
+
+  // --- Furnace district fill: Birmingham's furnaces sit south of downtown
+  // (+Z, per the coordinate contract). A low, warm directional fill washes
+  // building south faces at night with the furnace-glow-on-the-horizon
+  // look the world bible describes, independent of the sun/moon arc.
+  // Never casts a shadow — the sun stays the only shadow-casting light so
+  // cost stays bounded to one shadow map.
+  const furnaceFill = new THREE.DirectionalLight(0xff6a35, 0);
+  furnaceFill.castShadow = false;
+  furnaceFill.position.set(0, 50, 900);
+  furnaceFill.target.position.set(0, 0, 0);
+  scene.add(furnaceFill, furnaceFill.target);
 
   // --- Sun disc + moon: billboard sprites tracking the light direction ---
   const sunTex = makeGlowTexture(128, 'rgba(255,244,214,1)', 'rgba(255,180,80,0)');
@@ -277,6 +326,12 @@ export function createSky(scene, fog) {
     sun.intensity = KEYS[i][3] + (KEYS[i + 1][3] - KEYS[i][3]) * t;
     hemi.intensity = KEYS[i][4] + (KEYS[i + 1][4] - KEYS[i][4]) * t;
 
+    // No shadow at night: the sun contributes no visible light once its
+    // intensity is effectively zero, so skip the shadow map render entirely
+    // rather than pay for a shadow nobody can see. Keeps the one
+    // shadow-casting light in the scene bounded to daylight hours.
+    sun.castShadow = sun.intensity > 0.05;
+
     uniforms.topColor.value.copy(_tmpA.setHex(KEYS[i][1]).lerp(_tmpB.setHex(KEYS[i + 1][1]), t));
     uniforms.bottomColor.value.copy(_tmpA.setHex(KEYS[i][2]).lerp(_tmpB.setHex(KEYS[i + 1][2]), t));
     fog.color.copy(uniforms.bottomColor.value);
@@ -294,6 +349,13 @@ export function createSky(scene, fog) {
       fog.far *= (1 - _weatherDim * 0.45);
     }
 
+    // Tone-mapping exposure sweep: bright noon, warm/low dusk & dawn, cool
+    // and dim at night — see the EXPOSURE keyframe table above.
+    if (renderer) {
+      const exposure = EXPOSURE[i] + (EXPOSURE[i + 1] - EXPOSURE[i]) * t;
+      renderer.toneMappingExposure = exposure * (1 - _weatherDim * 0.15);
+    }
+
     // Window/lamp glow ramps in through dusk (~0.72-0.8) to full at night, and
     // symmetrically out through dawn (~0.20-0.27) — zero at broad daylight.
     let glow = 0;
@@ -302,6 +364,10 @@ export function createSky(scene, fog) {
     else if (phase >= 0.20 && phase <= 0.27) glow = 1 - (phase - 0.20) / 0.07;
     setGlassNightGlow(glow);
     lastGlow = glow;
+
+    // Furnace-district orange fill ramps in with the same night factor as
+    // windows/lamps, subtle enough not to wash out the moonlit hemisphere.
+    furnaceFill.intensity = glow * 0.5 * (1 - _weatherDim * 0.4);
 
     // Sun/moon billboards track the light direction; sun fades out at night,
     // moon fades out by day. Both sit just inside the sky dome radius.
@@ -329,5 +395,5 @@ export function createSky(scene, fog) {
   function getNightGlow() { return lastGlow; }
 
   update(0, 0);
-  return { update, getDayPhase, getNightGlow, sun, hemi, dome };
+  return { update, getDayPhase, getNightGlow, sun, hemi, dome, furnaceFill };
 }

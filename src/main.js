@@ -17,9 +17,18 @@
  * old URL-parameter conveniences through this same api; see
  * docs/TECH-CONTRACT.md "Verification hooks". This module itself stays
  * hermetic — it never touches a browsing-context global.
+ *
+ * M3 (Lighting Engineer) additions in this file: `createSky` is now handed
+ * the renderer so it can sweep tone-mapping exposure per day phase (see
+ * sky.js); a cheap fullscreen vignette pass (renderer.js's
+ * `createVignette`) is drawn once per frame after the main render; and a
+ * set of instanced ground-contact AO decals is added under every
+ * landmark's footprint as the cheap ambient-occlusion approximation
+ * documented in renderer.js (paired with the existing hemisphere-light
+ * ground tint in sky.js).
  */
 import * as THREE from '../vendor/three.module.min.js';
-import { createRenderer } from './engine/renderer.js';
+import { createRenderer, createVignette } from './engine/renderer.js';
 import { createControls, EYE_HEIGHT } from './engine/controls.js';
 import { createSky } from './engine/sky.js';
 import { materials } from './engine/materials.js';
@@ -31,11 +40,35 @@ const FLY_SPEED_MULTIPLIER = 6;
 const FLY_VERTICAL_SPEED = 25.2; // m/s (base walk speed 4.2 * 6, matches the horizontal multiplier)
 const FLY_MIN_Y = 0.3; // floor so flying never dips the camera below the ground plane
 
+/**
+ * Soft radial-gradient alpha disc used for the ground-contact AO decals
+ * below: opaque-ish dark center fading to fully transparent at the edge.
+ * One canvas, one texture, shared by every instance.
+ */
+function makeAODecalTexture(size = 64) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0.0, 'rgba(0,0,0,0.5)');
+  g.addColorStop(0.55, 'rgba(0,0,0,0.26)');
+  g.addColorStop(1.0, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 async function boot() {
   const { renderer, scene, camera } = createRenderer();
+  const vignette = createVignette(renderer);
   const plan = await fetch('data/city-plan.json').then((r) => r.json());
 
-  const sky = createSky(scene, scene.fog);
+  // Renderer is passed through so sky.js can sweep toneMappingExposure per
+  // day phase (bright noon, warm/low dusk, cool/dim night) alongside the
+  // ACES filmic + sRGB output already configured in renderer.js.
+  const sky = createSky(scene, scene.fog, renderer);
   const controls = createControls(camera, document.body, plan.bounds);
   controls.setSpawn(plan.spawn.position, plan.spawn.yawDeg);
 
@@ -87,6 +120,42 @@ async function boot() {
       sw.receiveShadow = true;
       scene.add(sw);
     }
+  }
+
+  // --- Ambient occlusion approximation, part 2: ground-contact decals --
+  // Part 1 is the hemisphere light's dark ground-color tint (sky.js's
+  // `hemi` light, 0x6a6048 warm-shadow brown facing down). This adds a
+  // soft dark radial gradient under every landmark footprint so building
+  // bases read as grounded/contact-shadowed instead of floating on the
+  // sidewalk — the cheap alternative to real SSAO the M3 brief calls for.
+  // One shared texture, one InstancedMesh, one draw call regardless of
+  // landmark count; built once at boot (no per-frame cost at all).
+  if (Array.isArray(plan.landmarks) && plan.landmarks.length) {
+    const aoTex = makeAODecalTexture();
+    const aoGeo = new THREE.PlaneGeometry(1, 1);
+    aoGeo.rotateX(-Math.PI / 2);
+    const aoMat = new THREE.MeshBasicMaterial({
+      map: aoTex, transparent: true, depthWrite: false, toneMapped: false,
+    });
+    const aoMesh = new THREE.InstancedMesh(aoGeo, aoMat, plan.landmarks.length);
+    aoMesh.userData.noShadow = true;
+    const m4 = new THREE.Matrix4();
+    const quatI = new THREE.Quaternion();
+    const scaleV = new THREE.Vector3();
+    plan.landmarks.forEach((lm, i) => {
+      const fw = (lm.footprint && lm.footprint[0]) || 40;
+      const fd = (lm.footprint && lm.footprint[1]) || 40;
+      const s = Math.max(fw, fd) * 1.25;
+      scaleV.set(s, 1, s);
+      m4.compose(
+        new THREE.Vector3(lm.position[0], 0.03, lm.position[1]),
+        quatI,
+        scaleV
+      );
+      aoMesh.setMatrixAt(i, m4);
+    });
+    aoMesh.instanceMatrix.needsUpdate = true;
+    scene.add(aoMesh);
   }
 
   let streetHaloMat = null;
@@ -243,8 +312,9 @@ async function boot() {
     if (!obj.isMesh) return;
     if (obj === ground) return; // already configured above
     if (obj.userData.noShadow || obj.material?.transparent) {
-      // Sky decor (dome, clouds, celestial billboards) and transparent glow
-      // quads must never cast — a huge alpha plane casts a blanket shadow.
+      // Sky decor (dome, clouds, celestial billboards), the AO ground-contact
+      // decals, and other transparent glow quads must never cast — a huge
+      // alpha plane casts a blanket shadow.
       obj.castShadow = false;
       return;
     }
@@ -358,6 +428,9 @@ async function boot() {
     deco.updateLampPool(camera.position, nightGlow);
     if (systemsUpdate) systemsUpdate(dt, elapsed);
     renderer.render(scene, camera);
+    // Gentle vignette: one extra fullscreen-quad draw call, multiplied over
+    // the frame just rendered above (see renderer.js's createVignette).
+    vignette.render();
   }
   frame();
 }
