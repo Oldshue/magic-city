@@ -30,6 +30,18 @@ function cap(w, d, y, mat = materials.terracotta) {
 }
 
 /**
+ * Facade Detail pass helper: a deterministic small hash of a landmark's
+ * name, used to seed deco.facadeDetail / deco.rooftopKit so each
+ * landmark's reveal layout and rooftop clutter is stable across reloads
+ * without hardcoding a magic number per building.
+ */
+function seedFromName(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return (h >>> 0) || 1;
+}
+
+/**
  * Painted wall advertisement (ghost-sign style) drawn to canvas.
  * Returns a plane centered at origin facing +Z.
  */
@@ -231,6 +243,26 @@ export async function build(ctx) {
       st.add(carts);
     }
 
+    // Facade Detail pass: dress the main hall mass (the box the dome and
+    // twin towers rise from) with a dentil cornice + string courses +
+    // instanced window reveals/sills, sized to its actual footprint/
+    // height (96 x 44, roof at y=20 where the drum begins) — purely
+    // additive, the dome/towers/entrances above are untouched. A small
+    // rooftopKit cluster (water tank, chimney, hatch) sits on the flat
+    // roof in the gap between the west tower and the dome's footprint.
+    const stationDetail = deco.facadeDetail({
+      width: 96, depth: 44, height: 20, floorHeight: 4,
+      material: M.limestone, seed: seedFromName('Terminal Station'),
+      storefront: false, courseEvery: 3, parapetHeight: 0.35,
+    });
+    stationDetail.position.set(0, 0, 6);
+    st.add(stationDetail);
+    const stationRoof = deco.rooftopKit({
+      footprintW: 14, footprintD: 10, seed: seedFromName('Terminal Station'),
+    });
+    stationRoof.position.set(-25, 20.05, 6);
+    st.add(stationRoof);
+
     root.add(st);
 
     // Readable: Mayor Crandall's Belt Loop dedication, on a bronze plaque
@@ -321,6 +353,21 @@ export async function build(ctx) {
     const bcap = corniceBox({ width: 13, depth: 15, height: 0.6 });
     bcap.position.y = 45.4;
     ht.add(bcap);
+    // Facade Detail pass: dentil cornice + string courses + instanced
+    // window reveals/sills across the tower's base tier (below the
+    // setback tiers deco.setbackTower already built), plus a small
+    // rooftopKit cluster on the roof deck beside the rooftop ballroom.
+    const hotelDetail = deco.facadeDetail({
+      width: 26, depth: 30, height: 17, floorHeight: 3.5,
+      material: M.limestone, seed: seedFromName('Hotel Tutwiler Grand'),
+      storefront: false, courseEvery: 4, parapetHeight: 0.3,
+    });
+    ht.add(hotelDetail);
+    const hotelRoof = deco.rooftopKit({
+      footprintW: 7, footprintD: 7, seed: seedFromName('Hotel Tutwiler Grand'),
+    });
+    hotelRoof.position.set(0, 46.0, 0);
+    ht.add(hotelRoof);
     // Marquee over the entrance.
     const mq = canvasSign('HOTEL TUTWILER GRAND', { width: 18 });
     mq.position.set(0, 6.4, 15.4);
@@ -360,6 +407,12 @@ export async function build(ctx) {
     const adoor = decoDoorway({ width: 4.5, height: 5.5 });
     adoor.position.set(0, 0, 11.2);
     annex.add(adoor);
+    // Blind east side wall (no street frontage that side) — brick block —
+    // gets a period fire escape: 2 merged draw calls regardless of floors.
+    const annexFE = deco.fireEscape({ height: 12, floors: 4, width: 1.3 });
+    annexFE.rotation.y = Math.PI / 2;
+    annexFE.position.set(17.05, 0.4, 0);
+    annex.add(annexFE);
     root.add(annex);
 
     // Birmingham Freight Exchange (-700, -230)
@@ -374,6 +427,11 @@ export async function build(ctx) {
     const fxn = canvasSign('BIRMINGHAM FREIGHT EXCHANGE', { width: 22 });
     fxn.position.set(0, 14.6, 13.2);
     fx.add(fxn);
+    // Blind west side wall gets a fire escape — brick freight block.
+    const fxFE = deco.fireEscape({ height: 14, floors: 5, width: 1.4 });
+    fxFE.rotation.y = -Math.PI / 2;
+    fxFE.position.set(-20.05, 0.4, 0);
+    fx.add(fxFE);
     root.add(fx);
 
     // Cotton factor / ticket-agency row along 2nd Ave (north side, z=-124).
@@ -383,6 +441,15 @@ export async function build(ctx) {
       ['YELLOW CAB CO.', -350],
       ['FLOWERS — PLAZA FLORIST', -380],
     ];
+    // Facade Detail pass: period business names/prices for the blade
+    // signs below, drawn from the World Bible price canon (Section 5)
+    // and fitted to Terminal Quarter's travelers-and-porters character.
+    const SHOP_BLADE_TEXT = {
+      'DIXIE TICKET AGENCY': 'TICKETS — 5¢ FARE ZONE',
+      'PULLMAN RESERVATIONS': 'PULLMAN BERTH — BOOK HERE',
+      'YELLOW CAB CO.': 'YELLOW CAB — FLAT RATE',
+      'FLOWERS — PLAZA FLORIST': 'PLAZA FLORIST — POSY 10¢',
+    };
     for (const [label, x] of shops) {
       const sh = new THREE.Group();
       sh.position.set(x, 0, -122);
@@ -394,6 +461,15 @@ export async function build(ctx) {
       const sd = decoDoorway({ width: 3.4, height: 4.2 });
       sd.position.set(-4, 0, 7);
       sh.add(sd);
+      // Facade Detail pass: canvas awning + a projecting blade sign over
+      // each ticket-row storefront along 2nd Avenue North (avenue-class).
+      const shopAwning = deco.awning({ width: 3.6, projection: 1.3, seed: Math.round(x) || 1 });
+      shopAwning.position.set(-4, 4.4, 7.05);
+      sh.add(shopAwning);
+      const shopBlade = deco.shopSign(SHOP_BLADE_TEXT[label] || label, { width: 2.0 });
+      shopBlade.position.set(10.5, 5.0, 7.1);
+      shopBlade.rotation.y = Math.PI / 2;
+      sh.add(shopBlade);
       root.add(sh);
     }
   }
@@ -480,6 +556,18 @@ export async function build(ctx) {
       wg.position.set(x, h / 2, z + d / 2 + 0.07);
       root.add(wg);
       winRows.push(wg);
+    }
+    // Facade Detail pass: brick infill blocks get a fire escape on a
+    // blind side wall (east party wall) — merged geometry, 2 draw calls
+    // regardless of floor count.
+    if (mat === M.brick) {
+      const infillFE = deco.fireEscape({
+        height: Math.max(6, h - 2), floors: Math.max(3, Math.round(h / 3.4)),
+        width: Math.min(1.6, d * 0.3),
+      });
+      infillFE.rotation.y = Math.PI / 2;
+      infillFE.position.set(x + w / 2 + 0.05, 0.4, z);
+      root.add(infillFE);
     }
   });
 
