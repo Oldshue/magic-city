@@ -98,9 +98,9 @@ export function setLampsNight(nightFactor) {
 }
 
 const LAMP_POOL_SIZE = 12; // <=12 real point lights, per the M3b budget
-const LAMP_LIGHT_DISTANCE = 22;
+const LAMP_LIGHT_DISTANCE = 32;
 const LAMP_LIGHT_DECAY = 2;
-const LAMP_LIGHT_PEAK = 9;
+const LAMP_LIGHT_PEAK = 240;
 let lampPool = null;
 let discMesh = null;
 const _poolWorldPos = new THREE.Vector3();
@@ -139,11 +139,11 @@ export function initLampPool(scene) {
   // each lamp's world matrix so it sits correctly under the globe even
   // for lamps nested inside a rotated/offset district group.
   if (lampRecords.length) {
-    const discGeo = new THREE.CircleGeometry(4.2, 20);
+    const discGeo = new THREE.CircleGeometry(9, 20);
     discGeo.rotateX(-Math.PI / 2);
     const discMat = new THREE.MeshBasicMaterial({
       map: glowDiscTexture(), transparent: true, opacity: 0, depthWrite: false,
-      blending: THREE.AdditiveBlending, color: 0xffffff, toneMapped: false,
+      blending: THREE.AdditiveBlending, color: 0xffb870, toneMapped: false,
     });
     discMesh = new THREE.InstancedMesh(discGeo, discMat, lampRecords.length);
     discMesh.userData.noShadow = true;
@@ -172,7 +172,7 @@ export function initLampPool(scene) {
  */
 export function updateLampPool(cameraPosition, nightFactor) {
   if (discMesh) {
-    discMesh.material.opacity = nightFactor > 0.3 ? Math.min(1, (nightFactor - 0.3) / 0.4) : 0;
+    discMesh.material.opacity = nightFactor > 0.3 ? 0.55 * Math.min(1, (nightFactor - 0.3) / 0.4) : 0;
   }
   if (!lampPool || !cameraPosition) return;
   if (nightFactor <= 0.05 || lampRecords.length === 0) {
