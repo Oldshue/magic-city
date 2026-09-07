@@ -65,6 +65,10 @@ import { setGlassNightGlow } from './materials.js';
 const CYCLE_SECONDS = 360;
 const _tmpA = new THREE.Color();
 const _tmpB = new THREE.Color();
+const HEMI_SKY_DAY = new THREE.Color(0xbcd4ec);
+const HEMI_GROUND_DAY = new THREE.Color(0x6a6048);
+const HEMI_SKY_NIGHT = new THREE.Color(0x5c6c9c);
+const HEMI_GROUND_NIGHT = new THREE.Color(0x3b2f25);
 
 // Shadow frustum: a genuinely tight ~300m span kept centered on the
 // camera (re-snapped every frame in update(), see SHADOW_TEXEL below), at
@@ -101,7 +105,7 @@ export function setWeatherDim(factor) {
 // Night hemi (0.34) and dusk/dawn hemi (0.44) already meet the M3b floor
 // (>=0.22 at night); the M3b fix that actually mattered is EXPOSURE below.
 const KEYS = [
-  [0.00, 0x0d1226, 0x201c2c, 0.0, 0.34, 30, 620], // midnight — the electric city keeps a floor of glow
+  [0.00, 0x0d1226, 0x201c2c, 0.0, 0.75, 60, 620], // midnight — the electric city keeps a floor of glow
   [0.20, 0x1c2238, 0x3a2c34, 0.05, 0.26, 35, 700],
   [0.27, 0xd98a52, 0xf2c48a, 1.15, 0.44, 45, 1100], // dawn — long warm light
   [0.40, 0x8fb6da, 0xdce6ec, 2.6, 0.68, 70, 2200],
@@ -109,7 +113,7 @@ const KEYS = [
   [0.60, 0x8fb6da, 0xdce6ec, 2.6, 0.68, 70, 2200], // afternoon holds the same bright fill
   [0.73, 0xd96a3a, 0xf2a05c, 1.15, 0.44, 45, 1100], // dusk
   [0.80, 0x1c2238, 0x3d2f38, 0.05, 0.26, 35, 700],
-  [1.00, 0x0d1226, 0x201c2c, 0.0, 0.34, 30, 620],
+  [1.00, 0x0d1226, 0x201c2c, 0.0, 0.75, 60, 620],
 ];
 
 // Exposure keyframes paired 1:1 with KEYS' phase breakpoints above. ACES
@@ -122,7 +126,7 @@ const KEYS = [
 // real light the hemisphere/lamp/moon sources were contributing, crushing
 // the street to black below the horizon. Noon (1.15) and the midday band
 // (1.05) are untouched, exactly per spec.
-const EXPOSURE = [0.85, 0.85, 0.95, 1.05, 1.15, 1.05, 0.95, 0.85, 0.85];
+const EXPOSURE = [1.0, 1.0, 1.05, 1.05, 1.15, 1.05, 1.05, 1.0, 1.0];
 
 // --- Canvas texture helpers for celestial/cloud billboards --------------
 function makeGlowTexture(size, coreHex, edgeHex) {
@@ -394,10 +398,13 @@ export function createSky(scene, fog, renderer) {
     setGlassNightGlow(glow);
     lastGlow = glow;
 
-    furnaceFill.intensity = glow * 0.5 * (1 - _weatherDim * 0.4);
+    hemi.color.copy(HEMI_SKY_DAY).lerp(HEMI_SKY_NIGHT, glow);
+    hemi.groundColor.copy(HEMI_GROUND_DAY).lerp(HEMI_GROUND_NIGHT, glow);
+
+    furnaceFill.intensity = glow * 0.7 * (1 - _weatherDim * 0.4);
     // Faint bluish moon fill ramps with the same night-glow factor as
-    // windows/lamps/furnace - ~0.25 at full night, 0 by day.
-    moon.intensity = glow * 0.25 * (1 - _weatherDim * 0.3);
+    // windows/lamps/furnace - ~0.6 at full night, 0 by day.
+    moon.intensity = glow * 0.6 * (1 - _weatherDim * 0.3);
 
     const dlen = Math.hypot(dirX, dirY, dirZ) || 1;
     const ndx = dirX / dlen, ndy = dirY / dlen, ndz = dirZ / dlen;
