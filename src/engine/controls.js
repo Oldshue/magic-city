@@ -47,7 +47,7 @@ export function createControls(camera, domElement, bounds) {
   const controls = new PointerLockControls(camera, domElement);
 
   const keys = Object.create(null);
-  const onKeyDown = (e) => { keys[e.code] = true; };
+  const onKeyDown = (e) => { if (!isInputBlocked()) keys[e.code] = true; };
   const onKeyUp = (e) => { keys[e.code] = false; };
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
@@ -56,6 +56,7 @@ export function createControls(camera, domElement, bounds) {
   // Never throws out to the caller: some browsers (iframes without the
   // allow-pointer-lock permission, some tablets) reject/deny this outright.
   const onClick = () => {
+    if (isInputBlocked()) return;
     try { controls.lock(); } catch (_) { /* denied/unavailable — fallbacks below take over */ }
   };
   domElement.addEventListener('click', onClick);
