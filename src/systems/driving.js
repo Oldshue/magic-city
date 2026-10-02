@@ -18,6 +18,7 @@
  * does not exist yet), so this module owns a small self-contained prompt
  * element rather than reaching into a nonexistent pathway.
  */
+import { readVehicleInput } from '../engine/vehicle-input.mjs';
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 import { EYE_HEIGHT } from '../engine/controls.js';
 
@@ -199,6 +200,7 @@ export function startDriving(ctx) {
 
   // --- Drive input (own listeners; independent of controls.js's own) -----
   const driveKeys = Object.create(null);
+  const vehicleInput = { throttle: 0, steer: 0 };
   function onKeyDown(e) {
     if (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD'
         || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
@@ -317,14 +319,12 @@ export function startDriving(ctx) {
   // --- Physics --------------------------------------------------------
   function updateDrivingPhysics(dt) {
     const car = activeCar;
-    let throttle = 0;
-    if (driveKeys.KeyW || driveKeys.ArrowUp) throttle = 1;
-    else if (driveKeys.KeyS || driveKeys.ArrowDown) throttle = -1;
+    const { throttle, steer } = readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput);
 
     if (throttle > 0) {
-      car.speed += ACCEL * dt;
+      car.speed += ACCEL * throttle * dt;
     } else if (throttle < 0) {
-      car.speed += (car.speed > 0.05 ? -BRAKE_DECEL : -REVERSE_ACCEL) * dt;
+      car.speed += (car.speed > 0.05 ? -BRAKE_DECEL : -REVERSE_ACCEL) * Math.abs(throttle) * dt;
     } else if (car.speed > 0) {
       car.speed = Math.max(0, car.speed - FRICTION_DECEL * dt);
     } else if (car.speed < 0) {
@@ -332,9 +332,6 @@ export function startDriving(ctx) {
     }
     car.speed = clamp(car.speed, MAX_REVERSE, MAX_SPEED);
 
-    let steer = 0;
-    if (driveKeys.KeyA || driveKeys.ArrowLeft) steer = -1;
-    if (driveKeys.KeyD || driveKeys.ArrowRight) steer += 1;
     if (Math.abs(car.speed) > 0.15) {
       const speedFrac = Math.min(1, Math.abs(car.speed) / MAX_SPEED);
       const turnRate = MAX_STEER_RATE - (MAX_STEER_RATE - MIN_STEER_RATE) * speedFrac;
@@ -376,7 +373,7 @@ export function startDriving(ctx) {
     if (!engine) return;
     const car = activeCar;
     const speedFrac = car ? Math.min(1, Math.abs(car.speed) / MAX_SPEED) : 0;
-    const throttling = isDriving && (driveKeys.KeyW || driveKeys.ArrowUp) ? 1 : 0;
+    const throttling = isDriving ? Math.max(0, readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput).throttle) : 0;
     const targetGain = isDriving ? 0.045 + speedFrac * 0.1 + throttling * 0.05 : 0.0;
     const targetFreq = 38 + speedFrac * 65;
     engine.bus.gain.setTargetAtTime(targetGain, engine.ac.currentTime, 0.15);

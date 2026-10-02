@@ -123,7 +123,8 @@ export function createControls(camera, domElement, bounds) {
   // (0,0) on release. Same two numbers mutated in place — never reallocated.
   const virtualMove = { x: 0, z: 0 };
   /** @param {number} x strafe, -1 (left) .. 1 (right) @param {number} z -1 (forward) .. 1 (back) */
-  function setVirtualMove(x, z) { virtualMove.x = x; virtualMove.z = z; }
+  function setVirtualMove(x, z) { if (isInputBlocked()) return; virtualMove.x = x; virtualMove.z = z; }
+  function getVirtualMove() { return virtualMove; }
 
   /** Register collision boxes. Accepts {minX,maxX,minZ,maxZ} objects.
    * @param {Array<{minX:number,maxX:number,minZ:number,maxZ:number}>} boxes */
@@ -221,7 +222,7 @@ export function createControls(camera, domElement, bounds) {
    * @returns {Array<{minX:number,maxX:number,minZ:number,maxZ:number}>} */
   function getColliderBoxes() { return rawBoxes; }
 
-  return { controls, update, setSpawn, addColliders, setEnabled, setInputBlocked, isInputBlocked, getColliderBoxes, setVirtualMove,
+  return { controls, update, setSpawn, addColliders, setEnabled, setInputBlocked, isInputBlocked, getColliderBoxes, setVirtualMove, getVirtualMove,
     dispose() {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);

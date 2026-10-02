@@ -81,3 +81,5 @@ Controls additionally expose `setInputBlocked(owner, blocked)` and `isInputBlock
 Case state exposes `save()` and atomic `restore(saved)` with a versioned, case-scoped format. Restoration replays evidence and testimony prerequisites and recomputes verdicts from the definition. Narrative persists this state through optional browser storage; storage denial or malformed data never prevents a fresh game.
 
 The existing map accepts world waypoints through the narrative root’s `magic-city:waypoints` event (`detail: [{id, position: [x,z], label, symbol?, completed?}]`). Coordinates are projected as relative positions so canvas and overlays resize together. Investigation updates publish only when state changes, preserving the one-time base-map paint and existing player-marker loop.
+
+Virtual movement is shared by walking and driving through `getVirtualMove()`. Vehicle input merges keyboard axes with the existing touch stick; callers can supply a reusable result object to avoid frame allocations. Named modal blockers reject new virtual input as well as keyboard input.
