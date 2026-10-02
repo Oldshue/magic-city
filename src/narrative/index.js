@@ -37,6 +37,7 @@ import { NARRATIVE_CSS } from './style.js';
 import { DIVERGENCE_EXHIBIT, detectMasthead } from './content.js';
 import { findDistrict } from './geoUtils.js';
 import { drawBaseMap, worldToMap } from './mapRenderer.js';
+import { projectWaypoints } from './mapMarkers.mjs';
 
 const READ_RADIUS = 9; // meters — shows the [E] READ prompt / touch READ button
 const CLOSE_RADIUS = 13; // meters — walking this far from an open readable closes it
@@ -81,6 +82,19 @@ export async function initNarrative(ctx) {
   wireTouchControls(ctx, root, state, keyHandlers);
   wireModalDismiss(ctx, root, state);
   drawBaseMap(root.querySelector('#mc-map-canvas'), ctx.plan, MAP_SIZE);
+  root.addEventListener('magic-city:waypoints', event => {
+    const layer = root.querySelector('#mc-map-waypoints');
+    layer.replaceChildren();
+    for (const item of projectWaypoints(ctx.plan.bounds, event.detail)) {
+      const marker = document.createElement('span');
+      marker.className = 'mc-map-waypoint' + (item.completed ? ' mc-map-waypoint-complete' : '');
+      marker.style.left = `${item.x * 100}%`; marker.style.insetBlockStart = `${item.y * 100}%`;
+      marker.textContent = item.symbol || '◆'; marker.title = item.label;
+      marker.setAttribute('role', 'img'); marker.setAttribute('aria-label', item.label);
+      layer.appendChild(marker);
+    }
+    root.querySelector('#mc-map-case-legend').hidden = !event.detail.length;
+  });
 
   // Scratch vectors reused every tick — no per-frame allocation.
   const scratch = new ctx.THREE.Vector3();
@@ -155,6 +169,7 @@ function buildDom() {
           <canvas id="mc-map-canvas" width="${MAP_SIZE}" height="${MAP_SIZE}"></canvas>
           <div class="mc-map-marker" id="mc-map-marker"></div>
         </div>
+        <div id="mc-map-case-legend" class="mc-map-case-legend" hidden>◆ Evidence &nbsp; ● Witness &nbsp; ✦ Case office · faded marks are recorded</div>
         <div class="mc-map-hint">M OR TAP OUTSIDE&nbsp; TO CLOSE</div>
       </div>
     </div>
@@ -430,5 +445,7 @@ function updateNearestReadable(ctx, root, state, scratch) {
 function updateMapMarker(ctx, root, bearingDeg) {
   const marker = root.querySelector('#mc-map-marker');
   const p = worldToMap(ctx.plan.bounds, MAP_SIZE, ctx.camera.position.x, ctx.camera.position.z);
-  marker.style.transform = `translate(${(p.x - 7).toFixed(1)}px, ${(p.y - 7).toFixed(1)}px) rotate(${bearingDeg.toFixed(1)}deg)`;
+  marker.style.left = `${p.x / MAP_SIZE * 100}%`;
+  marker.style.insetBlockStart = `${p.y / MAP_SIZE * 100}%`;
+  marker.style.transform = `translate(-50%, -50%) rotate(${bearingDeg.toFixed(1)}deg)`;
 }

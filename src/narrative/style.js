@@ -153,7 +153,14 @@ export const NARRATIVE_CSS = `
   color: var(--mc-gold-bright); font-size: 18px; margin-bottom: 10px;
 }
 .mc-map-cartouche span { display: block; font-size: 10px; letter-spacing: 0.35em; color: var(--mc-gold); margin-block-start: 4px; }
-.mc-map-canvas-wrap { position: relative; }
+.mc-map-frame { width: min(760px, calc(100vw - 72px), calc(100dvh - 170px)); }
+.mc-map-canvas-wrap { position: relative; aspect-ratio: 1; }
+#mc-map-canvas { display: block; width: 100%; height: auto; }
+.mc-map-waypoints { position: absolute; inset: 0; pointer-events: none; }
+.mc-map-waypoint { position: absolute; transform: translate(-50%, -50%); color: #173e31; background: #f5e3a9; border: 1px solid #7e652d; border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; font-size: 12px; pointer-events: auto; box-shadow: 0 1px 4px #0005; }
+.mc-map-waypoint-complete { opacity: .45; }
+.mc-map-case-legend { color: var(--mc-gold-bright); text-align: center; font: 11px Georgia, serif; margin-block-start: 10px; }
+.mc-map-case-legend[hidden] { display: none; }
 .mc-map-marker {
   position: absolute; inset-block-start: 0; left: 0; width: 14px; height: 14px;
   clip-path: polygon(50% 0%, 100% 100%, 50% 78%, 0% 100%);

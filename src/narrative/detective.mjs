@@ -16,7 +16,7 @@ export function initDetective(ctx, root) {
   });
   const markers = [];
   let caseSnapshot = investigation.snapshot();
-  investigation.subscribe(value => { caseSnapshot = value; });
+  investigation.subscribe(value => { caseSnapshot = value; if (active) publishWaypoints(); });
   let open = false;
   let active = false;
   let nextHud = 0;
@@ -104,6 +104,15 @@ export function initDetective(ctx, root) {
       else if(investigation.collect(target.item.id))present(target.item.title,target.item.body);
     }};
   });
+  function publishWaypoints() {
+    const points = [];
+    for (const clue of RAILWAY_CASE.clues) {
+      if (investigation.has(clue.requires)) points.push({ id: clue.id, position: clue.position, label: clue.title, symbol: '◆', completed: investigation.has([clue.id]) });
+    }
+    for (const item of RAILWAY_CASE.witnesses) points.push({ id: item.id, position: item.position, label: item.name, symbol: '●', completed: investigation.has(item.choices.map(choice => choice.grants).filter(Boolean)) });
+    if (investigation.has(RAILWAY_CASE.accusationRequires)) points.push({ id: 'case-office', position: RAILWAY_CASE.accusationPosition, label: 'Case office · make your accusation', symbol: '✦', completed: !!caseSnapshot.outcome });
+    root.dispatchEvent(new CustomEvent('magic-city:waypoints', { detail: points }));
+  }
   function objective() {
     if(caseSnapshot.outcome)return {text:'Case closed · open your journal to replay',position:null};
     if(!investigation.has(['docket']))return {text:'Inspect the docket outside Terminal Station',position:RAILWAY_CASE.clues[0].position};
@@ -130,7 +139,7 @@ export function initDetective(ctx, root) {
       const buttons=[...dialog.querySelectorAll('button:not(:disabled)')];const i=buttons.indexOf(document.activeElement);e.preventDefault();buttons[(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length].focus();
     }
   },true);
-  root.addEventListener('magic-city:play',()=>{active=true;ui.querySelector('#mc-case-hud').hidden=false;present(RAILWAY_CASE.title,restored ? 'Your notebook survived the night. Evidence and testimony from your previous investigation are waiting in the case journal.' : RAILWAY_CASE.introduction,[{text:restored ? 'Continue the case · return to Terminal Station' : 'Take the case · begin at Terminal Station',action:()=>{ctx.controls.setSpawn([-420,-128],0);close();}},{text:'Explore the city first',action:close}]);},{once:true});
+  root.addEventListener('magic-city:play',()=>{active=true;publishWaypoints();ui.querySelector('#mc-case-hud').hidden=false;present(RAILWAY_CASE.title,restored ? 'Your notebook survived the night. Evidence and testimony from your previous investigation are waiting in the case journal.' : RAILWAY_CASE.introduction,[{text:restored ? 'Continue the case · return to Terminal Station' : 'Take the case · begin at Terminal Station',action:()=>{ctx.controls.setSpawn([-420,-128],0);close();}},{text:'Explore the city first',action:close}]);},{once:true});
   requestAnimationFrame(tick);
   return investigation;
 }
