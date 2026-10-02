@@ -36,6 +36,8 @@ async function choose(text) { await dialog.getByRole('button',{name:text,exact:t
 async function close() { await dialog.getByRole('button',{name:'Return to the streets · Escape',exact:true}).click(); }
 async function takeCase() {
   await page.locator('#mc-title-click').click();
+  await page.waitForFunction(() => { const image=document.querySelector('#mc-case-portrait img'); return image.complete && image.naturalWidth>0; });
+  await page.screenshot({path:resolve(output,'case-introduction.png')});
   await choose('Take the case · begin at Terminal Station');
 }
 async function openAccusation(suspect) {
