@@ -1,4 +1,4 @@
-/** Fictional case within the existing alternate-history Birmingham canon. */
+/** Fictional case within the existing Birmingham world canon. */
 export const RAILWAY_CASE = {
   id: 'last-train', title: 'The Last Train Out',
   introduction: 'Birmingham, 1929. A railway clerk vanishes between the evening shift and the last train north. His wife leaves you a photograph and ten dollars. In this town, steel buys silence. Someone forgot to buy yours.',
