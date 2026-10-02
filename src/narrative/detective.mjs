@@ -41,6 +41,7 @@ export function initDetective(ctx, root) {
     (options.querySelector('button:not(:disabled)') || ui.querySelector('#mc-case-close')).focus();
   }
   function journal() {
+    if (!active || (!open && ctx.controls.isInputBlocked())) return;
     const state = investigation.snapshot();
     const lines = ['THE LAST TRAIN OUT', 'Find Samuel Price, the missing railway clerk.'];
     lines.push('\nCONTROLS\nWASD / arrows: move or drive · Shift: sprint · E: interact / leave car · J: journal · M: map · H: horn · Drag the scene to look. Touch: use the on-screen stick and interaction button.');

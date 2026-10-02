@@ -274,6 +274,8 @@ function wireKeys(ctx, root, state) {
     ctx.interactions.activate();
   }
   function handleToggleMap() {
+    if (!state.hudVisible || (!state.mapOpen && ctx.controls.isInputBlocked())) return;
+    if (state.openReadable) closeReadable(root, state);
     toggleMap(ctx, root, state);
   }
   document.addEventListener('keydown', (e) => {
