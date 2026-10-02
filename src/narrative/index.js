@@ -178,6 +178,7 @@ function buildDom() {
         <div class="mc-map-cartouche">MAGIC CITY 1929<span>STEEL CAPITAL OF THE SOUTH</span></div>
         <div class="mc-map-canvas-wrap">
           <canvas id="mc-map-canvas" width="${MAP_SIZE}" height="${MAP_SIZE}"></canvas>
+          <div class="mc-map-waypoints" id="mc-map-waypoints"></div>
           <div class="mc-map-marker" id="mc-map-marker"></div>
         </div>
         <div id="mc-map-case-legend" class="mc-map-case-legend" hidden>◆ Evidence &nbsp; ● Witness &nbsp; ✦ Case office · faded marks are recorded</div>
@@ -277,7 +278,7 @@ function wireTitleCard(ctx, root, state) {
     root.dispatchEvent(new CustomEvent('magic-city:play'));
     // Optional upgrade only — dismissal above already happened regardless.
     try {
-      if (ctx.controls && ctx.controls.controls && !ctx.controls.isInputBlocked()) ctx.controls.controls.lock();
+      if (ctx.controls && ctx.controls.controls && !ctx.controls.isInputBlocked()) ctx.controls.requestPointerLock();
     } catch (_) { /* denied/unavailable — drag-to-look + joystick fallback already wired */ }
   }
   card.addEventListener('click', dismiss);

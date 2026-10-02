@@ -1,14 +1,16 @@
-/** Rendered acceptance against the regular Chrome session on Hamp's Mac mini. */
+/** Rendered acceptance on Hamp's Mac mini, using regular Chrome or an explicitly anonymous public-game context. */
 import assert from 'node:assert/strict';
 import { hostname } from 'node:os';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 if (!/mac[- ]?mini/i.test(hostname())) throw new Error('Run this acceptance on the Mac mini; the MacBook browser is reserved for Hamp.');
-if (!process.env.MC_QA_CDP || !process.env.MC_QA_URL) throw new Error('Set MC_QA_CDP to the existing regular Chrome debugging endpoint and MC_QA_URL to the game URL. No browser is launched by this script.');
+if (!process.env.MC_QA_URL || (!process.env.MC_QA_CDP && process.env.MC_QA_ANONYMOUS !== '1')) throw new Error('Set MC_QA_URL and either the regular Chrome MC_QA_CDP endpoint or MC_QA_ANONYMOUS=1 for public-game acceptance.');
 const { chromium } = await import('playwright');
-const browser = await chromium.connectOverCDP(process.env.MC_QA_CDP);
-const context = browser.contexts()[0];
+const browser = process.env.MC_QA_CDP
+  ? await chromium.connectOverCDP(process.env.MC_QA_CDP)
+  : await chromium.launch({ channel: 'chrome', headless: true, chromiumSandbox: true, ignoreDefaultArgs: ['--password-store=basic', '--use-mock-keychain'] });
+const context = process.env.MC_QA_CDP ? browser.contexts()[0] : await browser.newContext();
 assert.ok(context, 'Existing Chrome context required');
 const page = await context.newPage();
 const output = resolve(process.env.MC_QA_OUTPUT || 'artifacts/game-acceptance');
@@ -133,6 +135,7 @@ try {
     await page.screenshot({path:resolve(output,'vehicle-handoff.png')});
   });
   await step('Existing touch stick drives and modal blocks its input',async()=>{
+    await page.evaluate(() => { const world=document.__qaWorld; const yaw=world.camera.rotation.y; world.setSpawn(world.camera.position.x-Math.cos(yaw)*.3,world.camera.position.z+Math.sin(yaw)*.3,yaw*180/Math.PI); });
     await page.locator('#mc-read-prompt').filter({hasText:'DRIVE'}).waitFor({state:'visible'});
     await page.keyboard.press('e');
     await page.locator('#mc-read-prompt').filter({hasText:'LEAVE CAR'}).waitFor({state:'visible'});

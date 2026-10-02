@@ -57,8 +57,15 @@ export function createControls(camera, domElement, bounds) {
   // allow-pointer-lock permission, some tablets) reject/deny this outright.
   const onClick = () => {
     if (!enabled || isInputBlocked()) return;
-    try { controls.lock(); } catch (_) { /* denied/unavailable — fallbacks below take over */ }
+    requestPointerLock();
   };
+  function requestPointerLock() {
+    if (!enabled || isInputBlocked() || controls.isLocked) return;
+    try {
+      const request = domElement.requestPointerLock?.();
+      request?.catch?.(() => {}); // Rejected optional capture keeps drag and touch controls usable.
+    } catch (_) { /* denied/unavailable — fallbacks below take over */ }
+  }
   domElement.addEventListener('click', onClick);
 
   const forward = new THREE.Vector3();
@@ -223,7 +230,7 @@ export function createControls(camera, domElement, bounds) {
    * @returns {Array<{minX:number,maxX:number,minZ:number,maxZ:number}>} */
   function getColliderBoxes() { return rawBoxes; }
 
-  return { controls, update, setSpawn, addColliders, setEnabled, setInputBlocked, isInputBlocked, getColliderBoxes, setVirtualMove, getVirtualMove,
+  return { controls, requestPointerLock, update, setSpawn, addColliders, setEnabled, setInputBlocked, isInputBlocked, getColliderBoxes, setVirtualMove, getVirtualMove,
     dispose() {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
