@@ -64,6 +64,7 @@ export async function initNarrative(ctx) {
     interactionLabel: undefined,
   };
 
+  root.addEventListener('magic-city:modal-open', () => { if (state.openReadable) closeReadable(root, state); });
   initDetective(ctx, root);
   ctx.interactions.block('title', true);
   const interactiveScratch = new ctx.THREE.Vector3();
@@ -385,6 +386,7 @@ function wireTouchControls(ctx, root, state, keyHandlers) {
 function toggleMap(ctx, root, state, force) {
   const overlay = root.querySelector('#mc-map-overlay');
   const next = force !== undefined ? force : !state.mapOpen;
+  if (next) root.dispatchEvent(new CustomEvent('magic-city:modal-open'));
   state.mapOpen = next;
   ctx.interactions.block('map', next);
   ctx.controls.setInputBlocked('map', next);
@@ -393,6 +395,7 @@ function toggleMap(ctx, root, state, force) {
 }
 
 function openReadable(root, state, readable) {
+  root.dispatchEvent(new CustomEvent('magic-city:modal-open'));
   state.openReadable = readable;
   const panel = root.querySelector('#mc-readable-panel');
   const masthead = detectMasthead(readable.title, readable.body);

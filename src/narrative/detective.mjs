@@ -35,6 +35,7 @@ export function initDetective(ctx, root) {
     ui.querySelector('#mc-journal-button').focus();
   }
   function present(title, copy, choices = []) {
+    root.dispatchEvent(new CustomEvent('magic-city:modal-open'));
     open = true; dialog.hidden = false;
     ctx.interactions.block('case-dialog', true);
     ctx.controls.setInputBlocked('case-dialog', true);

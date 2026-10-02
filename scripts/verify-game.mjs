@@ -62,6 +62,15 @@ try {
     assert.equal(await page.locator('#mc-map-overlay').evaluate(el=>el.classList.contains('mc-hidden')),true);
     await close();
   });
+  await step('Journal replaces a city document without an obscured dialog',async()=>{
+    await move(-420,-150);
+    await page.locator('#mc-read-prompt').filter({hasText:'READ ·'}).waitFor({state:'visible'});
+    await page.keyboard.press('e');
+    assert.equal(await page.locator('#mc-readable-panel').evaluate(el=>el.classList.contains('mc-hidden')),false);
+    await page.keyboard.press('j'); await dialog.waitFor({state:'visible'});
+    assert.equal(await page.locator('#mc-readable-panel').evaluate(el=>el.classList.contains('mc-hidden')),true);
+    await close();
+  });
   await step('Wrong accusation has distinct consequence',async()=>{
     await gatherMinimum(); await openAccusation('Isaac Bell · station porter');
     assert.match(await dialog.textContent(),/innocent man/);
