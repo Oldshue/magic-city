@@ -150,13 +150,13 @@ export function startPedestrians(ctx) {
     }
     return false;
   }
-  function addStandingFigure(x, z, facing, scale) {
+  function addStandingFigure(x, z, facing, scale, appearance = {}) {
     people.push({
       route: null, side: 1, dist: 0, speed: 0, speedVar: 1, dir: 1,
       bob: rand() * Math.PI * 2,
-      paletteIdx: Math.floor(rand() * 8),
-      hatStyle: rand() < 0.5 ? 0 : 1,
-      hatDark: rand() < 0.6,
+      paletteIdx: Number.isInteger(appearance.paletteIdx) && appearance.paletteIdx >= 0 && appearance.paletteIdx < 8 ? appearance.paletteIdx : Math.floor(rand() * 8),
+      hatStyle: appearance.hatStyle === 0 || appearance.hatStyle === 1 ? appearance.hatStyle : rand() < 0.5 ? 0 : 1,
+      hatDark: appearance.hatDark ?? rand() < 0.6,
       scale, standing: true, prop: false,
       x, z, facing,
     });
@@ -205,6 +205,14 @@ export function startPedestrians(ctx) {
     addStandingCluster(sx + 2.5, sz + 2.5, n, 0.7 + rand() * 0.3);
   }
 
+  // Declarative stationary characters share every existing instanced part.
+  // Capacity is sized from all declarations, without a separate actor renderer.
+  for (const actor of ctx.characters || []) {
+    if (!Array.isArray(actor.position) || actor.position.length !== 2 || !actor.position.every(Number.isFinite)) continue;
+    const yaw = Number.isFinite(actor.yawDeg) ? actor.yawDeg * Math.PI / 180 : 0;
+    const scale = Number.isFinite(actor.scale) && actor.scale > 0 ? actor.scale : 1;
+    addStandingFigure(actor.position[0], actor.position[1], yaw, scale, actor);
+  }
   const COUNT = Math.max(1, people.length);
 
   // --- geometry: a handful of shared primitives, ~9 per figure -----------

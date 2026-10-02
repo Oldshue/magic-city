@@ -282,7 +282,7 @@ async function boot() {
     THREE, scene, camera, renderer, plan,
     materials, deco, registerInteractive, controls,
     getDayPhase: sky.getDayPhase,
-    interactives, interactions: createInteractions(),
+    interactives, characters: [], interactions: createInteractions(),
   };
 
   // --- Districts (static registry lookup, skip missing) ----------------
@@ -335,6 +335,11 @@ async function boot() {
   deco.initLampPool(scene);
 
   // --- Systems & narrative (optional modules) --------------------------
+  // Narrative declares stationary characters before the existing instanced crowd is built.
+  try {
+    const nar = await import('./narrative/index.js');
+    await nar.initNarrative(ctx);
+  } catch (_) { /* no narrative yet */ }
   let systemsUpdate = null;
   let weatherSystem = null;
   try {
@@ -343,10 +348,6 @@ async function boot() {
     systemsUpdate = started.update;
     weatherSystem = started.weather || null;
   } catch (_) { /* no systems yet */ }
-  try {
-    const nar = await import('./narrative/index.js');
-    await nar.initNarrative(ctx);
-  } catch (_) { /* no narrative yet */ }
 
   // Fade out the loading title once the world is ready.
   const loader = document.getElementById('loader');

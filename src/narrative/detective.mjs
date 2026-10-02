@@ -77,9 +77,7 @@ export function initDetective(ctx, root) {
   function addMarker(item, type) {
     const g = new ctx.THREE.Group();
     if (type === 'witness') {
-      const coat=new ctx.THREE.Mesh(new ctx.THREE.CylinderGeometry(.25,.32,1.2,8),ctx.materials.steelDark);coat.position.y=.8;g.add(coat);
-      const head=new ctx.THREE.Mesh(new ctx.THREE.SphereGeometry(.17,8,6),ctx.materials.terracotta);head.position.y=1.55;g.add(head);
-      const hat=new ctx.THREE.Mesh(new ctx.THREE.CylinderGeometry(.32,.32,.08,10),ctx.materials.bronze);hat.position.y=1.73;g.add(hat);
+      ctx.characters.push({id:item.id,position:item.position,yawDeg:0,scale:1,paletteIdx:type==='witness' && item.id==='singer'?2:1,hatStyle:item.id==='singer'?1:0});
     } else {
       const envelope=new ctx.THREE.Mesh(new ctx.THREE.BoxGeometry(.7,.08,.45),ctx.materials.limestone);envelope.position.y=.7;g.add(envelope);
       const stand=new ctx.THREE.Mesh(new ctx.THREE.BoxGeometry(.9,.65,.6),ctx.materials.bronze);stand.position.y=.325;g.add(stand);
