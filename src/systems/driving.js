@@ -419,13 +419,23 @@ export function startDriving(ctx) {
     }
   }
 
+  const parkCandidate = { distance: 0, priority: 100, label: 'PARK · LEAVE CAR', activate: exitCar };
+  const disembarkCandidate = { distance: 0, priority: 100, label: 'STEP OFF STREETCAR', activate: exitTram };
+  const boardingCandidates = new WeakMap();
   const unregisterInteraction = ctx.interactions.register(() => {
-    if (isDriving) return { distance: 0, priority: 100, label: 'PARK · LEAVE CAR', activate: exitCar };
-    if (isRiding) return { distance: 0, priority: 100, label: 'STEP OFF STREETCAR', activate: exitTram };
+    if (isDriving) return parkCandidate;
+    if (isRiding) return disembarkCandidate;
     updateProximityPrompt();
     const target = pendingCar || pendingTram;
     if (!target) return null;
-    return { distance: Math.hypot(camera.position.x-target.group.position.x,camera.position.z-target.group.position.z), label: pendingCar ? 'DRIVE · '+pendingCar.name : 'BOARD STREETCAR', activate: () => pendingCar ? enterCar(pendingCar) : enterTram(pendingTram) };
+    let candidate = boardingCandidates.get(target);
+    if (!candidate) {
+      const car = pendingCar;
+      candidate = { distance: 0, label: car ? 'DRIVE · '+car.name : 'BOARD STREETCAR', activate: () => car ? enterCar(car) : enterTram(target) };
+      boardingCandidates.set(target, candidate);
+    }
+    candidate.distance = Math.hypot(camera.position.x-target.group.position.x,camera.position.z-target.group.position.z);
+    return candidate;
   });
 
   return {

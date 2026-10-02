@@ -84,7 +84,13 @@ export function initDetective(ctx, root) {
       const stand=new ctx.THREE.Mesh(new ctx.THREE.BoxGeometry(.9,.65,.6),ctx.materials.bronze);stand.position.y=.325;g.add(stand);
     }
     const sign=ctx.deco.canvasSign(type==='witness'?item.name.split(' · ')[0]:type==='desk'?'CASE OFFICE':'EVIDENCE',{width:2});sign.position.y=2.25;g.add(sign);
-    g.position.set(item.position[0],0,item.position[1]);ctx.scene.add(g);markers.push({item,type,group:g});
+    g.position.set(item.position[0],0,item.position[1]);ctx.scene.add(g);
+    const candidate = {distance:0,label:type==='witness'?`TALK · ${item.name}`:type==='desk'?'REVIEW THE CASE':`INSPECT · ${item.title}`,activate:()=>{
+      if(type==='witness')witness(item);
+      else if(type==='desk')accusation();
+      else if(investigation.collect(item.id))present(item.title,item.body);
+    }};
+    markers.push({item,type,group:g,candidate});
   }
   RAILWAY_CASE.clues.forEach(item=>addMarker(item,'clue'));
   RAILWAY_CASE.witnesses.forEach(item=>addMarker(item,'witness'));
@@ -93,16 +99,12 @@ export function initDetective(ctx, root) {
     if(!active || open || caseSnapshot.outcome || ctx.controls.isInputBlocked())return null;
     let target=null;let distance=5;
     for(const marker of markers){
-      if(marker.type==='clue' && (!investigation.has(marker.item.requires) || investigation.has([marker.item.id])))continue;
+      if(marker.type==='clue' && (!investigation.has(marker.item.requires) || caseSnapshot.evidence.includes(marker.item.id)))continue;
       const d=Math.hypot(ctx.camera.position.x-marker.group.position.x,ctx.camera.position.z-marker.group.position.z);
       if(d<distance){target=marker;distance=d;}
     }
     if(!target)return null;
-    return {distance,label:target.type==='witness'?`TALK · ${target.item.name}`:target.type==='desk'?'REVIEW THE CASE':`INSPECT · ${target.item.title}`,activate:()=>{
-      if(target.type==='witness')witness(target.item);
-      else if(target.type==='desk')accusation();
-      else if(investigation.collect(target.item.id))present(target.item.title,target.item.body);
-    }};
+    target.candidate.distance=distance; return target.candidate;
   });
   function publishWaypoints() {
     const points = [];

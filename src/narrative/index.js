@@ -61,21 +61,31 @@ export async function initNarrative(ctx) {
     openReadable: null,
     nearestReadable: null,
     currentDistrictSlug: undefined,
+    interactionLabel: undefined,
   };
 
   initDetective(ctx, root);
   ctx.interactions.block('title', true);
   const interactiveScratch = new ctx.THREE.Vector3();
+  const readableCandidates = new WeakMap();
+  const closeCandidate = { distance: 0, priority: 200, label: 'CLOSE DOCUMENT', activate: () => closeReadable(root, state) };
   ctx.interactions.register(() => {
     if (!state.hudVisible || state.mapOpen) return null;
-    if (state.openReadable) return { distance: 0, priority: 200, label: 'CLOSE DOCUMENT', activate: () => closeReadable(root, state) };
+    if (state.openReadable) return closeCandidate;
     const scratch = interactiveScratch;
     let nearest = null; let distance = READ_RADIUS;
     for (const item of ctx.interactives) {
       item.object.getWorldPosition(scratch); const d = scratch.distanceTo(ctx.camera.position);
       if (d < distance) { nearest = item; distance = d; }
     }
-    return nearest ? { distance, label: 'READ · ' + nearest.title, activate: () => openReadable(root, state, nearest) } : null;
+    if (!nearest) return null;
+    let candidate = readableCandidates.get(nearest);
+    if (!candidate) {
+      const readable = nearest;
+      candidate = { distance, label: 'READ · ' + readable.title, activate: () => openReadable(root, state, readable) };
+      readableCandidates.set(readable, candidate);
+    }
+    candidate.distance = distance; return candidate;
   });
   wireTitleCard(ctx, root, state);
   const keyHandlers = wireKeys(ctx, root, state);
@@ -436,11 +446,14 @@ function updateNearestReadable(ctx, root, state, scratch) {
   }
   state.nearestReadable = nearest;
   const candidate = ctx.interactions.candidate();
-  const show = !!candidate;
-  root.querySelector('#mc-read-prompt').textContent = candidate ? '[ E ] ' + candidate.label : '';
-  root.querySelector('#mc-touch-read-btn').textContent = candidate ? candidate.label : 'INTERACT';
-  root.querySelector('#mc-read-prompt').classList.toggle('mc-hidden', !show);
-  root.querySelector('#mc-touch-read-btn').classList.toggle('mc-hidden', !show);
+  const label = candidate?.label || '';
+  if (state.interactionLabel !== label) {
+    state.interactionLabel = label;
+    root.querySelector('#mc-read-prompt').textContent = label ? '[ E ] ' + label : '';
+    root.querySelector('#mc-touch-read-btn').textContent = label || 'INTERACT';
+    root.querySelector('#mc-read-prompt').classList.toggle('mc-hidden', !label);
+    root.querySelector('#mc-touch-read-btn').classList.toggle('mc-hidden', !label);
+  }
 }
 
 function updateMapMarker(ctx, root, bearingDeg) {
