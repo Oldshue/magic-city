@@ -56,7 +56,7 @@ export function createControls(camera, domElement, bounds) {
   // Never throws out to the caller: some browsers (iframes without the
   // allow-pointer-lock permission, some tablets) reject/deny this outright.
   const onClick = () => {
-    if (isInputBlocked()) return;
+    if (!enabled || isInputBlocked()) return;
     try { controls.lock(); } catch (_) { /* denied/unavailable — fallbacks below take over */ }
   };
   domElement.addEventListener('click', onClick);
@@ -70,6 +70,7 @@ export function createControls(camera, domElement, bounds) {
   function setInputBlocked(owner, blocked) {
     if (blocked) { inputBlockers.add(owner); for (const key in keys) keys[key] = false; virtualMove.x = 0; virtualMove.z = 0; }
     else inputBlockers.delete(owner);
+    controls.enabled = enabled && !isInputBlocked();
   }
 
   // --- Fallback drag-to-look (mouse or touch) when pointer lock isn't held ---
@@ -215,7 +216,7 @@ export function createControls(camera, domElement, bounds) {
    * systems call setEnabled(false) to take over the camera, and setEnabled(true) to
    * hand it back on exit.
    * @param {boolean} v */
-  function setEnabled(v) { enabled = v; }
+  function setEnabled(v) { enabled = v; controls.enabled = enabled && !isInputBlocked(); }
 
   /** Read-only reference to the raw, unpadded collider boxes registered via addColliders —
    * for systems that need their own collision padding (e.g. car-sized instead of player-sized).

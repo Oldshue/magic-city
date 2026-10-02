@@ -378,6 +378,7 @@ function toggleMap(ctx, root, state, force) {
   state.mapOpen = next;
   ctx.interactions.block('map', next);
   ctx.controls.setInputBlocked('map', next);
+  if (next) { try { ctx.controls.controls.unlock(); } catch (_) { /* optional pointer lock */ } }
   overlay.classList.toggle('mc-hidden', !next);
 }
 
