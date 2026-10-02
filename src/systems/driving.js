@@ -202,6 +202,7 @@ export function startDriving(ctx) {
   const driveKeys = Object.create(null);
   const vehicleInput = { throttle: 0, steer: 0 };
   function onKeyDown(e) {
+    if (controls.isInputBlocked?.()) return;
     if (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD'
         || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
       driveKeys[e.code] = true;

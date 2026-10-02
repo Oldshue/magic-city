@@ -119,7 +119,26 @@ try {
     await page.waitForFunction(()=>Math.abs(document.__qaWorld.camera.position.y-1.7)<.1);
     await page.screenshot({path:resolve(output,'vehicle-handoff.png')});
   });
-  await step('Storage denial preserves playable evidence collection',async()=>{
+  await step('Existing touch stick drives and modal blocks its input',async()=>{
+    await page.locator('#mc-read-prompt').filter({hasText:'DRIVE'}).waitFor({state:'visible'});
+    await page.keyboard.press('e');
+    await page.locator('#mc-read-prompt').filter({hasText:'LEAVE CAR'}).waitFor({state:'visible'});
+    const stick=await page.locator('#mc-joystick').boundingBox(); assert.ok(stick);
+    const x=stick.x+stick.width/2,y=stick.y+stick.height/2;
+    const before=await page.evaluate(()=>document.__qaWorld.camera.position.toArray());
+    await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x+12,y-26);
+    try {
+      await page.waitForFunction(before=>document.__qaWorld.camera.position.distanceTo({x:before[0],y:before[1],z:before[2]})>2,before);
+      await page.keyboard.press('j');
+      const paused=await page.evaluate(()=>document.__qaWorld.camera.position.toArray());
+      await page.mouse.move(x-12,y-30); await page.waitForTimeout(400);
+      assert.deepEqual(await page.evaluate(()=>document.__qaWorld.camera.position.toArray()),paused);
+    } finally { await page.mouse.up(); }
+    await close(); await page.keyboard.press('e');
+    await page.waitForFunction(()=>Math.abs(document.__qaWorld.camera.position.y-1.7)<.1);
+    await page.screenshot({path:resolve(output,'touch-driving-handoff.png')});
+  });
+  await step('Storage denial preserves playable evidence collection' ,async()=>{
     const denied=await context.newPage();
     try {
       denied.on('pageerror',error=>faults.push(error.message));
