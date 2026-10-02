@@ -32,10 +32,12 @@
  *   elements owned by this module (never a browsing-context root), and
  *   `isTouchPrimary()` below feature-detects without referencing `window`.
  */
+import { initDetective } from './detective.mjs';
 import { NARRATIVE_CSS } from './style.js';
 import { DIVERGENCE_EXHIBIT, detectMasthead } from './content.js';
 import { findDistrict } from './geoUtils.js';
 import { drawBaseMap, worldToMap } from './mapRenderer.js';
+import { projectWaypoints } from './mapMarkers.mjs';
 
 const READ_RADIUS = 9; // meters — shows the [E] READ prompt / touch READ button
 const CLOSE_RADIUS = 13; // meters — walking this far from an open readable closes it
@@ -59,13 +61,51 @@ export async function initNarrative(ctx) {
     openReadable: null,
     nearestReadable: null,
     currentDistrictSlug: undefined,
+    interactionLabel: undefined,
   };
 
+  root.addEventListener('magic-city:modal-open', () => { if (state.openReadable) closeReadable(root, state); });
+  initDetective(ctx, root);
+  ctx.interactions.block('title', true);
+  const interactiveScratch = new ctx.THREE.Vector3();
+  const readableCandidates = new WeakMap();
+  const closeCandidate = { distance: 0, priority: 200, label: 'CLOSE DOCUMENT', activate: () => closeReadable(root, state) };
+  ctx.interactions.register(() => {
+    if (!state.hudVisible || state.mapOpen) return null;
+    if (state.openReadable) return closeCandidate;
+    const scratch = interactiveScratch;
+    let nearest = null; let distance = READ_RADIUS;
+    for (const item of ctx.interactives) {
+      item.object.getWorldPosition(scratch); const d = scratch.distanceTo(ctx.camera.position);
+      if (d < distance) { nearest = item; distance = d; }
+    }
+    if (!nearest) return null;
+    let candidate = readableCandidates.get(nearest);
+    if (!candidate) {
+      const readable = nearest;
+      candidate = { distance, label: 'READ · ' + readable.title, activate: () => openReadable(root, state, readable) };
+      readableCandidates.set(readable, candidate);
+    }
+    candidate.distance = distance; return candidate;
+  });
   wireTitleCard(ctx, root, state);
   const keyHandlers = wireKeys(ctx, root, state);
   wireTouchControls(ctx, root, state, keyHandlers);
   wireModalDismiss(ctx, root, state);
   drawBaseMap(root.querySelector('#mc-map-canvas'), ctx.plan, MAP_SIZE);
+  root.addEventListener('magic-city:waypoints', event => {
+    const layer = root.querySelector('#mc-map-waypoints');
+    layer.replaceChildren();
+    for (const item of projectWaypoints(ctx.plan.bounds, event.detail)) {
+      const marker = document.createElement('span');
+      marker.className = 'mc-map-waypoint' + (item.completed ? ' mc-map-waypoint-complete' : '');
+      marker.style.left = `${item.x * 100}%`; marker.style.insetBlockStart = `${item.y * 100}%`;
+      marker.textContent = item.symbol || '◆'; marker.title = item.label;
+      marker.setAttribute('role', 'img'); marker.setAttribute('aria-label', item.label);
+      layer.appendChild(marker);
+    }
+    root.querySelector('#mc-map-case-legend').hidden = !event.detail.length;
+  });
 
   // Scratch vectors reused every tick — no per-frame allocation.
   const scratch = new ctx.THREE.Vector3();
@@ -107,8 +147,8 @@ function buildDom() {
         <h1 class="mc-title-main">MAGIC CITY</h1>
         <div class="mc-title-year">1929</div>
         <div class="mc-title-rule"></div>
-        <p class="mc-title-premise">Birmingham, as it might have been.</p>
-        <div class="mc-title-click" id="mc-title-click">CLICK TO WALK</div>
+        <p class="mc-title-premise">Every street has a story. Every witness has a price.</p>
+        <button type="button" class="mc-title-click" id="mc-title-click">ENTER THE CITY</button>
       </div>
     </div>
     <div id="mc-hud" class="mc-hud mc-hidden">
@@ -138,8 +178,10 @@ function buildDom() {
         <div class="mc-map-cartouche">MAGIC CITY 1929<span>STEEL CAPITAL OF THE SOUTH</span></div>
         <div class="mc-map-canvas-wrap">
           <canvas id="mc-map-canvas" width="${MAP_SIZE}" height="${MAP_SIZE}"></canvas>
+          <div class="mc-map-waypoints" id="mc-map-waypoints"></div>
           <div class="mc-map-marker" id="mc-map-marker"></div>
         </div>
+        <div id="mc-map-case-legend" class="mc-map-case-legend" hidden>◆ Evidence &nbsp; ● Witness &nbsp; ✦ Case office · faded marks are recorded</div>
         <div class="mc-map-hint">M OR TAP OUTSIDE&nbsp; TO CLOSE</div>
       </div>
     </div>
@@ -219,7 +261,7 @@ function isTouchPrimary() {
  * mouse-look. */
 function wireTitleCard(ctx, root, state) {
   root.querySelector('#mc-compass-track').innerHTML = compassLabels();
-  root.querySelector('#mc-title-click').textContent = isTouchPrimary() ? 'TAP TO EXPLORE' : 'CLICK TO WALK';
+  root.querySelector('#mc-title-click').textContent = isTouchPrimary() ? 'TAP TO BEGIN' : 'ENTER THE CITY';
 
   const card = root.querySelector('#mc-title-card');
   let dismissed = false;
@@ -232,9 +274,11 @@ function wireTitleCard(ctx, root, state) {
     root.querySelector('#mc-hud').classList.remove('mc-hidden');
     root.querySelector('#mc-touch-controls').classList.remove('mc-hidden');
     state.hudVisible = true;
+    ctx.interactions.block('title', false);
+    root.dispatchEvent(new CustomEvent('magic-city:play'));
     // Optional upgrade only — dismissal above already happened regardless.
     try {
-      if (ctx.controls && ctx.controls.controls) ctx.controls.controls.lock();
+      if (ctx.controls && ctx.controls.controls && !ctx.controls.isInputBlocked()) ctx.controls.requestPointerLock();
     } catch (_) { /* denied/unavailable — drag-to-look + joystick fallback already wired */ }
   }
   card.addEventListener('click', dismiss);
@@ -254,13 +298,15 @@ function wireTitleCard(ctx, root, state) {
 // trigger the exact same logic instead of duplicating it.
 function wireKeys(ctx, root, state) {
   function handleRead() {
-    if (state.openReadable) closeReadable(root, state);
-    else if (state.nearestReadable) openReadable(root, state, state.nearestReadable);
+    ctx.interactions.activate();
   }
   function handleToggleMap() {
+    if (!state.hudVisible || (!state.mapOpen && ctx.controls.isInputBlocked())) return;
+    if (state.openReadable) closeReadable(root, state);
     toggleMap(ctx, root, state);
   }
   document.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
     if (e.code === 'KeyE') handleRead();
     else if (e.code === 'KeyM') handleToggleMap();
     else if (e.code === 'Escape') {
@@ -341,11 +387,16 @@ function wireTouchControls(ctx, root, state, keyHandlers) {
 function toggleMap(ctx, root, state, force) {
   const overlay = root.querySelector('#mc-map-overlay');
   const next = force !== undefined ? force : !state.mapOpen;
+  if (next) root.dispatchEvent(new CustomEvent('magic-city:modal-open'));
   state.mapOpen = next;
+  ctx.interactions.block('map', next);
+  ctx.controls.setInputBlocked('map', next);
+  if (next) { try { ctx.controls.controls.unlock(); } catch (_) { /* optional pointer lock */ } }
   overlay.classList.toggle('mc-hidden', !next);
 }
 
 function openReadable(root, state, readable) {
+  root.dispatchEvent(new CustomEvent('magic-city:modal-open'));
   state.openReadable = readable;
   const panel = root.querySelector('#mc-readable-panel');
   const masthead = detectMasthead(readable.title, readable.body);
@@ -398,13 +449,21 @@ function updateNearestReadable(ctx, root, state, scratch) {
     if (dist < nearestDist) { nearestDist = dist; nearest = it; }
   }
   state.nearestReadable = nearest;
-  const show = !!nearest && !state.openReadable;
-  root.querySelector('#mc-read-prompt').classList.toggle('mc-hidden', !show);
-  root.querySelector('#mc-touch-read-btn').classList.toggle('mc-hidden', !show);
+  const candidate = ctx.interactions.candidate();
+  const label = candidate?.label || '';
+  if (state.interactionLabel !== label) {
+    state.interactionLabel = label;
+    root.querySelector('#mc-read-prompt').textContent = label ? '[ E ] ' + label : '';
+    root.querySelector('#mc-touch-read-btn').textContent = label || 'INTERACT';
+    root.querySelector('#mc-read-prompt').classList.toggle('mc-hidden', !label);
+    root.querySelector('#mc-touch-read-btn').classList.toggle('mc-hidden', !label);
+  }
 }
 
 function updateMapMarker(ctx, root, bearingDeg) {
   const marker = root.querySelector('#mc-map-marker');
   const p = worldToMap(ctx.plan.bounds, MAP_SIZE, ctx.camera.position.x, ctx.camera.position.z);
-  marker.style.transform = `translate(${(p.x - 7).toFixed(1)}px, ${(p.y - 7).toFixed(1)}px) rotate(${bearingDeg.toFixed(1)}deg)`;
+  marker.style.left = `${p.x / MAP_SIZE * 100}%`;
+  marker.style.insetBlockStart = `${p.y / MAP_SIZE * 100}%`;
+  marker.style.transform = `translate(-50%, -50%) rotate(${bearingDeg.toFixed(1)}deg)`;
 }

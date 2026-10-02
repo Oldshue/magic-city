@@ -18,6 +18,7 @@
  * does not exist yet), so this module owns a small self-contained prompt
  * element rather than reaching into a nonexistent pathway.
  */
+import { readVehicleInput } from '../engine/vehicle-input.mjs';
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 import { EYE_HEIGHT } from '../engine/controls.js';
 
@@ -180,6 +181,7 @@ export function startDriving(ctx) {
     return el;
   }
   function showPrompt(text) {
+    if (ctx.interactions) return;
     const el = ensurePrompt();
     if (el.textContent !== text) el.textContent = text;
     el.style.display = 'block';
@@ -198,18 +200,15 @@ export function startDriving(ctx) {
 
   // --- Drive input (own listeners; independent of controls.js's own) -----
   const driveKeys = Object.create(null);
+  const vehicleInput = { throttle: 0, steer: 0 };
   function onKeyDown(e) {
+    if (controls.isInputBlocked?.()) return;
     if (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD'
         || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
       driveKeys[e.code] = true;
     }
     if (e.repeat) return;
-    if (e.code === 'KeyE') {
-      if (isDriving) exitCar();
-      else if (isRiding) exitTram();
-      else if (pendingCar) enterCar(pendingCar);
-      else if (pendingTram) enterTram(pendingTram);
-    } else if (e.code === 'KeyH') {
+    if (e.code === 'KeyH') {
       if (isDriving) playHorn();
     }
   }
@@ -321,14 +320,12 @@ export function startDriving(ctx) {
   // --- Physics --------------------------------------------------------
   function updateDrivingPhysics(dt) {
     const car = activeCar;
-    let throttle = 0;
-    if (driveKeys.KeyW || driveKeys.ArrowUp) throttle = 1;
-    else if (driveKeys.KeyS || driveKeys.ArrowDown) throttle = -1;
+    const { throttle, steer } = readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput);
 
     if (throttle > 0) {
-      car.speed += ACCEL * dt;
+      car.speed += ACCEL * throttle * dt;
     } else if (throttle < 0) {
-      car.speed += (car.speed > 0.05 ? -BRAKE_DECEL : -REVERSE_ACCEL) * dt;
+      car.speed += (car.speed > 0.05 ? -BRAKE_DECEL : -REVERSE_ACCEL) * Math.abs(throttle) * dt;
     } else if (car.speed > 0) {
       car.speed = Math.max(0, car.speed - FRICTION_DECEL * dt);
     } else if (car.speed < 0) {
@@ -336,9 +333,6 @@ export function startDriving(ctx) {
     }
     car.speed = clamp(car.speed, MAX_REVERSE, MAX_SPEED);
 
-    let steer = 0;
-    if (driveKeys.KeyA || driveKeys.ArrowLeft) steer = -1;
-    if (driveKeys.KeyD || driveKeys.ArrowRight) steer += 1;
     if (Math.abs(car.speed) > 0.15) {
       const speedFrac = Math.min(1, Math.abs(car.speed) / MAX_SPEED);
       const turnRate = MAX_STEER_RATE - (MAX_STEER_RATE - MIN_STEER_RATE) * speedFrac;
@@ -380,7 +374,7 @@ export function startDriving(ctx) {
     if (!engine) return;
     const car = activeCar;
     const speedFrac = car ? Math.min(1, Math.abs(car.speed) / MAX_SPEED) : 0;
-    const throttling = isDriving && (driveKeys.KeyW || driveKeys.ArrowUp) ? 1 : 0;
+    const throttling = isDriving ? Math.max(0, readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput).throttle) : 0;
     const targetGain = isDriving ? 0.045 + speedFrac * 0.1 + throttling * 0.05 : 0.0;
     const targetFreq = 38 + speedFrac * 65;
     engine.bus.gain.setTargetAtTime(targetGain, engine.ac.currentTime, 0.15);
@@ -425,8 +419,32 @@ export function startDriving(ctx) {
     }
   }
 
+  const parkCandidate = { distance: 0, priority: 100, label: 'PARK · LEAVE CAR', activate: exitCar };
+  const disembarkCandidate = { distance: 0, priority: 100, label: 'STEP OFF STREETCAR', activate: exitTram };
+  const boardingCandidates = new WeakMap();
+  const unregisterInteraction = ctx.interactions.register(() => {
+    if (isDriving) return parkCandidate;
+    if (isRiding) return disembarkCandidate;
+    updateProximityPrompt();
+    const target = pendingCar || pendingTram;
+    if (!target) return null;
+    let candidate = boardingCandidates.get(target);
+    if (!candidate) {
+      const car = pendingCar;
+      candidate = { distance: 0, label: car ? 'DRIVE · '+car.name : 'BOARD STREETCAR', activate: () => car ? enterCar(car) : enterTram(target) };
+      boardingCandidates.set(target, candidate);
+    }
+    candidate.distance = Math.hypot(camera.position.x-target.group.position.x,camera.position.z-target.group.position.z);
+    return candidate;
+  });
+
   return {
     update(dt) {
+      if (ctx.controls.isInputBlocked()) {
+        for (const key in driveKeys) driveKeys[key] = false;
+        if (engine) engine.bus.gain.setTargetAtTime(0, engine.ac.currentTime, 0.1);
+        return;
+      }
       const night = isNight(getDayPhase());
       for (let i = 0; i < cars.length; i++) {
         const c = cars[i];
@@ -450,6 +468,7 @@ export function startDriving(ctx) {
       }
     },
     dispose() {
+      unregisterInteraction();
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
     },

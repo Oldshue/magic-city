@@ -71,3 +71,17 @@ Each `detail` function is a real hook into the running systems (phase pinning in
 - `window.__MC` — set by `src/dev-hooks.js` (not by the hermetic graph) once boot completes, for console debugging: the same dev api object described above, `{ scene, camera, plan, getDayPhase, setPhase, setSpawn, setFly, setWeather, drawCalls }`, where `drawCalls()` returns `renderer.info.render.calls` at call time.
 
 **Hermetic rule:** nothing in the `src/main.js` graph may reference `window`/`location`/`history`/`top`/`parent`/`globalThis`. A hermetic preview may omit `src/dev-hooks.js` (with a warning) — the world still boots and is fully playable with pure built-in defaults; only these URL conveniences are unavailable.
+
+## Investigation and shared input
+
+`src/engine/interactions.mjs` owns one candidate selection for the existing E-key/readable primitive. Providers register a function returning `{distance, label, activate, priority?}` or `null`. Highest priority wins, then nearest distance. Named blockers compose without one overlay accidentally unblocking another. Walking readables, driving/boarding and case interactions all use this selector; touch activates the same candidate as E.
+
+Controls additionally expose `setInputBlocked(owner, blocked)` and `isInputBlocked()`. These block modal input without overriding the driving system's camera ownership through `setEnabled`. The existing narrative layer owns the case HUD/dialogue/journal; `src/gameplay/case-state.mjs` contains renderer-independent, data-driven evidence, testimony and accusation state. `src/gameplay/railway-case.mjs` defines the fictional case within the existing world canon. No new platform runtime or external service is required.
+
+Case state exposes `save()` and atomic `restore(saved)` with a versioned, case-scoped format. Restoration replays evidence and testimony prerequisites and recomputes verdicts from the definition. Narrative persists this state through optional browser storage; storage denial or malformed data never prevents a fresh game.
+
+The existing map accepts world waypoints through the narrative root’s `magic-city:waypoints` event (`detail: [{id, position: [x,z], label, symbol?, completed?}]`). Coordinates are projected as relative positions so canvas and overlays resize together. Investigation updates publish only when state changes, preserving the one-time base-map paint and existing player-marker loop.
+
+Virtual movement is shared by walking and driving through `getVirtualMove()`. Vehicle input merges keyboard axes with the existing touch stick; callers can supply a reusable result object to avoid frame allocations. Named modal blockers reject new virtual input as well as keyboard input.
+
+Narrative initializes after districts and before living-city systems, allowing it to declare `ctx.characters` before the pedestrian batches are sized. Each stationary declaration uses `{id, position:[x,z], yawDeg?, scale?, paletteIdx?, hatStyle?, hatDark?}`. The existing pedestrian renderer consumes these declarations in the same instanced geometry/material families as ambient people; capacity follows the declarations and does not impose a separate character limit. Quest witnesses, shopkeepers and guards share this primitive.
