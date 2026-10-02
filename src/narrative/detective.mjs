@@ -4,6 +4,16 @@ import { RAILWAY_CASE } from '../gameplay/railway-case.mjs';
 /** Case presentation composes the existing world, movement and interaction APIs. */
 export function initDetective(ctx, root) {
   const investigation = createCaseState(RAILWAY_CASE);
+  const saveKey = `magic-city:case:${RAILWAY_CASE.id}`;
+  let restored = false;
+  try {
+    const saved = localStorage.getItem(saveKey);
+    if (saved) restored = investigation.restore(JSON.parse(saved));
+  } catch (_) { /* Storage can be unavailable inside a preview; play still works. */ }
+  investigation.subscribe(() => {
+    try { localStorage.setItem(saveKey, JSON.stringify(investigation.save())); }
+    catch (_) { /* Private or sandboxed storage must never stop the investigation. */ }
+  });
   const markers = [];
   let caseSnapshot = investigation.snapshot();
   investigation.subscribe(value => { caseSnapshot = value; });
@@ -120,7 +130,7 @@ export function initDetective(ctx, root) {
       const buttons=[...dialog.querySelectorAll('button:not(:disabled)')];const i=buttons.indexOf(document.activeElement);e.preventDefault();buttons[(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length].focus();
     }
   },true);
-  root.addEventListener('magic-city:play',()=>{active=true;ui.querySelector('#mc-case-hud').hidden=false;present(RAILWAY_CASE.title,RAILWAY_CASE.introduction,[{text:'Take the case · begin at Terminal Station',action:()=>{ctx.controls.setSpawn([-420,-128],0);close();}},{text:'Explore the city first',action:close}]);},{once:true});
+  root.addEventListener('magic-city:play',()=>{active=true;ui.querySelector('#mc-case-hud').hidden=false;present(RAILWAY_CASE.title,restored ? 'Your notebook survived the night. Evidence and testimony from your previous investigation are waiting in the case journal.' : RAILWAY_CASE.introduction,[{text:restored ? 'Continue the case · return to Terminal Station' : 'Take the case · begin at Terminal Station',action:()=>{ctx.controls.setSpawn([-420,-128],0);close();}},{text:'Explore the city first',action:close}]);},{once:true});
   requestAnimationFrame(tick);
   return investigation;
 }

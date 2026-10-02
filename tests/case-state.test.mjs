@@ -30,3 +30,24 @@ test('one interaction wins: nearest at same priority, vehicle exit outranks near
   i.activate(); i.block('journal',true); assert.equal(i.activate(),false); i.block('dialogue',true); i.block('journal',false); assert.equal(i.activate(),false); i.block('dialogue',false); i.activate();
   assert.deepEqual(calls,['car','exit','exit']);
 });
+test('saved investigation restores dependencies independent of acquisition ordering', () => {
+  const s=opened(); s.collect('ledger'); s.say('porter','show'); s.say('singer','show'); s.collect('order'); s.conclude('vale');
+  const saved=JSON.parse(JSON.stringify(s.save())); saved.evidence.reverse(); saved.testimony.reverse();
+  const recovered=createCaseState(RAILWAY_CASE);
+  assert.equal(recovered.restore(saved),true);
+  assert.deepEqual(new Set(recovered.snapshot().evidence),new Set(s.snapshot().evidence));
+  assert.deepEqual(new Set(recovered.snapshot().testimony),new Set(s.snapshot().testimony));
+  assert.deepEqual(recovered.snapshot().outcome,s.snapshot().outcome);
+  recovered.reset(); assert.equal(recovered.save().suspectId,null);
+});
+test('invalid saves are rejected atomically and outcome prose is never trusted', () => {
+  const s=opened(); const original=s.snapshot(); let notifications=0; s.subscribe(()=>notifications++);
+  const save=s.save();
+  for(const bad of [null,{...save,version:2},{...save,caseId:'other'},{...save,evidence:['order'],testimony:[]},{...save,testimony:['invented']},{...save,evidence:['docket','docket']},{...save,suspectId:'unknown'}]){
+    assert.equal(s.restore(bad),false); assert.deepEqual(s.snapshot(),original);
+  }
+  assert.equal(notifications,0);
+  assert.equal(s.restore({...save,suspectId:'vale',outcome:{verdict:'proved',text:'tampered'}}),true);
+  assert.equal(s.snapshot().outcome.verdict,'unproven');
+  assert.notEqual(s.snapshot().outcome.text,'tampered'); assert.equal(notifications,1);
+});
