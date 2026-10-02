@@ -65,7 +65,7 @@ export async function initNarrative(ctx) {
   };
 
   root.addEventListener('magic-city:modal-open', () => { if (state.openReadable) closeReadable(root, state); });
-  initDetective(ctx, root);
+  await initDetective(ctx, root);
   ctx.interactions.block('title', true);
   const interactiveScratch = new ctx.THREE.Vector3();
   const readableCandidates = new WeakMap();
@@ -186,7 +186,7 @@ function buildDom() {
       </div>
     </div>
     <div id="mc-touch-controls" class="mc-touch-controls mc-hidden">
-      <div class="mc-joystick" id="mc-joystick">
+      <div class="mc-joystick" id="mc-joystick" data-movement-control>
         <div class="mc-joystick-base"></div>
         <div class="mc-joystick-knob" id="mc-joystick-knob"></div>
       </div>

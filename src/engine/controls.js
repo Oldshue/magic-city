@@ -52,10 +52,11 @@ export function createControls(camera, domElement, bounds) {
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
 
-  // Click anywhere to *attempt* pointer lock — always optional (see module docs).
+  // Click the scene to *attempt* pointer lock — always optional (see module docs).
   // Never throws out to the caller: some browsers (iframes without the
   // allow-pointer-lock permission, some tablets) reject/deny this outright.
-  const onClick = () => {
+  const onClick = (event) => {
+    if (event.target?.closest?.('button, a, input, select, textarea, [contenteditable], [role="button"], [role="slider"], [data-movement-control]')) return;
     if (!enabled || isInputBlocked()) return;
     requestPointerLock();
   };

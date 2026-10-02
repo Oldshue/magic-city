@@ -80,8 +80,18 @@ Controls additionally expose `setInputBlocked(owner, blocked)` and `isInputBlock
 
 Case state exposes `save()` and atomic `restore(saved)` with a versioned, case-scoped format. Restoration replays evidence and testimony prerequisites and recomputes verdicts from the definition. Narrative persists this state through optional browser storage; storage denial or malformed data never prevents a fresh game.
 
+The existing persistence boundary is asynchronous: ordinary pages use native storage, while isolated Artifact previews consume the host's existing `AgentForgePreview.storage` API. Restoration completes before the introduction is registered. Host writes serialize and coalesce by key, preserving the latest snapshot without flooding the broker; unavailable storage never blocks play. This does not relax iframe isolation or access another Artifact's storage namespace.
+
 The existing map accepts world waypoints through the narrative root’s `magic-city:waypoints` event (`detail: [{id, position: [x,z], label, symbol?, completed?}]`). Coordinates are projected as relative positions so canvas and overlays resize together. Investigation updates publish only when state changes, preserving the one-time base-map paint and existing player-marker loop.
 
 Virtual movement is shared by walking and driving through `getVirtualMove()`. Vehicle input merges keyboard axes with the existing touch stick; callers can supply a reusable result object to avoid frame allocations. Named modal blockers reject new virtual input as well as keyboard input.
 
+Declared characters may update their existing `position`, `yawDeg` and `moving` bindings. The pedestrian system reads valid transforms from those bindings and animates them through the same instanced geometry families. Malformed updates retain the original valid transform. The existing ambient walker capacity remains a resource budget for per-frame skeleton transforms; named patrols add no draw families.
+
+Driving exposes `getState(out?)` (driving/riding, world position, speed and a monotonic dangerous-impact sequence) and `park()` for other living-city systems. Police pressure uses those observations and the existing movement collider boxes for line of sight. Only witnessed reckless driving or dangerous collisions raise pressure. A 12-second break in sight ends a search; stopping near a visible officer surrenders. All pursuit, capture and escape timers pause under existing input blockers. Detention uses a named modal and releases the player at the Terminal Quarter office without resetting detective evidence.
+
+The ready-event API additionally exposes `getStreetPressure()` and `getPatrols()` as observations of the real running system, for rendered acceptance. They do not manufacture offences or verdicts.
+
 Narrative initializes after districts and before living-city systems, allowing it to declare `ctx.characters` before the pedestrian batches are sized. Each stationary declaration uses `{id, position:[x,z], yawDeg?, scale?, paletteIdx?, hatStyle?, hatDark?}`. The existing pedestrian renderer consumes these declarations in the same instanced geometry/material families as ambient people; capacity follows the declarations and does not impose a separate character limit. Quest witnesses, shopkeepers and guards share this primitive.
+
+Optional pointer capture is requested only by scene clicks. Buttons, links, editable fields, accessible button/slider widgets and `[data-movement-control]` descendants retain their pointer gestures. The narrative stick declares that generic movement-control attribute.

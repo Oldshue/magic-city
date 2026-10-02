@@ -342,11 +342,13 @@ async function boot() {
   } catch (_) { /* no narrative yet */ }
   let systemsUpdate = null;
   let weatherSystem = null;
+  let policeSystem = null;
   try {
     const sys = await import('./systems/index.js');
     const started = sys.startSystems(ctx);
     systemsUpdate = started.update;
     weatherSystem = started.weather || null;
+    policeSystem = started.police || null;
   } catch (_) { /* no systems yet */ }
 
   // Fade out the loading title once the world is ready.
@@ -397,6 +399,8 @@ async function boot() {
       scene, camera, plan,
       getDayPhase: sky.getDayPhase,
       setPhase, setSpawn, setFly, setWeather, drawCalls,
+      getStreetPressure: () => policeSystem?.snapshot(),
+      getPatrols: () => policeSystem?.patrols(),
     },
   }));
 

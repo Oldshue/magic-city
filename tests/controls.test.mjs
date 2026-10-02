@@ -25,3 +25,17 @@ test('named modal blockers suppress actual movement and pointer look without rel
     emit('keydown',{code:'KeyW'}); input.update(.1); assert.notDeepEqual(camera.position.toArray(),position);
   } finally {input.dispose();if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
 });
+
+ test('UI and movement widgets retain pointer input while scene clicks may request optional capture', async()=>{
+  const {JSDOM}=await import('jsdom');
+  const dom=new JSDOM('<body><canvas></canvas><button><span>Close</span></button><div data-movement-control><span>Stick</span></div></body>');
+  const previous=globalThis.document; globalThis.document=dom.window.document;
+  let requests=0; const body=document.body; body.requestPointerLock=()=>{requests++; return Promise.resolve();};
+  const input=createControls(new PerspectiveCamera(),body,{minX:-100,maxX:100,minZ:-100,maxZ:100});
+  try {
+    document.querySelector('button span').click();
+    document.querySelector('[data-movement-control] span').click();
+    assert.equal(requests,0);
+    document.querySelector('canvas').click(); assert.equal(requests,1);
+  } finally {input.dispose();dom.window.close();if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
+ });

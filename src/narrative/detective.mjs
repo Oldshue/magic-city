@@ -1,19 +1,22 @@
 import { createCaseState } from '../gameplay/case-state.mjs';
 import { RAILWAY_CASE } from '../gameplay/railway-case.mjs';
+import { createPersistentStorage } from '../gameplay/persistence.mjs';
 
 /** Case presentation composes the existing world, movement and interaction APIs. */
-export function initDetective(ctx, root) {
+export async function initDetective(ctx, root) {
   const investigation = createCaseState(RAILWAY_CASE);
+  const storage = createPersistentStorage();
   const portraitUrl = new URL('../../data/art/samuel-price.png', import.meta.url).href;
   const saveKey = `magic-city:case:${RAILWAY_CASE.id}`;
   let restored = false;
   try {
-    const saved = localStorage.getItem(saveKey);
+    const saved = await storage.getItem(saveKey);
     if (saved) restored = investigation.restore(JSON.parse(saved));
   } catch (_) { /* Storage can be unavailable inside a preview; play still works. */ }
   investigation.subscribe(() => {
-    try { localStorage.setItem(saveKey, JSON.stringify(investigation.save())); }
-    catch (_) { /* Private or sandboxed storage must never stop the investigation. */ }
+    storage.setItem(saveKey, JSON.stringify(investigation.save())).catch(() => {
+      /* Private or unavailable storage must never stop the investigation. */
+    });
   });
   const markers = [];
   let caseSnapshot = investigation.snapshot();
