@@ -78,6 +78,7 @@ export const NARRATIVE_CSS = `
   font-size: clamp(14px, 2vw, 19px); max-width: 640px; margin: 0 auto;
 }
 .mc-title-click {
+  background: transparent; border: 0; color: inherit;
   margin-block-start: 34px; font-family: var(--mc-font-deco); letter-spacing: 0.4em;
   font-size: 13px; color: var(--mc-gold);
   border: 1px solid var(--mc-bronze); display: inline-block; padding: 10px 22px;

@@ -71,3 +71,9 @@ Each `detail` function is a real hook into the running systems (phase pinning in
 - `window.__MC` — set by `src/dev-hooks.js` (not by the hermetic graph) once boot completes, for console debugging: the same dev api object described above, `{ scene, camera, plan, getDayPhase, setPhase, setSpawn, setFly, setWeather, drawCalls }`, where `drawCalls()` returns `renderer.info.render.calls` at call time.
 
 **Hermetic rule:** nothing in the `src/main.js` graph may reference `window`/`location`/`history`/`top`/`parent`/`globalThis`. A hermetic preview may omit `src/dev-hooks.js` (with a warning) — the world still boots and is fully playable with pure built-in defaults; only these URL conveniences are unavailable.
+
+## Investigation and shared input
+
+`src/engine/interactions.mjs` owns one candidate selection for the existing E-key/readable primitive. Providers register a function returning `{distance, label, activate, priority?}` or `null`. Highest priority wins, then nearest distance. Named blockers compose without one overlay accidentally unblocking another. Walking readables, driving/boarding and case interactions all use this selector; touch activates the same candidate as E.
+
+Controls additionally expose `setInputBlocked(owner, blocked)` and `isInputBlocked()`. These block modal input without overriding the driving system's camera ownership through `setEnabled`. The existing narrative layer owns the case HUD/dialogue/journal; `src/gameplay/case-state.mjs` contains renderer-independent, data-driven evidence, testimony and accusation state. `src/gameplay/railway-case.mjs` defines the fictional case within the existing world canon. No new platform runtime or external service is required.

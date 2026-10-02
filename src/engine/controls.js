@@ -64,6 +64,12 @@ export function createControls(camera, domElement, bounds) {
   const right = new THREE.Vector3();
 
   let enabled = true;
+  const inputBlockers = new Set();
+  function isInputBlocked() { return inputBlockers.size > 0; }
+  function setInputBlocked(owner, blocked) {
+    if (blocked) { inputBlockers.add(owner); for (const key in keys) keys[key] = false; virtualMove.x = 0; virtualMove.z = 0; }
+    else inputBlockers.delete(owner);
+  }
 
   // --- Fallback drag-to-look (mouse or touch) when pointer lock isn't held ---
   const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -81,7 +87,7 @@ export function createControls(camera, domElement, bounds) {
   }
 
   function onPointerDown(e) {
-    if (!enabled || controls.isLocked) return;
+    if (!enabled || isInputBlocked() || controls.isLocked) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (isNarrativeUi(e.target)) return;
     dragging = true;
@@ -91,7 +97,7 @@ export function createControls(camera, domElement, bounds) {
   }
   function onPointerMove(e) {
     if (!dragging || e.pointerId !== dragPointerId) return;
-    if (!enabled || controls.isLocked) { dragging = false; return; }
+    if (!enabled || isInputBlocked() || controls.isLocked) { dragging = false; return; }
     const dx = e.clientX - lastX;
     const dy = e.clientY - lastY;
     lastX = e.clientX;
@@ -153,7 +159,7 @@ export function createControls(camera, domElement, bounds) {
    * players who never got pointer lock.
    * @param {number} dt seconds */
   function update(dt) {
-    if (!enabled) return;
+    if (!enabled || isInputBlocked()) return;
     let ix = 0, iz = 0;
     if (keys['KeyW'] || keys['ArrowUp']) iz -= 1;
     if (keys['KeyS'] || keys['ArrowDown']) iz += 1;
@@ -214,7 +220,7 @@ export function createControls(camera, domElement, bounds) {
    * @returns {Array<{minX:number,maxX:number,minZ:number,maxZ:number}>} */
   function getColliderBoxes() { return rawBoxes; }
 
-  return { controls, update, setSpawn, addColliders, setEnabled, getColliderBoxes, setVirtualMove,
+  return { controls, update, setSpawn, addColliders, setEnabled, setInputBlocked, isInputBlocked, getColliderBoxes, setVirtualMove,
     dispose() {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);

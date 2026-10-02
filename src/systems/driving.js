@@ -180,6 +180,7 @@ export function startDriving(ctx) {
     return el;
   }
   function showPrompt(text) {
+    if (ctx.interactions) return;
     const el = ensurePrompt();
     if (el.textContent !== text) el.textContent = text;
     el.style.display = 'block';
@@ -204,12 +205,7 @@ export function startDriving(ctx) {
       driveKeys[e.code] = true;
     }
     if (e.repeat) return;
-    if (e.code === 'KeyE') {
-      if (isDriving) exitCar();
-      else if (isRiding) exitTram();
-      else if (pendingCar) enterCar(pendingCar);
-      else if (pendingTram) enterTram(pendingTram);
-    } else if (e.code === 'KeyH') {
+    if (e.code === 'KeyH') {
       if (isDriving) playHorn();
     }
   }
@@ -425,8 +421,22 @@ export function startDriving(ctx) {
     }
   }
 
+  const unregisterInteraction = ctx.interactions.register(() => {
+    if (isDriving) return { distance: 0, priority: 100, label: 'PARK · LEAVE CAR', activate: exitCar };
+    if (isRiding) return { distance: 0, priority: 100, label: 'STEP OFF STREETCAR', activate: exitTram };
+    updateProximityPrompt();
+    const target = pendingCar || pendingTram;
+    if (!target) return null;
+    return { distance: Math.hypot(camera.position.x-target.group.position.x,camera.position.z-target.group.position.z), label: pendingCar ? 'DRIVE · '+pendingCar.name : 'BOARD STREETCAR', activate: () => pendingCar ? enterCar(pendingCar) : enterTram(pendingTram) };
+  });
+
   return {
     update(dt) {
+      if (ctx.controls.isInputBlocked()) {
+        for (const key in driveKeys) driveKeys[key] = false;
+        if (engine) engine.bus.gain.setTargetAtTime(0, engine.ac.currentTime, 0.1);
+        return;
+      }
       const night = isNight(getDayPhase());
       for (let i = 0; i < cars.length; i++) {
         const c = cars[i];
@@ -450,6 +460,7 @@ export function startDriving(ctx) {
       }
     },
     dispose() {
+      unregisterInteraction();
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
     },

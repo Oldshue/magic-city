@@ -33,6 +33,7 @@ import { createControls, EYE_HEIGHT } from './engine/controls.js';
 import { createSky } from './engine/sky.js';
 import { materials } from './engine/materials.js';
 import * as deco from './engine/deco.js';
+import { createInteractions } from './engine/interactions.mjs';
 import { builders } from './districts/registry.js';
 
 const DAY_NIGHT_CYCLE_SECONDS = 360;
@@ -281,7 +282,7 @@ async function boot() {
     THREE, scene, camera, renderer, plan,
     materials, deco, registerInteractive, controls,
     getDayPhase: sky.getDayPhase,
-    interactives,
+    interactives, interactions: createInteractions(),
   };
 
   // --- Districts (static registry lookup, skip missing) ----------------
@@ -344,7 +345,7 @@ async function boot() {
   } catch (_) { /* no systems yet */ }
   try {
     const nar = await import('./narrative/index.js');
-    nar.initNarrative(ctx);
+    await nar.initNarrative(ctx);
   } catch (_) { /* no narrative yet */ }
 
   // Fade out the loading title once the world is ready.

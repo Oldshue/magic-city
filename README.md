@@ -3,3 +3,9 @@
 An open-world art deco experience: Birmingham, Alabama in an alternate 1920s-30s where Pittsburgh Plus pricing never held the Magic City back.
 
 Built by Ox Alpha agents on AgentForge.
+
+The next chapter, **The Last Train Out**, adds a fictional noir investigation to the existing open world. Take the case at the introduction or explore first. Follow the station docket through the Tutwiler, Savoy and Sloss; question witnesses, collect corroborating evidence and make an accusation at the station case office. A correct guess without proof and a wrong accusation have different consequences. The journal lets you reopen the case.
+
+Controls: WASD/arrows to walk or drive, Shift to sprint, E to interact/leave a vehicle, J for the case journal, M for the city map, H for the horn. Drag the scene to look when pointer lock is unavailable. Touch uses the existing stick and interaction button.
+
+Run the deterministic gameplay checks with `node --test tests/case-state.test.mjs`. Rendered acceptance must additionally cover fresh boot, dialogue choices, all three evidence locations, proven/unproven/wrong verdicts, replay, walking/vehicle handoff and journal movement blocking.

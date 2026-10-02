@@ -32,6 +32,7 @@
  *   elements owned by this module (never a browsing-context root), and
  *   `isTouchPrimary()` below feature-detects without referencing `window`.
  */
+import { initDetective } from './detective.mjs';
 import { NARRATIVE_CSS } from './style.js';
 import { DIVERGENCE_EXHIBIT, detectMasthead } from './content.js';
 import { findDistrict } from './geoUtils.js';
@@ -61,6 +62,20 @@ export async function initNarrative(ctx) {
     currentDistrictSlug: undefined,
   };
 
+  initDetective(ctx, root);
+  ctx.interactions.block('title', true);
+  const interactiveScratch = new ctx.THREE.Vector3();
+  ctx.interactions.register(() => {
+    if (!state.hudVisible || state.mapOpen) return null;
+    if (state.openReadable) return { distance: 0, priority: 200, label: 'CLOSE DOCUMENT', activate: () => closeReadable(root, state) };
+    const scratch = interactiveScratch;
+    let nearest = null; let distance = READ_RADIUS;
+    for (const item of ctx.interactives) {
+      item.object.getWorldPosition(scratch); const d = scratch.distanceTo(ctx.camera.position);
+      if (d < distance) { nearest = item; distance = d; }
+    }
+    return nearest ? { distance, label: 'READ · ' + nearest.title, activate: () => openReadable(root, state, nearest) } : null;
+  });
   wireTitleCard(ctx, root, state);
   const keyHandlers = wireKeys(ctx, root, state);
   wireTouchControls(ctx, root, state, keyHandlers);
@@ -107,8 +122,8 @@ function buildDom() {
         <h1 class="mc-title-main">MAGIC CITY</h1>
         <div class="mc-title-year">1929</div>
         <div class="mc-title-rule"></div>
-        <p class="mc-title-premise">Birmingham, as it might have been.</p>
-        <div class="mc-title-click" id="mc-title-click">CLICK TO WALK</div>
+        <p class="mc-title-premise">Every street has a story. Every witness has a price.</p>
+        <button type="button" class="mc-title-click" id="mc-title-click">ENTER THE CITY</button>
       </div>
     </div>
     <div id="mc-hud" class="mc-hud mc-hidden">
@@ -219,7 +234,7 @@ function isTouchPrimary() {
  * mouse-look. */
 function wireTitleCard(ctx, root, state) {
   root.querySelector('#mc-compass-track').innerHTML = compassLabels();
-  root.querySelector('#mc-title-click').textContent = isTouchPrimary() ? 'TAP TO EXPLORE' : 'CLICK TO WALK';
+  root.querySelector('#mc-title-click').textContent = isTouchPrimary() ? 'TAP TO BEGIN' : 'ENTER THE CITY';
 
   const card = root.querySelector('#mc-title-card');
   let dismissed = false;
@@ -232,9 +247,11 @@ function wireTitleCard(ctx, root, state) {
     root.querySelector('#mc-hud').classList.remove('mc-hidden');
     root.querySelector('#mc-touch-controls').classList.remove('mc-hidden');
     state.hudVisible = true;
+    ctx.interactions.block('title', false);
+    root.dispatchEvent(new CustomEvent('magic-city:play'));
     // Optional upgrade only — dismissal above already happened regardless.
     try {
-      if (ctx.controls && ctx.controls.controls) ctx.controls.controls.lock();
+      if (ctx.controls && ctx.controls.controls && !ctx.controls.isInputBlocked()) ctx.controls.controls.lock();
     } catch (_) { /* denied/unavailable — drag-to-look + joystick fallback already wired */ }
   }
   card.addEventListener('click', dismiss);
@@ -254,13 +271,13 @@ function wireTitleCard(ctx, root, state) {
 // trigger the exact same logic instead of duplicating it.
 function wireKeys(ctx, root, state) {
   function handleRead() {
-    if (state.openReadable) closeReadable(root, state);
-    else if (state.nearestReadable) openReadable(root, state, state.nearestReadable);
+    ctx.interactions.activate();
   }
   function handleToggleMap() {
     toggleMap(ctx, root, state);
   }
   document.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
     if (e.code === 'KeyE') handleRead();
     else if (e.code === 'KeyM') handleToggleMap();
     else if (e.code === 'Escape') {
@@ -342,6 +359,8 @@ function toggleMap(ctx, root, state, force) {
   const overlay = root.querySelector('#mc-map-overlay');
   const next = force !== undefined ? force : !state.mapOpen;
   state.mapOpen = next;
+  ctx.interactions.block('map', next);
+  ctx.controls.setInputBlocked('map', next);
   overlay.classList.toggle('mc-hidden', !next);
 }
 
@@ -398,7 +417,10 @@ function updateNearestReadable(ctx, root, state, scratch) {
     if (dist < nearestDist) { nearestDist = dist; nearest = it; }
   }
   state.nearestReadable = nearest;
-  const show = !!nearest && !state.openReadable;
+  const candidate = ctx.interactions.candidate();
+  const show = !!candidate;
+  root.querySelector('#mc-read-prompt').textContent = candidate ? '[ E ] ' + candidate.label : '';
+  root.querySelector('#mc-touch-read-btn').textContent = candidate ? candidate.label : 'INTERACT';
   root.querySelector('#mc-read-prompt').classList.toggle('mc-hidden', !show);
   root.querySelector('#mc-touch-read-btn').classList.toggle('mc-hidden', !show);
 }
