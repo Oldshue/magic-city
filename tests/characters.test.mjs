@@ -25,3 +25,13 @@ test('malformed declarations cannot introduce invalid world transforms',()=>{
   const baseline=build([]),named=build([{position:[NaN,0]},{position:[1]},{position:null}]);
   assert.equal(named.scene.children[0].count,baseline.scene.children[0].count);
 });
+test('moving declarations reuse the crowd batches and retain a valid transform if their binding becomes malformed',()=>{
+  const actor={id:'courier',position:[2,3],yawDeg:0,moving:false};
+  const {scene,crowd}=build([actor]);const coat=scene.children[0];
+  const matrix=new THREE.Matrix4(),position=new THREE.Vector3();
+  actor.position[0]=17;actor.position[1]=-8;actor.yawDeg=90;actor.moving=true;
+  crowd.update(.1,4);coat.getMatrixAt(coat.count-1,matrix);position.setFromMatrixPosition(matrix);
+  assert.ok(Math.abs(position.x-17)<.01);assert.ok(Math.abs(position.z+8)<.01);
+  actor.position=[NaN,0];crowd.update(.1,5);coat.getMatrixAt(coat.count-1,matrix);
+  assert.ok(matrix.elements.every(Number.isFinite));
+});

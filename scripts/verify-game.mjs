@@ -12,7 +12,34 @@ const browser = process.env.MC_QA_CDP
   : await chromium.launch({ channel: 'chrome', headless: true, chromiumSandbox: true, ignoreDefaultArgs: ['--password-store=basic', '--use-mock-keychain'] });
 const context = process.env.MC_QA_CDP ? browser.contexts()[0] : await browser.newContext();
 assert.ok(context, 'Existing Chrome context required');
-const page = await context.newPage();
+const hostPage = await context.newPage();
+let worldFrame = hostPage;
+let dialog;
+async function discoverWorld(host) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => { settled = true; host.off('frameattached', watch); reject(new Error('No playable game frame booted within 30 seconds')); }, 30000);
+    function watch(frame) {
+      frame.waitForFunction(() => !!document.__qaWorld, null, {timeout: 30000}).then(() => {
+        if (settled) return;
+        settled = true; clearTimeout(timeout); host.off('frameattached', watch); resolve(frame);
+      }).catch(() => {});
+    }
+    host.on('frameattached', watch);
+    host.frames().forEach(watch);
+  });
+}
+const page = new Proxy(hostPage, {get(host, key) {
+  if (key === 'goto' || key === 'reload') return async (...args) => {
+    const response = await host[key](...args);
+    worldFrame = await discoverWorld(host);
+    dialog = worldFrame.locator('#mc-case-dialog');
+    return response;
+  };
+  const target = ['evaluate', 'locator', 'getByRole', 'waitForFunction'].includes(key) ? worldFrame : host;
+  const value = target[key];
+  return typeof value === 'function' ? value.bind(target) : value;
+}});
 const output = resolve(process.env.MC_QA_OUTPUT || 'artifacts/game-acceptance');
 await mkdir(output, { recursive: true });
 const faults = [];
@@ -25,7 +52,7 @@ page.on('pageerror', error => faults.push(error.message));
 await page.addInitScript(() => {
   document.addEventListener('magic-city:ready', event => { document.__qaWorld = event.detail; }, true);
 });
-const dialog = page.locator('#mc-case-dialog');
+
 async function step(name, run) { activeStep = name; await run(); steps.push(name); }
 async function move(x, z) {
   await page.evaluate(([x,z]) => document.__qaWorld.setSpawn(x,z,0),[x,z]);
@@ -56,9 +83,9 @@ async function gatherMinimum() {
 try {
   await page.goto(process.env.MC_QA_URL);
   await page.waitForFunction(() => !!document.__qaWorld);
-  previousSave = await page.evaluate(key => localStorage.getItem(key),key);
-  await page.evaluate(key => localStorage.removeItem(key),key);
-  await page.reload(); await page.waitForFunction(() => !!document.__qaWorld);
+  const storage = await page.evaluate(key => { try { return {available:true,value:localStorage.getItem(key)}; } catch (_) { return {available:false}; } },key);
+  if(storage.available){previousSave=storage.value;await page.evaluate(key=>localStorage.removeItem(key),key);await page.reload();await page.waitForFunction(()=>!!document.__qaWorld);}
+  else assert.equal(process.env.MC_QA_ANONYMOUS,'1','Isolated-frame acceptance uses a disposable anonymous context');
   await step('Fresh title and intro boot',takeCase);
   await step('Journal blocks movement and map input',async()=>{
     await page.keyboard.press('j');
@@ -135,14 +162,20 @@ try {
     await page.screenshot({path:resolve(output,'vehicle-handoff.png')});
   });
   await step('Existing touch stick drives and modal blocks its input',async()=>{
-    await page.evaluate(() => { const world=document.__qaWorld; const yaw=world.camera.rotation.y; world.setSpawn(world.camera.position.x-Math.cos(yaw)*.3,world.camera.position.z+Math.sin(yaw)*.3,yaw*180/Math.PI); });
+    await page.setViewportSize({width:390,height:844});
+    await page.reload();
+    await page.locator('#mc-title-click').click();
+    await dialog.getByRole('button',{name:/^(Take|Continue) the case ·/}).click();
+    await move(25,14);
     await page.locator('#mc-read-prompt').filter({hasText:'DRIVE'}).waitFor({state:'visible'});
     await page.keyboard.press('e');
     await page.locator('#mc-read-prompt').filter({hasText:'LEAVE CAR'}).waitFor({state:'visible'});
+    await page.locator('#mc-joystick').hover();
+    await page.evaluate(()=>{document.__qaPointer={}; document.addEventListener('pointerdown',e=>{document.__qaPointer.documentDown={x:e.clientX,y:e.clientY,target:e.target.id,className:e.target.className};},true); for(const type of ['pointerdown','pointermove'])document.querySelector('#mc-joystick').addEventListener(type,e=>{document.__qaPointer[type]={x:e.clientX,y:e.clientY,target:e.target.id};});});
     const stick=await page.locator('#mc-joystick').boundingBox(); assert.ok(stick);
     const x=stick.x+stick.width/2,y=stick.y+stick.height/2;
     const before=await page.evaluate(()=>document.__qaWorld.camera.position.toArray());
-    await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x+12,y-26);
+    await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x,y-30);
     try {
       await page.waitForFunction(before=>document.__qaWorld.camera.position.distanceTo({x:before[0],y:before[1],z:before[2]})>2,before);
       await page.keyboard.press('j');
@@ -163,20 +196,21 @@ try {
         Storage.prototype.setItem=function(){throw new Error('QA storage denied');};
         document.addEventListener('magic-city:ready',event=>{document.__qaWorld=event.detail;},true);
       });
-      await denied.goto(process.env.MC_QA_URL); await denied.waitForFunction(()=>!!document.__qaWorld);
-      await denied.locator('#mc-title-click').click();
-      await denied.getByRole('button',{name:'Take the case · begin at Terminal Station',exact:true}).click();
-      await denied.evaluate(()=>document.__qaWorld.setSpawn(-420,-138,0));
-      await denied.locator('#mc-read-prompt').filter({hasText:'INSPECT'}).waitFor({state:'visible'});
+      await denied.goto(process.env.MC_QA_URL); const deniedFrame = await discoverWorld(denied);
+      await deniedFrame.locator('#mc-title-click').click();
+      await deniedFrame.getByRole('button',{name:'Take the case · begin at Terminal Station',exact:true}).click();
+      await deniedFrame.evaluate(()=>document.__qaWorld.setSpawn(-420,-138,0));
+      await deniedFrame.locator('#mc-read-prompt').filter({hasText:'INSPECT'}).waitFor({state:'visible'});
       await denied.keyboard.press('e');
-      await denied.getByRole('button',{name:'Return to the streets · Escape',exact:true}).click();
+      await deniedFrame.getByRole('button',{name:'Return to the streets · Escape',exact:true}).click();
       await denied.keyboard.press('j');
-      assert.match(await denied.locator('#mc-case-dialog').textContent(),/✓ A torn freight docket/);
+      assert.match(await deniedFrame.locator('#mc-case-dialog').textContent(),/✓ A torn freight docket/);
     } finally { await denied.close(); }
   });
   assert.deepEqual(faults,[], 'No uncaught page errors');
  } catch (error) {
   failure = error;
+  console.log(JSON.stringify({inputDiagnostic:await page.evaluate(()=>({pointer:document.__qaPointer,lock:document.pointerLockElement?.tagName,position:document.__qaWorld?.camera.position.toArray(),pressure:document.__qaWorld?.getStreetPressure(),stick:document.querySelector('#mc-joystick')?.getBoundingClientRect().toJSON(),knob:document.querySelector('#mc-joystick-knob')?.style.transform})).catch(e=>String(e))}));
   await page.screenshot({path:resolve(output,'failure.png')}).catch(()=>{});
 } finally {
   if (previousSave !== undefined) {

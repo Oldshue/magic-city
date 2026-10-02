@@ -158,7 +158,8 @@ export function startPedestrians(ctx) {
       hatStyle: appearance.hatStyle === 0 || appearance.hatStyle === 1 ? appearance.hatStyle : rand() < 0.5 ? 0 : 1,
       hatDark: appearance.hatDark ?? rand() < 0.6,
       scale, standing: true, prop: false,
-      x, z, facing,
+      trimColor: Number.isInteger(appearance.trimColor) && appearance.trimColor >= 0 && appearance.trimColor <= 0xffffff ? appearance.trimColor : null,
+      x, z, facing, actor: Array.isArray(appearance.position) ? appearance : null,
     });
   }
   function addStandingCluster(cx, cz, count, radius) {
@@ -259,7 +260,7 @@ export function startPedestrians(ctx) {
     const cc = new THREE.Color(coatPalette[p ? p.paletteIdx : 0]);
     coatMesh.setColorAt(i, cc);
     skirtMesh.setColorAt(i, cc);
-    shoulderMesh.setColorAt(i, cc);
+    shoulderMesh.setColorAt(i, p?.trimColor != null ? new THREE.Color(p.trimColor) : cc);
     armMesh.setColorAt(i * 2, cc);
     armMesh.setColorAt(i * 2 + 1, cc);
     armLMesh.setColorAt(i * 2, cc);
@@ -320,9 +321,11 @@ export function startPedestrians(ctx) {
         const p = people[i];
         let ox, oz, heading;
         if (p.standing) {
-          ox = p.x;
-          oz = p.z;
-          heading = p.facing;
+          const declared = p.actor;
+          const valid = declared && declared.position?.length === 2 && declared.position.every(Number.isFinite);
+          ox = valid ? declared.position[0] : p.x;
+          oz = valid ? declared.position[1] : p.z;
+          heading = valid && Number.isFinite(declared.yawDeg) ? declared.yawDeg * Math.PI / 180 : p.facing;
         } else {
           p.dist += p.speed * p.dir * dt;
           sample(p.route, p.dist);
@@ -336,10 +339,10 @@ export function startPedestrians(ctx) {
         const nx = Math.cos(heading);
         const nz = -Math.sin(heading);
         const fwdX = Math.sin(heading), fwdZ = Math.cos(heading);
-        const stride = p.standing ? 1.2 : 5.2;
+        const moving = !p.standing || (p.actor?.moving === true) ? 1 : 0;
+        const stride = moving ? 5.2 : 1.2;
         const walkPhase = elapsed * stride + p.bob;
-        const moving = p.standing ? 0 : 1;
-        const bobY = 0.02 * Math.sin(walkPhase * 2) * moving + (p.standing ? 0.008 * Math.sin(walkPhase) : 0);
+        const bobY = 0.02 * Math.sin(walkPhase * 2) * moving + (!moving ? 0.008 * Math.sin(walkPhase) : 0);
 
         q.setFromAxisAngle(up, heading);
         sBody.set(p.scale, p.scale, p.scale);

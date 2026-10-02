@@ -187,7 +187,7 @@ export const NARRATIVE_CSS = `
   box-shadow: 0 0 0 1px rgba(0,0,0,0.3) inset;
 }
 .mc-joystick-knob {
-  position: absolute; left: 50%; inset-block-start: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px;
+  position: absolute; left: 50%; inset-block-start: 50%; width: 38px; height: 38px; margin: 0;
   border-radius: 50%; background: rgba(212,175,106,0.55); border: 1px solid var(--mc-gold);
   transform: translate(-50%, -50%); transition: background 0.15s ease;
 }

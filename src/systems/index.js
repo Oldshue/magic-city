@@ -15,17 +15,20 @@ import { startAmbience } from './ambience.js';
 import { startJazz } from './jazz.js';
 import { startDriving } from './driving.js';
 import { startWeather } from './weather.js';
+import { startPolice } from './police.js';
 
 export function startSystems(ctx) {
   const streetcars = safeStart(startStreetcars, ctx, 'streetcars');
   const traffic = safeStart(startTraffic, ctx, 'traffic');
-  const pedestrians = safeStart(startPedestrians, ctx, 'pedestrians');
+
   const steelLife = safeStart(startSteelLife, ctx, 'steelLife');
   const ambience = safeStart(startAmbience, ctx, 'ambience');
   const jazz = safeStart(startJazz, ctx, 'jazz');
   // driving.js coordinates streetcar boarding through streetcars.getCars() rather than
   // reaching into streetcars.js internals — ctx is only extended, never mutated upstream.
   const driving = safeStart((c) => startDriving({ ...c, streetcars }), ctx, 'driving');
+  const police = driving ? safeStart((c) => startPolice({ ...c, driving }), ctx, 'police') : null;
+  const pedestrians = safeStart(startPedestrians, ctx, 'pedestrians');
   const weather = safeStart(startWeather, ctx, 'weather');
 
   const carPositions = streetcars && streetcars.getCarPositions ? streetcars.getCarPositions() : [];
@@ -35,18 +38,20 @@ export function startSystems(ctx) {
     update(dt, elapsed) {
       if (streetcars) streetcars.update(dt, elapsed);
       if (traffic) traffic.update(dt, elapsed);
-      if (pedestrians) pedestrians.update(dt, elapsed);
+
       if (steelLife) steelLife.update(dt, elapsed, ctx.camera);
       if (ambience) ambience.update(dt, elapsed, ambienceExtra);
       if (jazz) jazz.update(dt, elapsed);
       if (driving) driving.update(dt, elapsed);
+      if (police) police.update(dt, elapsed);
+      if (pedestrians) pedestrians.update(dt, elapsed);
       if (weather) weather.update(dt, elapsed);
     },
     // Additive beyond the documented { update } contract, same pattern as
     // ctx's own additive `controls` field — src/main.js's dev api hook
     // setWeather(state) calls weather.setState(state) through this
     // reference so the hook is a real wire into the running system.
-    weather,
+    weather, police,
   };
 }
 

@@ -190,6 +190,25 @@ export function startDriving(ctx) {
     if (promptEl) promptEl.style.display = 'none';
   }
 
+  // A period dashboard readout makes the witnessed speed rule legible.
+  let speedometer = null, speedValue = null, lastSpeedShown = NaN;
+  function showSpeedometer(car) {
+    if (!speedometer) {
+      speedometer = document.createElement('aside'); speedometer.id = 'mc-speedometer';
+      speedometer.setAttribute('aria-label', 'Vehicle speed and controls');
+      speedometer.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);z-index:7;padding:10px 18px;border:1px solid #8d754d;background:#121a18e8;color:#ebdfbf;font-family:Georgia,serif;text-align:center;pointer-events:none;display:none";
+      speedometer.innerHTML = '<strong id="mc-driving-speed"></strong><small style="display:block;font-size:10px;letter-spacing:1px;margin-top:5px">E · PARK / H · HORN</small>';
+      const dashboardStyle = document.createElement('style');
+      dashboardStyle.textContent = '#mc-speedometer{bottom:24px}@media(max-width:600px){#mc-speedometer{bottom:130px}}';
+      document.head.appendChild(dashboardStyle);
+      document.body.appendChild(speedometer); speedValue = speedometer.querySelector('strong');
+    }
+    speedometer.style.display = 'block';
+    const mph = Math.round(car.speed * 2.23694);
+    if (mph !== lastSpeedShown) { lastSpeedShown = mph; speedValue.textContent = (mph < 0 ? 'REVERSE · ' : '') + Math.abs(mph) + ' MPH'; }
+  }
+  function hideSpeedometer() { if (speedometer) speedometer.style.display = 'none'; }
+
   // --- State ----------------------------------------------------------
   let isDriving = false;
   let activeCar = null;
@@ -197,6 +216,7 @@ export function startDriving(ctx) {
   let ridingCar = null;
   let pendingCar = null;
   let pendingTram = null;
+  let impactSequence = 0, impactCooldown = 0;
 
   // --- Drive input (own listeners; independent of controls.js's own) -----
   const driveKeys = Object.create(null);
@@ -223,7 +243,7 @@ export function startDriving(ctx) {
     activeCar = car;
     car.speed = 0; car.vx = 0; car.vz = 0;
     controls.setEnabled(false);
-    isDriving = true;
+    isDriving = true; lastSpeedShown = NaN;
     hidePrompt();
   }
   function exitCar() {
@@ -234,7 +254,7 @@ export function startDriving(ctx) {
     car.speed = 0; car.vx = 0; car.vz = 0;
     controls.setEnabled(true);
     isDriving = false;
-    activeCar = null;
+    activeCar = null; hideSpeedometer();
   }
 
   // --- Board/step-off streetcar ------------------------------------------
@@ -346,19 +366,22 @@ export function startDriving(ctx) {
     car.vz += (fz * car.speed - car.vz) * lag;
 
     const boxes = controls.getColliderBoxes ? controls.getColliderBoxes() : EMPTY_BOXES;
+    const impactSpeed = Math.abs(car.speed);
+    let collided = false;
     const nx = car.x + car.vx * dt;
     const nz = car.z + car.vz * dt;
     if (!boxHit(boxes, nx, car.z, CAR_RADIUS)) {
       car.x = clamp(nx, bounds.minX, bounds.maxX);
     } else {
-      car.vx = 0; car.speed *= 0.25;
+      collided = true; car.vx = 0; car.speed *= 0.25;
     }
     if (!boxHit(boxes, car.x, nz, CAR_RADIUS)) {
       car.z = clamp(nz, bounds.minZ, bounds.maxZ);
     } else {
-      car.vz = 0; car.speed *= 0.25;
+      collided = true; car.vz = 0; car.speed *= 0.25;
     }
 
+    if (collided && impactSpeed >= 6 && impactCooldown <= 0) { impactSequence++; impactCooldown = 1; }
     car.group.position.set(car.x, 0, car.z);
     car.group.rotation.y = car.heading;
   }
@@ -441,10 +464,12 @@ export function startDriving(ctx) {
   return {
     update(dt) {
       if (ctx.controls.isInputBlocked()) {
+        hideSpeedometer();
         for (const key in driveKeys) driveKeys[key] = false;
         if (engine) engine.bus.gain.setTargetAtTime(0, engine.ac.currentTime, 0.1);
         return;
       }
+      impactCooldown = Math.max(0, impactCooldown - dt);
       const night = isNight(getDayPhase());
       for (let i = 0; i < cars.length; i++) {
         const c = cars[i];
@@ -459,6 +484,7 @@ export function startDriving(ctx) {
       if (isDriving) {
         updateDrivingPhysics(dt);
         positionChaseCamera();
+        showSpeedometer(activeCar);
         showPrompt('Press E to park');
       } else if (isRiding) {
         updateRidingCamera();
@@ -467,6 +493,15 @@ export function startDriving(ctx) {
         updateProximityPrompt();
       }
     },
+    getState(out = {}) {
+      out.driving = isDriving; out.riding = isRiding;
+      out.x = activeCar ? activeCar.x : camera.position.x;
+      out.z = activeCar ? activeCar.z : camera.position.z;
+      out.speed = activeCar ? activeCar.speed : 0;
+      out.impactSequence = impactSequence;
+      return out;
+    },
+    park() { if (isDriving) exitCar(); else if (isRiding) exitTram(); },
     dispose() {
       unregisterInteraction();
       document.removeEventListener('keydown', onKeyDown);
