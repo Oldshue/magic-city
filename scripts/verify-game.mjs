@@ -17,12 +17,14 @@ const faults = [];
 const steps = [];
 const key = 'magic-city:case:last-train';
 let previousSave;
+let activeStep = 'Connect and boot';
+let failure = null;
 page.on('pageerror', error => faults.push(error.message));
 await page.addInitScript(() => {
   document.addEventListener('magic-city:ready', event => { document.__qaWorld = event.detail; }, true);
 });
 const dialog = page.locator('#mc-case-dialog');
-async function step(name, run) { await run(); steps.push(name); }
+async function step(name, run) { activeStep = name; await run(); steps.push(name); }
 async function move(x, z) {
   await page.evaluate(([x,z]) => document.__qaWorld.setSpawn(x,z,0),[x,z]);
   await page.waitForFunction(() => !document.querySelector('#mc-read-prompt').classList.contains('mc-hidden'));
@@ -170,10 +172,20 @@ try {
     } finally { await denied.close(); }
   });
   assert.deepEqual(faults,[], 'No uncaught page errors');
-  await writeFile(resolve(output,'report.json'),JSON.stringify({status:'passed',machine:hostname(),steps,pageErrors:faults,checkedAt:new Date().toISOString()},null,2));
-  console.log(JSON.stringify({status:'passed',steps,output}));
+ } catch (error) {
+  failure = error;
+  await page.screenshot({path:resolve(output,'failure.png')}).catch(()=>{});
 } finally {
-  if (previousSave !== undefined) await page.evaluate(({key,value})=>{if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value);},{key,value:previousSave}).catch(()=>{});
-  await page.close();
-  await browser.close(); // Disconnects the CDP client; the existing regular browser stays open.
+  if (previousSave !== undefined) {
+    try {
+      await page.evaluate(({key,value})=>{if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value);},{key,value:previousSave});
+    } catch (error) { failure ||= error; faults.push('Could not restore prior case save: '+error.message); }
+  }
+  try { await page.close(); } catch (error) { failure ||= error; }
+  try { await browser.close(); } catch (error) { failure ||= error; } // Disconnect CDP; regular Chrome stays open.
+  const url=new URL(process.env.MC_QA_URL);
+  const report={status:failure?'failed':'passed',machine:hostname(),game:url.origin+url.pathname,steps,failedStep:failure?activeStep:null,error:failure?.message||null,pageErrors:faults,checkedAt:new Date().toISOString()};
+  await writeFile(resolve(output,'report.json'),JSON.stringify(report,null,2));
+  console.log(JSON.stringify({...report,output}));
 }
+if (failure) throw failure;
