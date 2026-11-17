@@ -4,6 +4,8 @@ An open-world art deco experience: Birmingham, Alabama in an alternate 1920s-30s
 
 Built by Ox Alpha agents on AgentForge.
 
+Choose **Explore the city first** to start on 20th Street North at Morris Avenue. Walk toward First Avenue North to visit Crown Lunch Counter, the American Trust Exchange and Heaviest Corner Drug Co. Step through their open doors and press **E** at the counter. The oxblood Packard is parked along the west curb. Approach it and press **E** to drive.
+
 The next chapter, **The Last Train Out**, adds a fictional noir investigation to the existing open world. Take the case at the introduction or explore first. Follow the station docket through the Tutwiler, Savoy and Sloss; question witnesses, collect corroborating evidence and make an accusation at the station case office. A correct guess without proof and a wrong accusation have different consequences. The journal lets you reopen the case. Evidence, testimony and verdicts save automatically in the current browser or the Artifact’s scoped host storage when available; refreshing offers a continuation. Reopening clears that saved progress.
 
 Uniformed patrols now walk the city. Officers who see sustained driving above 27 MPH or a dangerous collision raise street pressure and pursue you. Break their line of sight and stay unseen to lose the heat, or approach an officer and surrender with E. Custody pauses movement and releases you near the station with your detective evidence intact. A dashboard speedometer and wanted indicator show what is happening; peaceful conversation with an officer explains the rules.

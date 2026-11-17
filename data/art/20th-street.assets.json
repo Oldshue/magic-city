@@ -1,0 +1,22 @@
+{
+  "brick-wall-001": {
+    "description": "Photogrammetry color, OpenGL normal and roughness maps used on the masonry surrounding the storefronts",
+    "files": ["brick-wall-001-color.jpg", "brick-wall-001-normal.jpg", "brick-wall-001-roughness.jpg"],
+    "source": "https://polyhaven.com/a/brick_wall_001",
+    "license": "CC0-1.0",
+    "licenseSource": "https://polyhaven.com/license"
+  },
+  "downtown-characters": {
+    "description": "Two game-rigged characters with locally authored cloche, idle, and walk animations",
+    "files": ["bank-clerk.glb", "shopkeeper.glb"],
+    "tool": "Blender with MakeHuman Community MPFB 2.0.18",
+    "script": "scripts/author-downtown-characters.py",
+    "sources": [
+      "https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html",
+      "https://static.makehumancommunity.org/assets/assetpacks/suits01.html"
+    ],
+    "clothingCredit": "Margaret Toigo and the MakeHuman Community",
+    "upstreamAssetLicense": "CC0-1.0",
+    "licenseSource": "https://static.makehumancommunity.org/about/license.html"
+  }
+}

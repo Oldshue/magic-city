@@ -11,9 +11,14 @@
  * waiting knots (same instanced families, COUNT just grows), and keeps
  * walkers out of the railroad corridor except at its legal crossings.
  */
+import { SIDEWALK_HEIGHT } from '../engine/street-layout.js';
+import { createStreetCharacters, in20thStreetBlock } from '../engine/street-characters.js';
+
 export function startPedestrians(ctx) {
   const { THREE, scene, plan, getDayPhase } = ctx;
   const walkStreets = plan.streets || [];
+  const highDetail = ctx.camera && walkStreets.some(street => street.name === '20th Street North')
+    ? createStreetCharacters(ctx) : null;
 
   // --- Railroad corridor guard: walkers must never cross the corridor band
   // z 78..318 (between x -520..520) except through 20th St, 18th St, or the
@@ -214,6 +219,27 @@ export function startPedestrians(ctx) {
     const scale = Number.isFinite(actor.scale) && actor.scale > 0 ? actor.scale : 1;
     addStandingFigure(actor.position[0], actor.position[1], yaw, scale, actor);
   }
+  // A short circuit keeps both curbs of the first block populated in play.
+  // These walkers use the same animation, route and fallback as the rest of the crowd.
+  if (highDetail) {
+    const blockLength = 31;
+    const blockRoute = {
+      pts:[new THREE.Vector3(0,0,17),new THREE.Vector3(0,0,17 + blockLength)],
+      segLens:[blockLength], total:blockLength, width:22,
+    };
+    for (const [side,dist,dir,scale,speed,model] of [
+      [-1, 14, -1, 1.04, 1.17, 'bank-clerk'],
+      [-1, 24,  1, 0.96, 1.05, 'shopkeeper'],
+      [ 1, 20,  1, 0.95, 1.09, 'shopkeeper'],
+      [ 1, 27, -1, 1.01, 1.21, 'bank-clerk'],
+    ]) {
+      people.push({
+        route:blockRoute, side, dist, dir, scale, speed, walkingBlock:true, model,
+        bob:rand()*Math.PI*2, paletteIdx:2, hatStyle:model === 'shopkeeper' ? 1 : 0,
+        hatDark:true, standing:false, prop:false,
+      });
+    }
+  }
   const COUNT = Math.max(1, people.length);
 
   // --- geometry: a handful of shared primitives, ~9 per figure -----------
@@ -277,7 +303,9 @@ export function startPedestrians(ctx) {
   if (brimMesh.instanceColor) brimMesh.instanceColor.needsUpdate = true;
   if (crownMesh.instanceColor) crownMesh.instanceColor.needsUpdate = true;
 
-  scene.add(coatMesh, skirtMesh, shoulderMesh, headMesh, brimMesh, crownMesh, armMesh, armLMesh, thighMesh, calfMesh, shoeMesh);
+  const singleParts = [coatMesh, skirtMesh, shoulderMesh, headMesh, brimMesh, crownMesh];
+  const pairedParts = [armMesh, armLMesh, thighMesh, calfMesh, shoeMesh];
+  scene.add(...singleParts, ...pairedParts);
 
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -296,8 +324,9 @@ export function startPedestrians(ctx) {
   const tmpPos = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
 
-  function sample(route, dist) {
-    let d = ((dist % route.total) + route.total) % route.total;
+  function sample(route, dist, loop) {
+    let d = loop ? ((dist % route.total) + route.total) % route.total
+      : THREE.MathUtils.clamp(dist, 0, route.total);
     let i = 0;
     while (i < route.segLens.length && d > route.segLens[i]) {
       d -= route.segLens[i];
@@ -317,6 +346,7 @@ export function startPedestrians(ctx) {
 
   return {
     update(dt, elapsed) {
+      highDetail?.beginFrame();
       for (let i = 0; i < people.length; i++) {
         const p = people[i];
         let ox, oz, heading;
@@ -328,13 +358,22 @@ export function startPedestrians(ctx) {
           heading = valid && Number.isFinite(declared.yawDeg) ? declared.yawDeg * Math.PI / 180 : p.facing;
         } else {
           p.dist += p.speed * p.dir * dt;
-          sample(p.route, p.dist);
+          if (p.walkingBlock && (p.dist < 0 || p.dist > p.route.total)) {
+            p.dist = THREE.MathUtils.clamp(p.dist, 0, p.route.total);
+            p.dir *= -1;
+          }
+          sample(p.route, p.dist, !p.walkingBlock);
           heading = Math.atan2(segDir.x * p.dir, segDir.z * p.dir);
-          const nx0 = Math.cos(heading);
-          const nz0 = -Math.sin(heading);
           const edge = p.route.width / 2 + 2.0;
-          ox = pos.x + nx0 * edge * p.side;
-          oz = pos.z + nz0 * edge * p.side;
+          const curbSide = p.side * (p.walkingBlock ? 1 : p.dir);
+          ox = pos.x + segDir.z * edge * curbSide;
+          oz = pos.z - segDir.x * edge * curbSide;
+          if (p.walkingBlock) {
+            p.facing ??= heading;
+            const turn = THREE.MathUtils.euclideanModulo(heading - p.facing + Math.PI, Math.PI*2) - Math.PI;
+            p.facing += turn * (1 - Math.exp(-dt * 8));
+            heading = p.facing;
+          }
         }
         const nx = Math.cos(heading);
         const nz = -Math.sin(heading);
@@ -347,7 +386,18 @@ export function startPedestrians(ctx) {
         q.setFromAxisAngle(up, heading);
         sBody.set(p.scale, p.scale, p.scale);
         const S = p.scale;
-        const groundY = bobY;
+        const floor = p.actor?.groundY ?? (in20thStreetBlock(ox, oz) && Math.abs(ox) > 11 ? SIDEWALK_HEIGHT : 0);
+        const groundY = floor + bobY;
+
+        if (highDetail?.show(i, p, ox, oz, heading, floor, moving, dt)) {
+          m.makeScale(0, 0, 0);
+          for (const mesh of singleParts) mesh.setMatrixAt(i, m);
+          for (const mesh of pairedParts) {
+            mesh.setMatrixAt(i*2, m);
+            mesh.setMatrixAt(i*2+1, m);
+          }
+          continue;
+        }
 
         // Joint helper: place a limb segment hanging from a joint with a
         // local-X pitch (radians, + swings the far end forward).
@@ -487,6 +537,7 @@ export function startPedestrians(ctx) {
           armLMesh.setMatrixAt(i * 2 + 1, m);
         }
       }
+      highDetail?.endFrame();
       const n = people.length;
       coatMesh.count = n; skirtMesh.count = n; shoulderMesh.count = n; headMesh.count = n;
       brimMesh.count = n; crownMesh.count = n;

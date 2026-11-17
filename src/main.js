@@ -31,6 +31,8 @@ import * as THREE from '../vendor/three.module.min.js';
 import { createRenderer, createVignette } from './engine/renderer.js';
 import { createControls, EYE_HEIGHT } from './engine/controls.js';
 import { createSky } from './engine/sky.js';
+import { createStreetReflection } from './engine/street-reflections.js';
+import { addStreetSurfaces, getStreetSegments, inRoad } from './engine/street-layout.js';
 import { materials } from './engine/materials.js';
 import * as deco from './engine/deco.js';
 import { createInteractions } from './engine/interactions.mjs';
@@ -64,6 +66,7 @@ function makeAODecalTexture(size = 64) {
 async function boot() {
   const { renderer, scene, camera } = createRenderer();
   const vignette = createVignette(renderer);
+  const environment = createStreetReflection(renderer);
   const plan = await fetch('data/city-plan.json').then((r) => r.json());
 
   // Renderer is passed through so sky.js can sweep toneMappingExposure per
@@ -86,42 +89,8 @@ async function boot() {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // --- Street ribbons: asphalt + sidewalk edges ----------------------
-  for (const st of plan.streets) {
-    const p0 = new THREE.Vector3(st.path[0][0], 0, st.path[0][1]);
-    const p1 = new THREE.Vector3(st.path[1][0], 0, st.path[1][1]);
-    const len = p0.distanceTo(p1);
-    const dir = p1.clone().sub(p0).normalize();
-    const angle = Math.atan2(dir.x, dir.z);
-    const mid = p0.clone().add(p1).multiplyScalar(0.5);
-
-    const asphalt = new THREE.Mesh(
-      new THREE.PlaneGeometry(st.width, len),
-      materials.asphalt
-    );
-    asphalt.rotation.x = -Math.PI / 2;
-    asphalt.rotation.z = -angle;
-    asphalt.position.set(mid.x, 0.02, mid.z);
-    asphalt.receiveShadow = true;
-    scene.add(asphalt);
-
-    const swW = 3;
-    for (const side of [-1, 1]) {
-      const sw = new THREE.Mesh(
-        new THREE.PlaneGeometry(swW, len),
-        materials.sidewalk
-      );
-      sw.rotation.x = -Math.PI / 2;
-      sw.rotation.z = -angle;
-      sw.position.set(
-        mid.x + Math.cos(angle) * side * (st.width / 2 + swW / 2),
-        0.04,
-        mid.z - Math.sin(angle) * side * (st.width / 2 + swW / 2)
-      );
-      sw.receiveShadow = true;
-      scene.add(sw);
-    }
-  }
+  const streetSegments = getStreetSegments(plan.streets);
+  addStreetSurfaces(scene, streetSegments, materials);
 
   // --- Ambient occlusion approximation, part 2: ground-contact decals --
   // Part 1 is the hemisphere light's dark ground-color tint (sky.js's
@@ -166,23 +135,7 @@ async function boot() {
     const BAND = { z0: 78, z1: 318, x0: -520, x1: 520 }; // rail corridor: no standards inside
     const SPACING = 34;
     const spots = [];
-    const segments = plan.streets.flatMap(({path, width}) => path.slice(1).map(
-      ([x1, z1], i) => {
-        const [x0, z0] = path[i];
-        const dx = x1 - x0, dz = z1 - z0;
-        return { x0, z0, dx, dz, length: Math.hypot(dx, dz), halfWidth: width / 2 };
-      }
-    ));
-    function inRoad(x, z) {
-      return segments.some(({x0, z0, dx, dz, length, halfWidth}) => {
-        if (!length) return false;
-        const px = x - x0, pz = z - z0;
-        const along = (px * dx + pz * dz) / length;
-        if (along < 0 || along > length) return false;
-        return Math.abs(px * dz - pz * dx) / length < halfWidth + 0.25;
-      });
-    }
-    for (const {x0, z0, dx, dz, length, halfWidth} of segments) {
+    for (const {x0, z0, dx, dz, length, halfWidth} of streetSegments) {
       const count = Math.floor(length / SPACING);
       for (let i = 1; i < count; i++) {
         const t = i / count;
@@ -192,7 +145,7 @@ async function boot() {
         const z = z0 + dz * t - dx * offset;
         if (x < DT.x0 || x > DT.x1 || z < DT.z0 || z > DT.z1) continue;
         if (x > BAND.x0 && x < BAND.x1 && z > BAND.z0 && z < BAND.z1) continue;
-        if (!inRoad(x, z)) spots.push([x, z]);
+        if (!inRoad(x, z, streetSegments, 0.25)) spots.push([x, z]);
       }
     }
     if (spots.length) {
@@ -272,8 +225,8 @@ async function boot() {
   // hand off camera control (driving, streetcar riding) call controls.setEnabled(false/true)
   // and read controls.getColliderBoxes() for their own collision checks.
   const ctx = {
-    THREE, scene, camera, renderer, plan,
-    materials, deco, registerInteractive, controls,
+    THREE, scene, camera, renderer, plan, environment,
+    materials, deco, registerInteractive, controls, streetSegments,
     getDayPhase: sky.getDayPhase,
     interactives, characters: [], interactions: createInteractions(),
   };

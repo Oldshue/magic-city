@@ -9,9 +9,20 @@
  * of each car — no real lights, no movement-logic changes. Every part is a
  * shared InstancedMesh: draw call count is constant regardless of car count.
  */
+import { buildPeriodSedan } from '../engine/period-sedan.js';
+
 export function startTraffic(ctx) {
   const { THREE, scene, plan, getDayPhase } = ctx;
   const avenues = (plan.streets || []).filter((s) => s.class === 'avenue');
+  const has20thStreet = avenues.some(street => street.name === '20th Street North');
+  if (has20thStreet) {
+    const parked = buildPeriodSedan(0x2b4540, ctx.environment, {powered:false});
+    parked.group.name = 'Parked green sedan';
+    parked.group.position.set(9.3, 0.044, 40);
+    parked.group.rotation.y = Math.PI;
+    scene.add(parked.group);
+    ctx.controls?.addColliders([{minX:8.20,maxX:10.40,minZ:37.74,maxZ:42.26}]);
+  }
 
   const routes = [];
   for (const st of avenues) {
@@ -60,8 +71,12 @@ export function startTraffic(ctx) {
           if (rngP() < 0.42) continue; // gaps — no solid wall of cars
           const side = rngP() < 0.5 ? 1 : -1;
           const jitter = (rngP() - 0.5) * 0.12;
-          if (axis === 'z') parkedSpots.push([fixed * side, d + rngP() * 6, jitter]);
-          else parkedSpots.push([d + rngP() * 6, fixed * side, Math.PI / 2 + jitter]);
+          const distance = d + rngP() * 6;
+          if (axis === 'z') {
+            if (!has20thStreet || d > 50 || d < 14) parkedSpots.push([fixed * side, distance, jitter]);
+          } else {
+            parkedSpots.push([distance, fixed * side, Math.PI / 2 + jitter]);
+          }
         }
       }
     }

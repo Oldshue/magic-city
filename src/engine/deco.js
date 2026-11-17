@@ -145,13 +145,14 @@ import { storefrontBand } from './deco-storefront.js';
  * @param {THREE.Material} [opts.material=materials.limestone]
  * @param {THREE.Material} [opts.windowMaterial=materials.glassDay]
  * @param {boolean}  [opts.crown=true] crown + finial on top
+ * @param {{side:-1|1,height:number,depth:number}} [opts.sideRecess] ground-floor recess along an X-facing wall
  * @returns {THREE.Group} origin at ground center
  */
 export function setbackTower(opts = {}) {
   const {
     width = 20, depth = 20, height = 80,
     setbacks = 3, material = materials.limestone,
-    windowMaterial = materials.glassDay, crown = true,
+    windowMaterial = materials.glassDay, crown = true, sideRecess,
   } = opts;
 
   const g = new THREE.Group();
@@ -162,9 +163,19 @@ export function setbackTower(opts = {}) {
   for (let i = 0; i < tiers; i++) {
     const frac = i === 0 ? 0.4 : 0.6 / (tiers - 1);
     const h = height * frac;
-    const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-    box.position.y = y + h / 2;
-    g.add(box);
+    // A street-facing recess leaves room for real display bays and shops.
+    const recess = i === 0 && sideRecess;
+    const opening = recess ? Math.min(recess.height, h) : 0;
+    if (opening < h) {
+      const mass = new THREE.Mesh(new THREE.BoxGeometry(w, h - opening, d), material);
+      mass.position.y = y + opening + (h - opening)/2;
+      g.add(mass);
+    }
+    if (recess) {
+      const backing = new THREE.Mesh(new THREE.BoxGeometry(w - recess.depth, opening, d), material);
+      backing.position.set(-recess.side * recess.depth / 2, y + opening / 2, 0);
+      g.add(backing);
+    }
 
     if (i === 0) {
       // Ground tier: storefront band at street level, window band filling

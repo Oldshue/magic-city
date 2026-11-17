@@ -161,7 +161,7 @@ export function facadeDetail(opts = {}) {
   const {
     width = 20, depth = 20, height = 40, floorHeight = 3.5,
     material = materials.limestone, seed = 1, storefront = false,
-    courseEvery = 5, parapetHeight = 0.4,
+    courseEvery = 5, parapetHeight = 0.4, sideRecess,
   } = opts;
   const g = new THREE.Group();
   const floors = Math.max(2, Math.round(height / floorHeight));
@@ -186,8 +186,10 @@ export function facadeDetail(opts = {}) {
     }
     for (let c = 0; c < colsSide; c++) {
       const z = -depth / 2 + (c + 1) * sxSide;
-      positions.push([hx, y, z, Math.PI / 2]);
-      positions.push([-hx, y, z, -Math.PI / 2]);
+      for (const side of [-1, 1]) {
+        if (sideRecess?.side === side && y < sideRecess.height) continue;
+        positions.push([side * hx, y, z, side * Math.PI / 2]);
+      }
     }
   }
   if (positions.length) {

@@ -1,7 +1,7 @@
 /**
  * driving.js — makes Magic City 1929 drivable: 4-6 parked period sedans at
  * plausible downtown/terminal-quarter curbs, walk-up "Press E to drive"
- * boarding, arcade car physics (throttle/brake/steer/gentle drift, ~50 km/h
+ * boarding, arcade car physics (throttle/brake/steer/gentle drift, ~80 km/h
  * cap, friction, AABB collision against the walking controller's colliders),
  * a chase-cam driving view, warm night headlights, a synthesized two-tone
  * horn (H), a throttle-linked engine putter, and streetcar boarding/riding
@@ -21,6 +21,8 @@
 import { readVehicleInput } from '../engine/vehicle-input.mjs';
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 import { EYE_HEIGHT } from '../engine/controls.js';
+import { buildPeriodSedan, updateSedanWheels } from '../engine/period-sedan.js';
+import { carFootprintBlocked, clearCameraFraction } from '../engine/vehicle-motion.mjs';
 
 // --- Arcade physics tuning ---------------------------------------------
 const MAX_SPEED = 22;        // ~80 km/h
@@ -32,10 +34,9 @@ const FRICTION_DECEL = 3.4;  // m/s^2 coasting to a stop
 const MAX_STEER_RATE = 1.9;  // rad/s at low speed
 const MIN_STEER_RATE = 0.55; // rad/s at max speed
 const DRIFT_LAG = 5.5;       // higher = velocity snaps to heading faster (less drift)
-const CAR_RADIUS = 2.6;      // collision padding, roughly a sedan's half-diagonal
-const CHASE_DIST = 6.8;
-const CHASE_HEIGHT = 2.9;
-const EXIT_OFFSET = 2.6;
+const CHASE_DIST = 5.7;
+const CHASE_HEIGHT = 2.48;
+const EXIT_OFFSET = 1.8;
 
 // --- Boarding tuning ------------------------------------------------------
 const CAR_PROMPT_RADIUS = 2.5;
@@ -64,8 +65,8 @@ function boxHit(boxes, x, z, radius) {
 // Parked-sedan spawn list: plausible curbs along downtown avenues and the
 // terminal quarter, parallel-parked (long axis along the street they sit on).
 const SEDAN_SPECS = [
-  { x: 25, z: 11.5, yawDeg: 90, color: 0xdccb9e, name: 'the cream Lincoln' },       // 1st Ave N, near Jefferson Trust
-  { x: -12.5, z: 70, yawDeg: 180, color: 0x4a1420, name: 'the oxblood Packard' },   // 20th St N, south of the Corner
+  { x: 25, z: 11.5, yawDeg: 90, color: 0xdccb9e, name: 'the cream Lincoln', whitewall: true },       // 1st Ave N, near Jefferson Trust
+  { x: -9.3, z: 42, yawDeg: 180, color: 0x4a1420, name: 'the oxblood Packard', whitewall: true },   // 20th St N, south of the Corner
   { x: 65, z: -11.5, yawDeg: -90, color: 0x141414, name: 'a black Ford' },          // 1st Ave N, near Empire Building
   { x: -140, z: 11.5, yawDeg: 90, color: 0x101010, name: 'a black Dodge' },         // 1st Ave N, near TCI Building
   { x: -330, z: -150.5, yawDeg: 90, color: 0x151515, name: 'a black Buick' },       // 2nd Ave N, near Hotel Tutwiler
@@ -73,84 +74,19 @@ const SEDAN_SPECS = [
 ];
 
 /**
- * buildSedan — one 1920s box-art sedan: long hood, tall cabin, running
- * boards, spoked-suggestion wheels (dark cylinders), a deep-lacquer body,
- * and a pair of headlight spotlights wired to night.
- * @param {typeof import('three')} THREE
- * @param {object} materials shared material palette (engine/materials.js)
- * @param {number} bodyColor hex color of the lacquer body
- */
-function buildSedan(THREE, materials, bodyColor) {
-  const group = new THREE.Group();
-
-  const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.22, metalness: 0.55 });
-  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.58, 2.05), bodyMat);
-  hood.position.set(0, 0.63, 1.15);
-  group.add(hood);
-
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.88, 2.3), bodyMat);
-  cabin.position.set(0, 0.86, -0.55);
-  group.add(cabin);
-
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.14, 1.7), bodyMat);
-  roof.position.set(0, 1.34, -0.55);
-  group.add(roof);
-
-  const boardMat = materials.steelDark;
-  for (const side of [-1, 1]) {
-    const board = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 3.5), boardMat);
-    board.position.set(side * 0.95, 0.4, -0.1);
-    group.add(board);
-  }
-
-  const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.28, 10);
-  wheelGeo.rotateZ(Math.PI / 2);
-  for (const side of [-1, 1]) {
-    for (const zPos of [1.5, -1.5]) {
-      const wheel = new THREE.Mesh(wheelGeo, materials.steelDark);
-      wheel.position.set(side * 0.95, 0.36, zPos);
-      group.add(wheel);
-    }
-  }
-
-  const headlightMat = new THREE.MeshStandardMaterial({
-    color: 0xfff3d0, emissive: 0xffdca0, emissiveIntensity: 0.4, roughness: 0.3, metalness: 0.1,
-  });
-  const lampGeo = new THREE.SphereGeometry(0.14, 8, 8);
-  for (const side of [-1, 1]) {
-    const lamp = new THREE.Mesh(lampGeo, headlightMat);
-    lamp.position.set(side * 0.55, 0.62, 2.14);
-    group.add(lamp);
-  }
-
-  const spotLights = [];
-  for (const side of [-1, 1]) {
-    const light = new THREE.SpotLight(0xffdca0, 0, 28, Math.PI / 7.5, 0.45, 1.4);
-    light.position.set(side * 0.55, 0.62, 1.2);
-    const target = new THREE.Object3D();
-    target.position.set(side * 0.55, 0.2, 8);
-    group.add(target);
-    light.target = target;
-    group.add(light);
-    spotLights.push(light);
-  }
-
-  return { group, bodyMat, headlightMat, spotLights };
-}
-
-/**
  * @param {object} ctx engine + district context per TECH-CONTRACT, plus
  *   `controls` (added to ctx in main.js) and `streetcars` (merged in by
  *   systems/index.js from its own startStreetcars() result).
  */
 export function startDriving(ctx) {
-  const { THREE, scene, materials, getDayPhase, camera, plan, streetcars } = ctx;
+  const { THREE, scene, getDayPhase, camera, plan, streetcars, environment } = ctx;
   const controls = ctx.controls || { setEnabled() {}, getColliderBoxes() { return EMPTY_BOXES; } };
   const bounds = plan.bounds;
 
   // --- Build parked sedans ------------------------------------------------
   const cars = SEDAN_SPECS.map((spec) => {
-    const built = buildSedan(THREE, materials, spec.color);
+    const built = buildPeriodSedan(spec.color, environment, {whitewall:spec.whitewall});
+    built.group.name = spec.name;
     built.group.position.set(spec.x, 0, spec.z);
     const heading = THREE.MathUtils.degToRad(spec.yawDeg);
     built.group.rotation.y = heading;
@@ -159,7 +95,7 @@ export function startDriving(ctx) {
       ...built,
       name: spec.name,
       x: spec.x, z: spec.z, heading,
-      speed: 0, vx: 0, vz: 0,
+      speed: 0, vx: 0, vz: 0, wheelAngle: 0, steeringAngle: 0, braking: false,
     };
   });
 
@@ -221,6 +157,9 @@ export function startDriving(ctx) {
   // --- Drive input (own listeners; independent of controls.js's own) -----
   const driveKeys = Object.create(null);
   const vehicleInput = { throttle: 0, steer: 0 };
+  const chaseTarget = new THREE.Vector3();
+  const chasePosition = new THREE.Vector3();
+  let chaseReady = false;
   function onKeyDown(e) {
     if (controls.isInputBlocked?.()) return;
     if (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD'
@@ -244,14 +183,30 @@ export function startDriving(ctx) {
     car.speed = 0; car.vx = 0; car.vz = 0;
     controls.setEnabled(false);
     isDriving = true; lastSpeedShown = NaN;
+    chaseReady = false;
     hidePrompt();
   }
   function exitCar() {
     const car = activeCar;
     const sideX = Math.cos(car.heading), sideZ = -Math.sin(car.heading);
-    camera.position.set(car.x + sideX * EXIT_OFFSET, EYE_HEIGHT, car.z + sideZ * EXIT_OFFSET);
-    camera.rotation.set(0, car.heading, 0);
-    car.speed = 0; car.vx = 0; car.vz = 0;
+    const forwardX = Math.sin(car.heading), forwardZ = Math.cos(car.heading);
+    const boxes = controls.getColliderBoxes();
+    const exits = [
+      [sideX * EXIT_OFFSET, sideZ * EXIT_OFFSET], [-sideX * EXIT_OFFSET, -sideZ * EXIT_OFFSET],
+      [-forwardX * 2.75, -forwardZ * 2.75], [forwardX * 2.75, forwardZ * 2.75],
+    ];
+    let exitX = car.x, exitZ = car.z;
+    for (const [dx, dz] of exits) {
+      const x = car.x + dx, z = car.z + dz;
+      if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ
+          || boxHit(boxes, x, z, 0.36)) continue;
+      exitX = x;
+      exitZ = z;
+      break;
+    }
+    camera.position.set(exitX, EYE_HEIGHT, exitZ);
+    camera.rotation.set(0, car.heading + Math.PI, 0);
+    car.speed = 0; car.vx = 0; car.vz = 0; car.braking = false;
     controls.setEnabled(true);
     isDriving = false;
     activeCar = null; hideSpeedometer();
@@ -342,6 +297,9 @@ export function startDriving(ctx) {
     const car = activeCar;
     const { throttle, steer } = readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput);
 
+    const startX = car.x, startZ = car.z;
+    const boxes = controls.getColliderBoxes();
+    car.braking = throttle < -0.05 && car.speed > 0.35;
     if (throttle > 0) {
       car.speed += ACCEL * throttle * dt;
     } else if (throttle < 0) {
@@ -357,7 +315,8 @@ export function startDriving(ctx) {
       const speedFrac = Math.min(1, Math.abs(car.speed) / MAX_SPEED);
       const turnRate = MAX_STEER_RATE - (MAX_STEER_RATE - MIN_STEER_RATE) * speedFrac;
       const dirSign = car.speed >= 0 ? 1 : -1;
-      car.heading += steer * turnRate * dt * dirSign;
+      const heading = car.heading + steer * turnRate * dt * dirSign;
+      if (!carFootprintBlocked(boxes, car.x, car.z, heading)) car.heading = heading;
     }
 
     const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
@@ -365,17 +324,16 @@ export function startDriving(ctx) {
     car.vx += (fx * car.speed - car.vx) * lag;
     car.vz += (fz * car.speed - car.vz) * lag;
 
-    const boxes = controls.getColliderBoxes ? controls.getColliderBoxes() : EMPTY_BOXES;
     const impactSpeed = Math.abs(car.speed);
     let collided = false;
     const nx = car.x + car.vx * dt;
     const nz = car.z + car.vz * dt;
-    if (!boxHit(boxes, nx, car.z, CAR_RADIUS)) {
+    if (!carFootprintBlocked(boxes, nx, car.z, car.heading)) {
       car.x = clamp(nx, bounds.minX, bounds.maxX);
     } else {
       collided = true; car.vx = 0; car.speed *= 0.25;
     }
-    if (!boxHit(boxes, car.x, nz, CAR_RADIUS)) {
+    if (!carFootprintBlocked(boxes, car.x, nz, car.heading)) {
       car.z = clamp(nz, bounds.minZ, bounds.maxZ);
     } else {
       collided = true; car.vz = 0; car.speed *= 0.25;
@@ -384,13 +342,24 @@ export function startDriving(ctx) {
     if (collided && impactSpeed >= 6 && impactCooldown <= 0) { impactSequence++; impactCooldown = 1; }
     car.group.position.set(car.x, 0, car.z);
     car.group.rotation.y = car.heading;
+    const travelled = (car.x - startX) * fx + (car.z - startZ) * fz;
+    updateSedanWheels(car, travelled, steer, dt);
   }
 
-  function positionChaseCamera() {
+  function positionChaseCamera(dt) {
     const car = activeCar;
     const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
-    camera.position.set(car.x - fx * CHASE_DIST, CHASE_HEIGHT, car.z - fz * CHASE_DIST);
-    camera.lookAt(car.x + fx * 4, 1.3, car.z + fz * 4);
+    const distance = CHASE_DIST + Math.min(1.1, Math.abs(car.speed) * 0.05);
+    chasePosition.set(car.x - fx * distance, CHASE_HEIGHT, car.z - fz * distance);
+    chaseTarget.set(car.x + fx * 2.4, 1.12, car.z + fz * 2.4);
+    if (!chaseReady) camera.position.copy(chasePosition);
+    else camera.position.lerp(chasePosition, 1 - Math.exp(-dt * 9));
+    chaseReady = true;
+    const clearance = clearCameraFraction(controls.getColliderBoxes(), car.x, car.z, camera.position.x, camera.position.z);
+    camera.position.x = THREE.MathUtils.lerp(car.x, camera.position.x, clearance);
+    camera.position.z = THREE.MathUtils.lerp(car.z, camera.position.z, clearance);
+    camera.position.y = Math.max(CHASE_HEIGHT - 0.15, camera.position.y);
+    camera.lookAt(chaseTarget);
   }
 
   function updateEngineAudio() {
@@ -473,17 +442,21 @@ export function startDriving(ctx) {
       const night = isNight(getDayPhase());
       for (let i = 0; i < cars.length; i++) {
         const c = cars[i];
-        const on = night ? 1 : 0;
-        c.spotLights[0].intensity = on * 1.5;
-        c.spotLights[1].intensity = on * 1.5;
-        c.headlightMat.emissiveIntensity = 0.35 + on * 2.1;
+        const on = night && c === activeCar;
+        for (const light of c.spotLights) {
+          light.visible = on;
+          light.intensity = on ? 390 : 0;
+        }
+        c.headlightMat.emissiveIntensity = on ? 2.0 : 0.18;
+        c.stopLightMat.emissiveIntensity = c.braking ? 3.2 : on ? 0.75 : 0;
+        for (const material of c.reflective) material.envMapIntensity = night ? 0.22 : 0.75;
       }
 
       updateEngineAudio();
 
       if (isDriving) {
         updateDrivingPhysics(dt);
-        positionChaseCamera();
+        positionChaseCamera(dt);
         showSpeedometer(activeCar);
         showPrompt('Press E to park');
       } else if (isRiding) {

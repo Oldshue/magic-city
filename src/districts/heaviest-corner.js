@@ -14,6 +14,8 @@
  * period business names from the World Bible price canon (Section 5).
  */
 import * as THREE from '../../vendor/three.module.min.js';
+import { addPavementApron, getStreetSegments } from '../engine/street-layout.js';
+import { add20thStreetStores, SHOP_DEPTH, SHOP_HEIGHT } from './twentieth-street-stores.js';
 
 export async function build(ctx) {
   const { THREE: T = THREE, scene, plan, district, materials, deco, registerInteractive } = ctx;
@@ -23,20 +25,13 @@ export async function build(ctx) {
   const poly = district.polygon;
   const minX = poly[0][0], maxX = poly[1][0], minZ = poly[1][1], maxZ = poly[3][1];
 
-  // ------------------------------------------------------------------
-  // Streetscape: sidewalks flanking 20th St N (x=0) and 1st Ave N (z=0)
-  // ------------------------------------------------------------------
-  const swMat = materials.sidewalk;
-  function sidewalkStrip(cx, cz, sx, sz) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.18, sz), swMat);
-    m.position.set(cx, 0.09, cz);
-    group.add(m);
-    return m;
+  // Pavement between the municipal curbs and the two landmark frontages.
+  const streetSegments = ctx.streetSegments ?? getStreetSegments(plan.streets);
+  for (const span of [{minX: -19, maxX: -14}, {minX: 14, maxX: 18}]) {
+    addPavementApron(group, streetSegments, materials.sidewalk, {
+      ...span, minZ: 10, maxZ: 52.5,
+    });
   }
-  sidewalkStrip(-12.5, (minZ + maxZ) / 2, 5, maxZ - minZ);   // west of 20th
-  sidewalkStrip(12.5, (minZ + maxZ) / 2, 5, maxZ - minZ);    // east of 20th
-  sidewalkStrip((minX + maxX) / 2, -12, maxX - minX, 5);     // north of 1st Ave
-  sidewalkStrip((minX + maxX) / 2, 12, maxX - minX, 5);      // south of 1st Ave
 
   // ------------------------------------------------------------------
   // Helper: place a landmark tower exactly per plan
@@ -85,10 +80,10 @@ export async function build(ctx) {
   // dentil cornice + string courses + instanced reveals, and drops a
   // rooftopKit cluster on top. Sized off the tower's own footprint/height
   // so it never touches the plan's stored position/rotation/footprint.
-  function landmarkDetail(towerGroup, lm, material, seed) {
+  function landmarkDetail(towerGroup, lm, material, seed, sideRecess) {
     towerGroup.add(deco.facadeDetail({
       width: lm.footprint[0], depth: lm.footprint[1], height: Math.max(8, lm.height * 0.4),
-      material, seed, storefront: false,
+      material, seed, storefront: false, sideRecess,
     }));
     const roof = deco.rooftopKit({
       footprintW: lm.footprint[0] * 0.55, footprintD: lm.footprint[1] * 0.55, seed,
@@ -109,9 +104,10 @@ export async function build(ctx) {
   // red-brown brick over a two-story rusticated base.
   {
     const lm = plan.landmarks.find(l => l.id === 'woodward-building');
+    const sideRecess = {side:-1, height:SHOP_HEIGHT, depth:SHOP_DEPTH};
     towerAt(
       lm,
-      { setbacks: 1, material: materials.brick, windowMaterial: materials.glassNight },
+      { setbacks: 1, sideRecess, material: materials.brick, windowMaterial: materials.glassNight },
       g => {
         entrance(g, lm, 'north');
         const shops = deco.storefrontBand({ width: lm.footprint[0], height: 4.6,
@@ -124,7 +120,7 @@ export async function build(ctx) {
         cor.position.set(0, lm.height - 0.5, 0);
         g.add(cor);
         facadeSign(g, lm, 'WOODWARD', lm.height * 0.3, 10, 'north');
-        landmarkDetail(g, lm, materials.brick, 1902);
+        landmarkDetail(g, lm, materials.brick, 1902, sideRecess);
       }
     );
   }
@@ -212,12 +208,12 @@ export async function build(ctx) {
   // windows, buff shaft, terra-cotta crown, rooftop sign frame.
   {
     const lm = plan.landmarks.find(l => l.id === 'american-trust-building');
+    const sideRecess = {side:1, height:SHOP_HEIGHT, depth:SHOP_DEPTH};
     towerAt(
       lm,
-      { setbacks: 1, material: materials.limestone, windowMaterial: materials.glassNight },
+      { setbacks: 1, sideRecess, material: materials.limestone, windowMaterial: materials.glassNight },
       g => {
         entrance(g, lm, 'north');
-        entrance(g, lm, 'east');
         const base = deco.pilasterFacade({ width: lm.footprint[0], height: 11, bays: 5,
           material: materials.limestone, pilasterMaterial: materials.bronze });
         base.rotation.y = Math.PI;
@@ -234,7 +230,7 @@ export async function build(ctx) {
         roofSign.position.set(0, lm.height + 1.1, 0.35);
         g.add(roofSign);
         facadeSign(g, lm, 'AMERICAN TRUST & SAVINGS', lm.height * 0.28, 15, 'north');
-        landmarkDetail(g, lm, materials.limestone, 1912);
+        landmarkDetail(g, lm, materials.limestone, 1912, sideRecess);
       }
     );
   }
@@ -478,8 +474,6 @@ export async function build(ctx) {
   const storefrontSpots = [
     { x: -13.4, z: -34, rotY: Math.PI / 2, name: 'CORNER LUNCH — COFFEE 15¢' },
     { x: 13.4, z: -34, rotY: -Math.PI / 2, name: 'MAGIC CITY BARBER — HAIRCUT 25¢' },
-    { x: -13.4, z: 36, rotY: Math.PI / 2, name: 'IMPERIAL CIGAR & TOBACCO — LUCKY STRIKE 10¢' },
-    { x: 13.4, z: 36, rotY: -Math.PI / 2, name: 'HEAVIEST CORNER DRUG CO.' },
     { x: 40, z: 13.6, rotY: Math.PI, name: 'VALLEY SHOE SHINE — 5¢' },
     { x: -40, z: 13.6, rotY: 0, name: 'CROWN LUNCH COUNTER — SANDWICH 10¢' },
   ];
@@ -717,30 +711,27 @@ export async function build(ctx) {
   // ------------------------------------------------------------------
 
   // Block 8: x -108..-12, z 14..46. warehouse (Morris Ave row). Existing
-  // AABB cluster ([-55,5,-29,31,34] etc.) starts north of the block and
-  // reaches south to z 31 (17 m into the block), and its east edge (x -29)
-  // reaches to within 3 m of the east-frontage lot-depth band.
+  // The American Trust and its pavement occupy the east frontage on 20th.
   group.add(deco.blockFill({
     THREE: T, materials, deco, seed: -742,
     block: { x0: -108, z0: 14, x1: -12, z1: 46 },
     gaps: [
       { side: 'north', from: -57, to: -17 },
       { side: 'south', from: -57, to: -17 },
-      { side: 'east', from: 3, to: 33 },
+      { side: 'east', from: 14, to: 46 },
     ],
     use: 'warehouse', floorsRange: [2, 4], alley: false,
   }));
 
   // Block 9: x 12..108, z 14..46. warehouse (Morris Ave row). Existing
-  // AABB cluster ([26,14,54,42,20] etc.) touches the block's north
-  // frontage exactly (z0=14) and reaches to within 4 m of the south
-  // frontage (z1=46).
+  // The Woodward storefronts need the full pavement on the west frontage.
   group.add(deco.blockFill({
     THREE: T, materials, deco, seed: 98,
     block: { x0: 12, z0: 14, x1: 108, z1: 46 },
     gaps: [
       { side: 'north', from: 16, to: 56 },
       { side: 'south', from: 16, to: 56 },
+      { side: 'west', from: 14, to: 46 },
     ],
     use: 'warehouse', floorsRange: [2, 4], alley: false,
   }));
@@ -756,5 +747,6 @@ export async function build(ctx) {
     use: 'warehouse', floorsRange: [2, 4], alley: false,
   }));
 
+  await add20thStreetStores(ctx, group);
   scene.add(group);
 }
