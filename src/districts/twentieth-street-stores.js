@@ -1,7 +1,7 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { mergeGeometries } from '../engine/deco-shared.js';
 import { SIDEWALK_HEIGHT } from '../engine/street-layout.js';
-import { loadShopSurfaces, mapShopUV } from '../engine/shop-surfaces.js';
+import { mapShopUV } from '../engine/shop-surfaces.js';
 import { SHOP_MENUS } from '../gameplay/shop-state.mjs';
 import { buildCounterFixture, STAFF_Z } from './counter-fixtures.js';
 
@@ -252,8 +252,8 @@ function orientedBox(x, z, side, [u0,u1,v0,v1]) {
   return {minX:Math.min(a,b),maxX:Math.max(a,b),minZ:Math.min(c,d),maxZ:Math.max(c,d)};
 }
 
-export async function add20thStreetStores(ctx, parent) {
-  const M = makeShopMaterials(await loadShopSurfaces(ctx.environment),ctx.environment);
+export function add20thStreetStores(ctx, parent, surfaces) {
+  const M = makeShopMaterials(surfaces,ctx.environment);
   ctx.streetReflection?.reflect(M.glass);
   const footprintBoxes = [];
   for (const spec of STORES) {

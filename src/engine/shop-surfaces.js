@@ -22,7 +22,7 @@ function configure(texture,srgb=false) {
   return texture;
 }
 
-async function photographed(loader,name,metres,options) {
+export async function loadPhotoSurface(loader,name,metres,options) {
   const phases = ['color','normal','roughness'];
   const loaded = await Promise.allSettled(phases.map(channel=>loader.loadAsync('./data/art/'+name+'-'+channel+'.jpg')));
   const [map,normalMap,roughnessMap] = loaded.map(outcome=>outcome.status==='fulfilled' ? outcome.value : null);
@@ -65,13 +65,13 @@ function tiles(palette,rows,columns,step,coating) {
 export async function loadShopSurfaces(environment) {
   const loader = new THREE.TextureLoader();
   const [brick,marble,walnut] = await Promise.all([
-    photographed(loader,'brick-wall-001',2.4,{
+    loadPhotoSurface(loader,'brick-wall-001',2.4,{
       color:0xd6b4a0,roughness:.97,normalScale:new THREE.Vector2(.47,.47),
     }),
-    photographed(loader,'counter-marble',1.5,{
+    loadPhotoSurface(loader,'counter-marble',1.5,{
       color:0xf3dfbf,roughness:.71,envMap:environment,envMapIntensity:.42,normalScale:new THREE.Vector2(.35,.35),
     }),
-    photographed(loader,'counter-wood',.62,{
+    loadPhotoSurface(loader,'counter-wood',.62,{
       color:0xe9c7a0,roughness:.77,envMap:environment,envMapIntensity:.26,normalScale:new THREE.Vector2(.58,.58),
     }),
   ]);

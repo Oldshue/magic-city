@@ -565,6 +565,14 @@ applyWorldMapping(materials.foliage, { scale: 0.3 });
 applyWorldMapping(materials.glassDay, { scale: 0.119 });
 applyWorldMapping(materials.glassNight, { scale: 0.119 });
 
+const nightEmission = [];
+
+export function registerNightEmission(material, day, night) {
+  material.emissiveIntensity = day;
+  nightEmission.push({material, day, night});
+  return material;
+}
+
 /**
  * setGlassNightGlow — drives glassNight's emissive intensity from the sky's
  * day-phase cycle (called every frame from sky.js update()). 0 = fully dark
@@ -575,5 +583,9 @@ applyWorldMapping(materials.glassNight, { scale: 0.119 });
  * @param {number} factor 0..1
  */
 export function setGlassNightGlow(factor) {
-  materials.glassNight.emissiveIntensity = Math.max(0, Math.min(1, factor)) * 2.6;
+  const glow = Math.max(0, Math.min(1, factor));
+  materials.glassNight.emissiveIntensity = glow * 2.6;
+  for (const {material, day, night} of nightEmission) {
+    material.emissiveIntensity = day + (night - day) * glow;
+  }
 }

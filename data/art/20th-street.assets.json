@@ -39,6 +39,24 @@
     "source": "https://huggingface.co/hexgrad/Kokoro-82M",
     "modelLicense": "Apache-2.0"
   },
+  "landmark-stone-grain": {
+    "description": "Photographed color, normal and roughness maps by Dimitrios Savva, tinted for the cast stone on the two landmark facades",
+    "files": [
+      "limestone-grain-color.jpg",
+      "limestone-grain-normal.jpg",
+      "limestone-grain-roughness.jpg"
+    ],
+    "source": "https://polyhaven.com/a/white_stucco_02",
+    "license": "CC0-1.0",
+    "licenseSource": "https://polyhaven.com/license"
+  },
+  "landmark-architecture": {
+    "description": "Original game geometry for the Woodward and American Trust, informed by the historic district survey",
+    "sources": [
+      "https://www.loc.gov/resource/hhh.al0996.photos/?sp=1",
+      "https://npgallery.nps.gov/GetAsset/7d809354-dd8b-49e7-a95f-32cb8a465b5d"
+    ]
+  },
   "marble-counter": {
     "description": "Marble color, normal and roughness photographed by Rob Tuytel",
     "files": [

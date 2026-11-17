@@ -6,21 +6,27 @@
  * banker-grade infill fabric, marble-threshold sidewalks, period signage
  * and readables drawn verbatim from the World Bible.
  *
- * Facade Detail pass (M2): every landmark tower gets deco.facadeDetail
- * (dentil cornice + parapet, string courses, instanced window reveals)
- * plus deco.rooftopKit (water tank, chimneys, skylight monitor, hatch).
+ * Woodward and American Trust have masonry shells with real window recesses.
+ * The downtown skyline uses the shared cornice, window, and rooftop parts.
  * Brick background-fabric infill buildings get deco.fireEscape on a side
  * wall. Storefronts near the Corner get deco.awning + deco.shopSign with
  * period business names from the World Bible price canon (Section 5).
  */
 import * as THREE from '../../vendor/three.module.min.js';
 import { addPavementApron, getStreetSegments } from '../engine/street-layout.js';
-import { add20thStreetStores, SHOP_DEPTH, SHOP_HEIGHT } from './twentieth-street-stores.js';
+import { loadShopSurfaces } from '../engine/shop-surfaces.js';
+import { add20thStreetStores } from './twentieth-street-stores.js';
+import { build20thStreetLandmark, loadFacadeSurfaces } from './twentieth-street-facades.js';
 
 export async function build(ctx) {
   const { THREE: T = THREE, scene, plan, district, materials, deco, registerInteractive } = ctx;
   const group = new THREE.Group();
   group.name = 'district-heaviest-corner';
+  const [shopSurfaces, facadeSurfaces] = await Promise.all([
+    loadShopSurfaces(ctx.environment),
+    loadFacadeSurfaces(ctx),
+  ]);
+  facadeSurfaces.brick = shopSurfaces.brick;
 
   const poly = district.polygon;
   const minX = poly[0][0], maxX = poly[1][0], minZ = poly[1][1], maxZ = poly[3][1];
@@ -80,10 +86,10 @@ export async function build(ctx) {
   // dentil cornice + string courses + instanced reveals, and drops a
   // rooftopKit cluster on top. Sized off the tower's own footprint/height
   // so it never touches the plan's stored position/rotation/footprint.
-  function landmarkDetail(towerGroup, lm, material, seed, sideRecess) {
+  function landmarkDetail(towerGroup, lm, material, seed) {
     towerGroup.add(deco.facadeDetail({
       width: lm.footprint[0], depth: lm.footprint[1], height: Math.max(8, lm.height * 0.4),
-      material, seed, storefront: false, sideRecess,
+      material, seed, storefront: false,
     }));
     const roof = deco.rooftopKit({
       footprintW: lm.footprint[0] * 0.55, footprintD: lm.footprint[1] * 0.55, seed,
@@ -100,29 +106,10 @@ export async function build(ctx) {
   // local convention ('east' = +dx, 'south' = +dz).
   // ------------------------------------------------------------------
 
-  // WOODWARD BUILDING (1902, 10 floors) — SW corner. Chicago-school
-  // red-brown brick over a two-story rusticated base.
-  {
-    const lm = plan.landmarks.find(l => l.id === 'woodward-building');
-    const sideRecess = {side:-1, height:SHOP_HEIGHT, depth:SHOP_DEPTH};
-    towerAt(
-      lm,
-      { setbacks: 1, sideRecess, material: materials.brick, windowMaterial: materials.glassNight },
-      g => {
-        entrance(g, lm, 'north');
-        const shops = deco.storefrontBand({ width: lm.footprint[0], height: 4.6,
-          material: materials.brick, awnings: true, seed: 1902 });
-        shops.rotation.y = Math.PI;
-        shops.position.set(0, 0, -lm.footprint[1] / 2 - 0.05);
-        g.add(shops);
-        const cor = deco.corniceBox({ width: lm.footprint[0] + 0.8, depth: lm.footprint[1] + 0.8,
-          height: 0.9, material: materials.terracotta });
-        cor.position.set(0, lm.height - 0.5, 0);
-        g.add(cor);
-        facadeSign(g, lm, 'WOODWARD', lm.height * 0.3, 10, 'north');
-        landmarkDetail(g, lm, materials.brick, 1902, sideRecess);
-      }
-    );
+  // Full masonry shells and window recesses for the two 20th Street frontages.
+  for (const id of ['woodward-building','american-trust-building']) {
+    const landmark = plan.landmarks.find(item=>item.id===id);
+    group.add(build20thStreetLandmark(ctx,landmark,facadeSurfaces));
   }
 
   // BROWN MARX BUILDING (1906, 16 floors) — NE corner. Buff brick,
@@ -199,38 +186,6 @@ export async function build(ctx) {
         g.add(crownGlow);
         facadeSign(g, lm, 'EMPIRE', lm.height * 0.3, 9, 'south');
         landmarkDetail(g, lm, materials.limestone, 1909);
-      }
-    );
-  }
-
-  // AMERICAN TRUST & SAVINGS BANK (1912, 21 floors) — SE corner, the
-  // tallest of the four. Three-story banking base with tall arched
-  // windows, buff shaft, terra-cotta crown, rooftop sign frame.
-  {
-    const lm = plan.landmarks.find(l => l.id === 'american-trust-building');
-    const sideRecess = {side:1, height:SHOP_HEIGHT, depth:SHOP_DEPTH};
-    towerAt(
-      lm,
-      { setbacks: 1, sideRecess, material: materials.limestone, windowMaterial: materials.glassNight },
-      g => {
-        entrance(g, lm, 'north');
-        const base = deco.pilasterFacade({ width: lm.footprint[0], height: 11, bays: 5,
-          material: materials.limestone, pilasterMaterial: materials.bronze });
-        base.rotation.y = Math.PI;
-        base.position.set(0, 0, -lm.footprint[1] / 2 - 0.25);
-        g.add(base);
-        const crown = deco.corniceBox({ width: lm.footprint[0] + 1.4, depth: lm.footprint[1] + 1.4,
-          height: 1.2, material: materials.terracotta });
-        crown.position.set(0, lm.height - 0.6, 0);
-        g.add(crown);
-        const signBack = new THREE.Mesh(new THREE.BoxGeometry(14, 2.6, 0.4), materials.steelDark);
-        signBack.position.set(0, lm.height + 1.8, 0);
-        g.add(signBack);
-        const roofSign = deco.canvasSign('AMERICAN TRUST', { width: 13 });
-        roofSign.position.set(0, lm.height + 1.1, 0.35);
-        g.add(roofSign);
-        facadeSign(g, lm, 'AMERICAN TRUST & SAVINGS', lm.height * 0.28, 15, 'north');
-        landmarkDetail(g, lm, materials.limestone, 1912, sideRecess);
       }
     );
   }
@@ -746,6 +701,6 @@ export async function build(ctx) {
     use: 'warehouse', floorsRange: [2, 4], alley: false,
   }));
 
-  await add20thStreetStores(ctx, group);
+  add20thStreetStores(ctx, group, shopSurfaces);
   scene.add(group);
 }
