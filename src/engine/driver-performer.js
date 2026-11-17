@@ -65,7 +65,7 @@ export function createDriverPerformer(scene,{motoristColor}={}) {
   }
 
   function mount(car) {
-    if (group.parent !== car.group) car.group.add(group);
+    if (group.parent !== car.chassis) car.chassis.add(group);
     group.position.set(0,0,0);
     group.rotation.y = 0;
     group.visible = true;

@@ -1,6 +1,6 @@
 /** Period traffic with lane spacing, and right-of-way at First and 20th. */
-import { buildPeriodSedan, updateSedanWheels, TYRE_RADIUS } from '../engine/period-sedan.js';
-import { HALF_LENGTH, setCarBounds } from '../engine/vehicle-motion.mjs';
+import { applySedanRide, buildPeriodSedan, updateSedanWheels } from '../engine/period-sedan.js';
+import { HALF_LENGTH, setCarBounds, stepSedanRide, TYRE_RADIUS } from '../engine/vehicle-motion.mjs';
 import { createDriverPerformer } from '../engine/driver-performer.js';
 import { ROAD_HEIGHT } from '../engine/street-layout.js';
 import { advanceTraffic, blockerGap, HEAVIEST_CORNER_CROSSWALK, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore, wrapDistance } from '../engine/traffic-motion.mjs';
@@ -203,8 +203,10 @@ export function startTraffic(ctx) {
     if (!car.detail) {
       const color = i%lacquer.length;
       car.detail = detailedPools[color].pop() ?? makeDetail(color);
-      car.detail.wheelAngle = (car.dist / TYRE_RADIUS) % (Math.PI*2);
-      car.detail.steeringAngle = 0;
+      const wheelAngle = (car.dist / TYRE_RADIUS) % (Math.PI * 2);
+      for (const wheel of car.detail.wheels) wheel.roll.rotation.x = wheelAngle;
+      car.detail.previousSpeed = car.speed;
+      car.detail.ride.ready = false;
     }
     const detail = car.detail;
     detail.group.visible = true;
@@ -216,7 +218,10 @@ export function startTraffic(ctx) {
     detail.stopLightMat.emissiveIntensity = car.braking ? 3.0 : night ? .64 : 0;
     detail.headlightMat.emissiveIntensity = night ? 1.75 : .15;
     for (const material of detail.reflective) material.envMapIntensity = night ? .23 : .69;
-    updateSedanWheels(detail,car.travel,0,dt);
+    updateSedanWheels(detail, car.travel);
+    stepSedanRide(detail.ride, dt ? (car.speed - detail.previousSpeed) / dt : 0, 0, dt);
+    detail.previousSpeed = car.speed;
+    applySedanRide(detail);
     return true;
   }
 

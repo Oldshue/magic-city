@@ -1,41 +1,18 @@
-/**
- * driving.js — makes Magic City 1929 drivable: 4-6 parked period sedans at
- * plausible downtown/terminal-quarter curbs, walk-up "Press E to drive"
- * boarding, arcade car physics (throttle/brake/steer/gentle drift, ~80 km/h
- * cap, friction, AABB collision against the walking controller's colliders),
- * a chase-cam driving view, warm night headlights, a synthesized two-tone
- * horn (H), a throttle-linked engine putter, and streetcar boarding/riding
- * coordinated through the additive `streetcars.getCars()` hook (no reaching
- * into streetcar internals). Registers with the engine loop per
- * docs/TECH-CONTRACT.md: startDriving(ctx) -> { update(dt, elapsed) }.
- *
- * Camera ownership: while driving or riding, this module calls
- * ctx.controls.setEnabled(false) so the walking controller's own W/A/S/D
- * handling steps aside, and writes camera.position/rotation directly every
- * frame; setEnabled(true) hands the camera back on exit.
- *
- * No existing "Press E to prompt" HUD was found in the repo (src/narrative/
- * does not exist yet), so this module owns a small self-contained prompt
- * element rather than reaching into a nonexistent pathway.
- */
+/** Own the controls and camera while the detective enters, drives or leaves a vehicle. */
 import { readVehicleInput } from '../engine/vehicle-input.mjs';
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 import { EYE_HEIGHT, PLAYER_RADIUS } from '../engine/controls.js';
-import { buildPeriodSedan, updateSedanWheels } from '../engine/period-sedan.js';
-import { carFootprintBlocked, clearCameraFraction, carWorldPoint, driverApproach, DRIVER_MARK, HALF_WIDTH, hitsMovingObstacle, setCarBounds } from '../engine/vehicle-motion.mjs';
+import { applySedanRide, buildPeriodSedan, updateSedanWheels } from '../engine/period-sedan.js';
+import {
+  carFootprintBlocked, clearCameraFraction, carWorldPoint, driverApproach, DRIVER_MARK,
+  HALF_WIDTH, hitsMovingObstacle, setCarBounds, TYRE_RADIUS, MAX_SPEED, REAR_AXLE_Z,
+  frontWheelAngle, sedanYawRate, stepSedanControls, stepSedanRide,
+} from '../engine/vehicle-motion.mjs';
 import { createDriverPerformer } from '../engine/driver-performer.js';
-import { ROAD_HEIGHT } from '../engine/street-layout.js';
+import { createStreetContact, ROAD_HEIGHT, SIDEWALK_HEIGHT } from '../engine/street-layout.js';
 
-// --- Arcade physics tuning ---------------------------------------------
-const MAX_SPEED = 22;        // ~80 km/h
-const MAX_REVERSE = -6;      // m/s
-const ACCEL = 9;             // m/s^2 forward
-const REVERSE_ACCEL = 4.2;   // m/s^2 reverse
-const BRAKE_DECEL = 11;      // m/s^2 braking while moving forward
-const FRICTION_DECEL = 3.4;  // m/s^2 coasting to a stop
-const MAX_STEER_RATE = 1.9;  // rad/s at low speed
-const MIN_STEER_RATE = 0.55; // rad/s at max speed
-const DRIFT_LAG = 5.5;       // higher = velocity snaps to heading faster (less drift)
+const PHYSICS_STEP = 0.025;
+const CURB_MID_HEIGHT = (SIDEWALK_HEIGHT - ROAD_HEIGHT) * 0.5;
 const CHASE_DIST = 5.7;
 const CHASE_HEIGHT = 2.48;
 const EXIT_OFFSET = 1.8;
@@ -87,6 +64,7 @@ export function startDriving(ctx) {
   const { THREE, scene, getDayPhase, camera, plan, streetcars, environment, streetReflection } = ctx;
   const controls = ctx.controls || { setEnabled() {}, getColliderBoxes() { return EMPTY_BOXES; } };
   const bounds = plan.bounds;
+  const streetContact = createStreetContact(scene, TYRE_RADIUS, 0.042);
   const player = createDriverPerformer(scene);
 
   // --- Build parked sedans ------------------------------------------------
@@ -101,12 +79,15 @@ export function startDriving(ctx) {
     const heading = THREE.MathUtils.degToRad(spec.yawDeg);
     built.group.rotation.y = heading;
     scene.add(built.group);
-    return {
+    const car = {
       ...built,
       name: spec.name,
       x: spec.x, z: spec.z, heading, collider:{},
-      speed: 0, vx: 0, vz: 0, wheelAngle: 0, steeringAngle: 0, braking: false,
+      speed: 0, vx: 0, vz: 0, braking: false, curbCooldown: 0,
     };
+    updateWheelContact(car, 0);
+    updateRide(car, 0, 0, 0);
+    return car;
   });
 
   const parkedVehicles = cars.map(car=>setCarBounds(car.collider,car.x,car.z,car.heading,car));
@@ -175,6 +156,7 @@ export function startDriving(ctx) {
   const vehicleInput = { throttle: 0, steer: 0 };
   const chaseTarget = new THREE.Vector3();
   const chasePosition = new THREE.Vector3();
+  const chaseAim = new THREE.Vector3();
   const accessView = new THREE.Vector3(), accessTarget = new THREE.Vector3();
   const exitView = new THREE.Vector3(), exitTarget = new THREE.Vector3();
   let chaseReady = false;
@@ -243,6 +225,8 @@ export function startDriving(ctx) {
     camera.position.set(x,EYE_HEIGHT,z);
     camera.rotation.set(0,car.heading + Math.PI,0,'YXZ');
     car.speed = 0; car.vx = 0; car.vz = 0; car.braking = false;
+    car.ride.ready = false;
+    updateRide(car, 0, 0, 0);
     controls.setEnabled(true);
     isDriving = false;
     activeCar = null;
@@ -304,8 +288,9 @@ export function startDriving(ctx) {
     const shotSide = 3.62, shotRear = -3.05;
     const [x,z] = carWorldPoint(car.x,car.z,car.heading,shotSide,shotRear);
     const [tx,tz] = carWorldPoint(car.x,car.z,car.heading,.7,-.31);
-    accessView.set(x,2.13,z);
-    accessTarget.set(tx,1.06,tz);
+    const rideHeight = car.ride.heave.value;
+    accessView.set(x, 2.13 + rideHeight, z);
+    accessTarget.set(tx, 1.06 + rideHeight, tz);
     if (access.entering) {
       const chase = THREE.MathUtils.smoothstep(t,.66,1);
       setChaseView(car);
@@ -329,6 +314,7 @@ export function startDriving(ctx) {
 
   function updateVehicleAccess(dt) {
     const car = activeCar;
+    updateRide(car, 0, 0, dt);
     access.cameraTime += dt;
     if (access.entering && advanceApproach(dt)) {
       positionAccessCamera(car,0);
@@ -449,84 +435,138 @@ export function startDriving(ctx) {
     hornTone(ac, master, t + 0.26, 270, 0.58);
   }
 
-  // --- Physics --------------------------------------------------------
-  function updateDrivingPhysics(dt) {
-    const car = activeCar;
-    const input = readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput);
-    const throttle = exitRequested ? 0 : input.throttle;
-    const steer = exitRequested ? 0 : input.steer;
+  function playCurbThud(speed) {
+    if (!engine) return;
+    const { ac, bus, doorNoise } = engine;
+    const start = ac.currentTime;
+    const pulse = ac.createBufferSource();
+    pulse.buffer = doorNoise;
+    const lowPass = ac.createBiquadFilter();
+    lowPass.type = 'lowpass';
+    lowPass.frequency.value = 118;
+    const envelope = ac.createGain();
+    envelope.gain.setValueAtTime(Math.min(0.49, 0.21 + speed * 0.023), start);
+    envelope.gain.exponentialRampToValueAtTime(0.001, start + 0.13);
+    pulse.connect(lowPass).connect(envelope).connect(bus);
+    pulse.start(start, 0, 0.14);
+  }
 
+  function updateWheelContact(car, dt) {
+    const sine = Math.sin(car.heading), cosine = Math.cos(car.heading);
+    let rise = 0;
+    let curb = false;
+    for (let i = 0; i < car.wheels.length; i++) {
+      const wheel = car.wheels[i];
+      const x = car.x + wheel.x * cosine + wheel.z * sine;
+      const z = car.z - wheel.x * sine + wheel.z * cosine;
+      const yaw = car.heading + wheel.holder.rotation.y;
+      const height = streetContact(x, z, yaw) - ROAD_HEIGHT;
+      const previous = car.ride.support[i];
+      rise += Math.max(0, height - previous);
+      curb ||= (height > CURB_MID_HEIGHT) !== (previous > CURB_MID_HEIGHT);
+      car.ride.support[i] = height;
+    }
+
+    if (!dt) return;
+    car.curbCooldown = Math.max(0, car.curbCooldown - dt);
+    if (curb && car.curbCooldown === 0 && Math.abs(car.speed) > 0.65) {
+      playCurbThud(Math.abs(car.speed));
+      car.curbCooldown = 0.12;
+    }
+    const resistance = Math.exp(-0.78 * rise);
+    car.speed *= resistance;
+    car.vx *= resistance;
+    car.vz *= resistance;
+  }
+
+  function updateRide(car, acceleration, lateralAcceleration, dt) {
+    stepSedanRide(car.ride, acceleration, lateralAcceleration, dt);
+    applySedanRide(car);
+  }
+
+  function stepDriving(car, throttle, steer, dt, boxes, vehicles) {
     const startX = car.x, startZ = car.z;
-    const boxes = controls.getColliderBoxes();
-    const vehicles = controls.getMovingColliderBoxes?.(car) ?? EMPTY_BOXES;
-    car.braking = exitRequested || (throttle < -0.05 && car.speed > 0.35);
-    if (exitRequested) {
-      car.speed = Math.sign(car.speed) * Math.max(0,Math.abs(car.speed)-BRAKE_DECEL*dt);
-    } else if (throttle > 0) {
-      car.speed += ACCEL * throttle * dt;
-    } else if (throttle < 0) {
-      car.speed += (car.speed > 0.05 ? -BRAKE_DECEL : -REVERSE_ACCEL) * Math.abs(throttle) * dt;
-    } else if (car.speed > 0) {
-      car.speed = Math.max(0, car.speed - FRICTION_DECEL * dt);
-    } else if (car.speed < 0) {
-      car.speed = Math.min(0, car.speed + FRICTION_DECEL * dt);
-    }
-    car.speed = clamp(car.speed, MAX_REVERSE, MAX_SPEED);
+    const startSpeed = car.speed;
+    const startHeading = car.heading;
+    stepSedanControls(car, throttle, steer, exitRequested, dt);
 
-    if (Math.abs(car.speed) > 0.15) {
-      const speedFrac = Math.min(1, Math.abs(car.speed) / MAX_SPEED);
-      const turnRate = MAX_STEER_RATE - (MAX_STEER_RATE - MIN_STEER_RATE) * speedFrac;
-      const dirSign = car.speed >= 0 ? 1 : -1;
-      const heading = car.heading + steer * turnRate * dt * dirSign;
-      if (!carFootprintBlocked(boxes,car.x,car.z,heading) && !carFootprintBlocked(vehicles,car.x,car.z,heading)) car.heading = heading;
-    }
-
-    const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
-    const lag = Math.min(1, DRIFT_LAG * dt);
-    car.vx += (fx * car.speed - car.vx) * lag;
-    car.vz += (fz * car.speed - car.vz) * lag;
+    const heading = car.heading + sedanYawRate(car.speed, car.steeringAngle) * dt;
+    if (!carFootprintBlocked(boxes, car.x, car.z, heading)
+        && !carFootprintBlocked(vehicles, car.x, car.z, heading)) car.heading = heading;
+    const yawTravel = car.heading - startHeading;
+    const middle = startHeading + yawTravel / 2;
+    const fx = Math.sin(middle), fz = Math.cos(middle);
+    // The center of the car moves around the rear axle at parking speeds.
+    // A short tire lag softens the response on faster bends.
+    const lateral = -REAR_AXLE_Z * yawTravel / dt;
+    const grip = 1 - Math.exp(-15 * dt);
+    car.vx += (fx * car.speed + fz * lateral - car.vx) * grip;
+    car.vz += (fz * car.speed - fx * lateral - car.vz) * grip;
 
     const impactSpeed = Math.abs(car.speed);
     let collided = false;
     const nx = car.x + car.vx * dt;
     const nz = car.z + car.vz * dt;
-    if (!carFootprintBlocked(boxes,nx,car.z,car.heading) && !carFootprintBlocked(vehicles,nx,car.z,car.heading)) {
+    if (!carFootprintBlocked(boxes, nx, car.z, car.heading) && !carFootprintBlocked(vehicles, nx, car.z, car.heading)) {
       car.x = clamp(nx, bounds.minX, bounds.maxX);
     } else {
       collided = true; car.vx = 0; car.speed *= 0.25;
     }
-    if (!carFootprintBlocked(boxes,car.x,nz,car.heading) && !carFootprintBlocked(vehicles,car.x,nz,car.heading)) {
+    if (!carFootprintBlocked(boxes, car.x, nz, car.heading) && !carFootprintBlocked(vehicles, car.x, nz, car.heading)) {
       car.z = clamp(nz, bounds.minZ, bounds.maxZ);
     } else {
       collided = true; car.vz = 0; car.speed *= 0.25;
     }
-
     if (collided && impactSpeed >= 6 && impactCooldown <= 0) { impactSequence++; impactCooldown = 1; }
+
+    const dx = car.x - startX, dz = car.z - startZ;
+    const distance = dx * fx + dz * fz;
+    updateSedanWheels(car, distance, dx * fz - dz * fx, yawTravel);
+    updateWheelContact(car, dt);
+    stepSedanRide(car.ride, (car.speed - startSpeed) / dt, distance * yawTravel / (dt * dt), dt);
+  }
+
+  function updateDrivingPhysics(dt) {
+    const car = activeCar;
+    const input = readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput);
+    const boxes = controls.getColliderBoxes();
+    const vehicles = controls.getMovingColliderBoxes?.(car) ?? EMPTY_BOXES;
+    const steps = Math.ceil(dt / PHYSICS_STEP);
+    for (let i = 0; i < steps; i++) {
+      stepDriving(car, input.throttle, exitRequested ? 0 : input.steer, dt / steps, boxes, vehicles);
+    }
     car.group.position.set(car.x, ROAD_HEIGHT, car.z);
     car.group.rotation.y = car.heading;
-    setCarBounds(car.collider,car.x,car.z,car.heading,car);
-    const travelled = (car.x - startX) * fx + (car.z - startZ) * fz;
-    updateSedanWheels(car, travelled, steer, dt);
+    applySedanRide(car);
+    setCarBounds(car.collider, car.x, car.z, car.heading, car);
   }
 
   function setChaseView(car) {
     const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
     const distance = CHASE_DIST + Math.min(1.1, Math.abs(car.speed) * 0.05);
-    chasePosition.set(car.x - fx * distance, CHASE_HEIGHT, car.z - fz * distance);
-    chaseTarget.set(car.x + fx * 2.4, 1.12, car.z + fz * 2.4);
+    const lift = car.ride.heave.value * 0.85;
+    const lookIntoTurn = Math.sin(car.steeringAngle) * Math.min(2.4, Math.abs(car.speed) * 0.3);
+    chasePosition.set(car.x - fx * distance, CHASE_HEIGHT + lift, car.z - fz * distance);
+    chaseTarget.set(car.x + fx * 2.4 + fz * lookIntoTurn, 1.12 + lift, car.z + fz * 2.4 - fx * lookIntoTurn);
   }
 
   function positionChaseCamera(dt) {
     const car = activeCar;
     setChaseView(car);
-    if (!chaseReady) camera.position.copy(chasePosition);
-    else camera.position.lerp(chasePosition, 1 - Math.exp(-dt * 9));
+    const follow = 1 - Math.exp(-dt * 10);
+    if (!chaseReady) {
+      camera.position.copy(chasePosition);
+      chaseAim.copy(chaseTarget);
+    } else {
+      camera.position.lerp(chasePosition, follow);
+      chaseAim.lerp(chaseTarget, follow);
+    }
     chaseReady = true;
     const clearance = clearCameraFraction(controls.getColliderBoxes(), car.x, car.z, camera.position.x, camera.position.z);
     camera.position.x = THREE.MathUtils.lerp(car.x, camera.position.x, clearance);
     camera.position.z = THREE.MathUtils.lerp(car.z, camera.position.z, clearance);
     camera.position.y = Math.max(CHASE_HEIGHT - 0.15, camera.position.y);
-    camera.lookAt(chaseTarget);
+    camera.lookAt(chaseAim);
   }
 
   function updateEngineAudio() {

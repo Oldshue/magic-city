@@ -122,3 +122,93 @@ export function hitsMovingObstacle(box,x,z,radius) {
   const longitudinal=Math.max(0,Math.abs(dx*sine+dz*cosine)-HALF_LENGTH);
   return lateral*lateral+longitudinal*longitudinal < radius*radius;
 }
+
+
+export const TYRE_RADIUS = 0.385;
+export const HALF_TRACK = 0.89;
+export const FRONT_AXLE_Z = 1.46;
+export const REAR_AXLE_Z = -1.57;
+const WHEELBASE = FRONT_AXLE_Z - REAR_AXLE_Z;
+export const MAX_SPEED = 22;
+const MAX_REVERSE = 6;
+const STEERING_LOCK = 0.49;
+const CORNER_GRIP = 5.4;
+
+export function stepSedanControls(car, throttle, steer, parking, dt) {
+  const speed = car.speed;
+  car.braking = parking || throttle * speed < -0.05;
+  if (car.braking || !throttle) {
+    const deceleration = parking ? 11 : car.braking ? 9.8 * Math.abs(throttle) : 2.85;
+    car.speed = Math.sign(speed) * Math.max(0, Math.abs(speed) - deceleration * dt);
+  } else {
+    const acceleration = throttle > 0 ? 8.1 - 4.5 * Math.max(0, speed / MAX_SPEED) : 4.2;
+    car.speed = Math.max(-MAX_REVERSE, Math.min(MAX_SPEED, speed + acceleration * throttle * dt));
+  }
+  const gripAngle = Math.atan2(CORNER_GRIP * WHEELBASE, car.speed * car.speed);
+  const target = steer * Math.min(STEERING_LOCK, gripAngle);
+  car.steeringAngle = target + (car.steeringAngle - target) * Math.exp(-10 * dt);
+}
+
+export function sedanYawRate(speed, steering) {
+  return speed * Math.tan(steering) / WHEELBASE;
+}
+
+export function frontWheelAngle(steering, wheelX) {
+  const tangent = Math.tan(steering);
+  return Math.atan2(tangent, 1 - tangent * wheelX / WHEELBASE);
+}
+
+export function createSedanRide() {
+  const spring = () => ({ value: 0, velocity: 0 });
+  return { heave: spring(), pitch: spring(), roll: spring(), support: new Float64Array(4), ready: false };
+}
+
+// Exact response to a constant target over this step. It stays damped
+// through a long browser frame without giving the chassis a sudden kick.
+function advanceSpring(spring, target, decay, cosine, sineOverFrequency) {
+  const displacement = spring.value - target;
+  const velocity = spring.velocity;
+  spring.value = target + decay * (displacement * cosine + (velocity + 8 * displacement) * sineOverFrequency);
+  spring.velocity = decay * (velocity * cosine - (8 * velocity + 125 * displacement) * sineOverFrequency);
+}
+
+export function stepSedanRide(ride, forwardAcceleration, lateralAcceleration, dt) {
+  const [leftFront, leftRear, rightFront, rightRear] = ride.support;
+  const front = (leftFront + rightFront) * 0.5;
+  const rear = (leftRear + rightRear) * 0.5;
+  const heave = (front + rear) * 0.5;
+  const pitch = Math.atan2(rear - front, WHEELBASE)
+    + Math.max(-0.056, Math.min(0.075, -forwardAcceleration * 0.0066));
+  const roll = Math.atan2((rightFront + rightRear - leftFront - leftRear) * 0.5, HALF_TRACK * 2)
+    + Math.max(-0.085, Math.min(0.085, lateralAcceleration * 0.0125));
+  if (!ride.ready) {
+    ride.heave.value = heave;
+    ride.pitch.value = pitch;
+    ride.roll.value = roll;
+    ride.heave.velocity = ride.pitch.velocity = ride.roll.velocity = 0;
+    ride.ready = true;
+    return;
+  }
+
+  const frequency = Math.sqrt(125 - 8 * 8);
+  const decay = Math.exp(-8 * dt);
+  const cosine = Math.cos(frequency * dt);
+  const sineOverFrequency = Math.sin(frequency * dt) / frequency;
+  advanceSpring(ride.heave, heave, decay, cosine, sineOverFrequency);
+  advanceSpring(ride.pitch, pitch, decay, cosine, sineOverFrequency);
+  advanceSpring(ride.roll, roll, decay, cosine, sineOverFrequency);
+
+  // The bump stops limit how far a tire can rise into the fender arch.
+  const sideLift = HALF_TRACK * Math.sin(ride.roll.value);
+  const noseDip = Math.sin(ride.pitch.value);
+  const minimumHeave = Math.max(
+    leftFront + sideLift + FRONT_AXLE_Z * noseDip,
+    leftRear + sideLift + REAR_AXLE_Z * noseDip,
+    rightFront - sideLift + FRONT_AXLE_Z * noseDip,
+    rightRear - sideLift + REAR_AXLE_Z * noseDip,
+  ) - 0.063;
+  if (ride.heave.value < minimumHeave) {
+    ride.heave.value = minimumHeave;
+    ride.heave.velocity = Math.max(0, ride.heave.velocity);
+  }
+}

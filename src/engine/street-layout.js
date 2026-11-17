@@ -148,6 +148,7 @@ function meshForRings(rings, height, material, edges) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.receiveShadow = true;
   mesh.userData.noShadow = true;
+  mesh.userData.streetTop = { rings, height };
   return mesh;
 }
 
@@ -171,4 +172,62 @@ export function addPavementApron(parent, segments, material, {minX, maxX, minZ, 
   const apron = meshForRings(rings, SIDEWALK_HEIGHT, material, true);
   apron.name = 'Pavement apron';
   parent.add(apron);
+}
+
+
+// Find the closest point of a convex pavement top in the tire's rolling
+// plane. The tire can touch a curb before the center reaches its edge.
+function closestContact(surface, x, z, fx, fz, radius) {
+  let near = -radius;
+  let far = radius;
+  for (const { ex, ez, dx, dz } of surface.edges) {
+    const offset = dx * (z - ez) - dz * (x - ex);
+    const rate = dx * fz - dz * fx;
+    if (rate > EPSILON) near = Math.max(near, -offset / rate);
+    else if (rate < -EPSILON) far = Math.min(far, -offset / rate);
+    else if (offset < -EPSILON) return Infinity;
+    if (near > far) return Infinity;
+  }
+  return Math.max(near, -far, 0);
+}
+
+/** Return the height of a rolling tire's bottom above the ground plane. */
+export function createStreetContact(scene, radius, halfTread = 0) {
+  const surfaces = [];
+  const vertex = new THREE.Vector3();
+  scene.traverse(mesh => {
+    const top = mesh.userData.streetTop;
+    if (!top) return;
+    mesh.updateWorldMatrix(true, false);
+    for (const ring of top.rings) {
+      const world = ring.map(([x, z]) => {
+        vertex.set(x, top.height, z).applyMatrix4(mesh.matrixWorld);
+        return [vertex.x, vertex.z];
+      });
+      const edges = world.map(([ex, ez], i) => {
+        const [x, z] = world[(i + 1) % world.length];
+        return { ex, ez, dx: x - ex, dz: z - ez };
+      });
+      surfaces.push({ ...bounds(world), edges, height: vertex.y });
+    }
+  });
+
+  const reach = radius + halfTread;
+  const tread = halfTread ? [-halfTread, 0, halfTread] : [0];
+  const radiusSquared = radius * radius;
+  return (x, z, yaw) => {
+    const fx = Math.sin(yaw), fz = Math.cos(yaw);
+    let height = 0;
+    for (const surface of surfaces) {
+      if (height >= surface.height || x + reach < surface.minX || x - reach > surface.maxX
+          || z + reach < surface.minZ || z - reach > surface.maxZ) continue;
+      for (const offset of tread) {
+        const distance = closestContact(surface, x + fz * offset, z - fx * offset, fx, fz, radius);
+        if (distance <= radius) {
+          height = Math.max(height, surface.height + Math.sqrt(radiusSquared - distance * distance) - radius);
+        }
+      }
+    }
+    return height;
+  };
 }
