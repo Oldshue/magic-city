@@ -415,6 +415,7 @@ function openReadable(root, state, readable) {
   root.querySelector('#mc-readable-title').textContent = readable.title;
   root.querySelector('#mc-readable-body').textContent = readable.body;
   panel.classList.remove('mc-hidden');
+  readable.onRead?.();
   root.querySelector('#mc-read-prompt').classList.add('mc-hidden');
   root.querySelector('#mc-touch-read-btn').classList.add('mc-hidden');
 }

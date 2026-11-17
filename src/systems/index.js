@@ -45,6 +45,7 @@ export function startSystems(ctx) {
       if (traffic) traffic.update(dt, elapsed);
       if (police) police.update(dt, elapsed);
       ctx.counterService?.update(dt);
+      for (const stand of ctx.newsstands ?? []) stand.update(dt,traffic);
       if (pedestrians) pedestrians.update(dt, elapsed);
       if (weather) weather.update(dt, elapsed);
     },

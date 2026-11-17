@@ -170,6 +170,8 @@ export function startTraffic(ctx) {
   const colliders = [];
   ctx.controls?.addMovingColliders?.(colliders);
   const player = {};
+  const approachingPedestrians = [];
+  let playerPosition;
 
   function makeDetail(color) {
     const sedan = buildPeriodSedan(lacquer[color],ctx.environment,{powered:false});
@@ -323,14 +325,17 @@ export function startTraffic(ctx) {
   for (const car of instances) locate(car);
 
   function stepTraffic(dt) {
-    let blocker = ctx.driving?.getState(player);
-    if (!blocker && ctx.camera) {
-      blocker = ctx.camera.position;
+    const blocker = ctx.driving?.getState(player) || ctx.camera?.position;
+    playerPosition = blocker;
+    approachingPedestrians.length=0;
+    for (const person of ctx.crossingVisitors ?? []) {
+      if (person.active) approachingPedestrians.push(person);
     }
-    reserveJunction(junction,instances,blocker);
+    reserveJunction(junction,instances,blocker,approachingPedestrians);
     for (const car of instances) {
       const crossing = junctionGap(junction,car);
-      const playerRoom = blockerGap(car,blocker);
+      let playerRoom = blockerGap(car,blocker);
+      for (const person of approachingPedestrians) playerRoom=Math.min(playerRoom,blockerGap(car,person));
       const leadRoom = car.leader
         ? wrapDistance((car.leader.dist-car.dist)*car.dir,car.route.total)-HALF_LENGTH*2
         : Infinity;
@@ -351,6 +356,18 @@ export function startTraffic(ctx) {
   }
 
   return {
+    canCross() {
+      if (!junction || !junction.crossingRequested) return !junction;
+      const owner=junction.owner;
+      if (owner?.route===junction.crossedRoute && !Number.isFinite(junctionGap(junction,owner))) return false;
+      const stripe=junction.z-HEAVIEST_CORNER_CROSSWALK.offset;
+      const reach=HEAVIEST_CORNER_CROSSWALK.depth/2;
+      if (playerPosition?.mounted && Math.abs(playerPosition.x-junction.x)<junction.halfX+1.2
+          && Math.abs(playerPosition.z-stripe)<reach+HALF_LENGTH+3.6) return false;
+      return !ctx.controls?.getMovingColliderBoxes?.().some(box=>
+        box.minX<junction.x+junction.halfX && box.maxX>junction.x-junction.halfX
+        && box.minZ<stripe+reach && box.maxZ>stripe-reach);
+    },
     update(dt) {
       const phase = getDayPhase();
       const night = phase < 0.22 || phase > 0.8;

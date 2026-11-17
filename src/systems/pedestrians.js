@@ -199,7 +199,6 @@ export function startPedestrians(ctx) {
       x: nx + 0.5, z: nz + 0.35, facing: 0,
     });
   }
-  addNewsboy(12, -8);
   addNewsboy(-108, 6);
 
   // Waiting knots at the 4 nearest downtown streetcar stops (coordinates

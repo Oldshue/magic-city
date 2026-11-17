@@ -82,3 +82,17 @@ test('traffic yields before the painted crosswalk when a person approaches from 
   reserveJunction(junction,[lead]);
   assert.equal(junction.owner,null);
 });
+
+
+test('kiosk customers hold their crossing while perpendicular traffic can proceed', () => {
+  const [twentieth,first] = roads();
+  const junction = makeJunction(twentieth,first,HEAVIEST_CORNER_CROSSWALK);
+  const approaching = {route:twentieth,dist:80.02,dir:1};
+  const across = {route:first,dist:72,dir:1};
+  junction.owner=approaching;
+  reserveJunction(junction,[approaching,across],null,[{x:-12.9,z:-14.5,y:1.7}]);
+  assert.equal(junction.owner,across);
+  assert.equal(junction.crossingRequested,true);
+  assert.ok(Number.isFinite(junctionGap(junction,approaching)));
+  assert.equal(junctionGap(junction,across),Infinity);
+});

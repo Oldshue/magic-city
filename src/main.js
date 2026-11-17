@@ -221,7 +221,8 @@ async function boot() {
   // --- Interactives registry -----------------------------------------
   const interactives = [];
   function registerInteractive(object3d, info) {
-    interactives.push({ object: object3d, title: info.title || '', body: info.body || '', available: info.available });
+    interactives.push({ object: object3d, title: info.title || '', body: info.body || '',
+      available: info.available, onRead: info.onRead });
   }
 
   // Shared context per TECH-CONTRACT v1:
@@ -233,7 +234,7 @@ async function boot() {
     THREE, scene, camera, renderer, plan, environment, streetReflection,
     materials, deco, registerInteractive, controls, streetSegments,
     getDayPhase: sky.getDayPhase,
-    interactives, characters: [], shopCounters: [], interactions: createInteractions(),
+    interactives, characters: [], shopCounters: [], newsstands: [], crossingVisitors: [], interactions: createInteractions(),
   };
 
   // --- Districts (static registry lookup, skip missing) ----------------

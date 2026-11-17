@@ -1,6 +1,6 @@
 """Build the Magic City street characters with Blender and MPFB 2.0.18.
 
-Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY [--driver-only | --counters-only].
+Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY [--driver-only | --counters-only | --ledger-only].
 The MPFB extension must be installed in Blender's user_default repository.
 """
 import importlib
@@ -464,7 +464,18 @@ SERVE_MARKS = [
 ]
 
 
-def bake_counter(rig):
+PAPER_MARKS = [
+    (0,.04,(-.26,.96,.24)),
+    (12,.15,(-.32,1.13,.43)),
+    (24,.18,(-.24,1.29,.56)),
+    (36,.24,(-.10,1.25,.73)),
+    (42,.28,(-.04,1.17,.81)),
+    (50,.10,(-.20,1.04,.46)),
+    (59,.04,(-.26,.96,.24)),
+]
+
+
+def bake_counter(rig, paper=False):
     pose = rig.pose.bones
     rest, solve = limb_solver(rig)
     neutral = Quaternion()
@@ -474,15 +485,19 @@ def bake_counter(rig):
         x,y,z = mark
         return Vector((x,-z,y))/COUNTER_SCALE
 
+    marks = PAPER_MARKS if paper else SERVE_MARKS
+    pickup, release = (12,42) if paper else (15,53)
+
     def blend_mark(frame):
-        for a,b in zip(SERVE_MARKS,SERVE_MARKS[1:]):
+        for a,b in zip(marks,marks[1:]):
             if frame <= b[0]:
                 t = (frame-a[0])/(b[0]-a[0])
                 t = t*t*(3-2*t)
                 return a[1]+(b[1]-a[1])*t,tuple(x+(y-x)*t for x,y in zip(a[2],b[2]))
-        return SERVE_MARKS[-1][1:]
+        return marks[-1][1:]
 
-    for name,length in (("Greet",34),("Speak",56),("Serve",68)):
+    clips = (("SellEdition",59),) if paper else (("Greet",34),("Speak",56),("Serve",68))
+    for name,length in clips:
         action = bpy.data.actions.new(name)
         rig.animation_data.action = action
         for frame in range(length+1):
@@ -494,7 +509,7 @@ def bake_counter(rig):
                 bone.rotation_quaternion = Quaternion()
                 bone.location = (0,0,0)
                 bone.scale = (1,1,1)
-            if name == "Serve":
+            if name in ("Serve","SellEdition"):
                 lean, hand = blend_mark(frame)
             elif name == "Speak":
                 lean = .04+.10*beat
@@ -520,7 +535,7 @@ def bake_counter(rig):
                 solve(f"upperarm_{side}",f"lowerarm_{side}",f"hand_{side}",point(target),Vector((sign*.6,.34,-.65)),neutral)
                 for finger in ("index","middle","ring","pinky"):
                     for segment in ("02","03"):
-                        curl = .52 if name == "Serve" and sign<0 and 15 <= frame <= 53 else .18
+                        curl = .52 if name in ("Serve","SellEdition") and sign<0 and pickup <= frame <= release else .18
                         pose[f"{finger}_{segment}_{side}"].rotation_quaternion = Quaternion((1,0,0),curl)
             for bone in pose:
                 bone.keyframe_insert(data_path="rotation_quaternion",frame=frame,group=bone.name)
@@ -572,12 +587,16 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
         state.update(age=.57 if female else .67)
     if worker:
         state.update(age=.36,muscle=.69)
+    if staff == "ledger":
+        state.update(age=.78,muscle=.42)
     body = humans.create_human(macro_detail_dict=state)
     skin_name = "young_caucasian_female.mhmat" if female else "young_african_male.mhmat"
     if staff:
         skin_name = "middleage_caucasian_female.mhmat" if female else "middleage_african_male.mhmat"
     if worker:
         skin_name = "young_caucasian_male2.mhmat"
+    if staff == "ledger":
+        skin_name = "old_african_male.mhmat"
     skin = assets.find_asset_absolute_path(skin_name, asset_subdir="skins")
     if not skin:
         raise RuntimeError(f"Missing skin {skin_name}")
@@ -588,6 +607,8 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
         outfit = "toigo_male_suit_tie_and_jacket.mhclo"
     if staff == "lunch":
         outfit = "toigo_female_suit.mhclo"
+    if staff == "ledger":
+        outfit = "toigo_male_suit_3.mhclo"
     if worker:
         outfit = "male_worksuit01.mhclo"
     pieces = [
@@ -618,9 +639,9 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
     if not staff and export_body.data.shape_keys:
         bpy.context.view_layer.objects.active = export_body
         bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
-    if (female and not staff) or worker:
-        felt_hat(rig, export_body, flat=worker)
-    if staff:
+    if (female and not staff) or worker or staff == "ledger":
+        felt_hat(rig, export_body, flat=worker or staff == "ledger")
+    if staff and staff != "ledger":
         wardrobe = objects.get_list_of_children(rig)
         garment = next(obj for obj in wardrobe if outfit.removesuffix(".mhclo") in obj.name)
         counter_apron(rig,garment,staff == "lunch")
@@ -657,7 +678,7 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
     if driver:
         bake_driver(rig)
     if staff:
-        bake_counter(rig)
+        bake_counter(rig, paper=staff == "ledger")
 
     bpy.ops.object.select_all(action="DESELECT")
     for obj in export_objects:
@@ -676,12 +697,15 @@ if __name__ == "__main__":
     arguments = sys.argv[sys.argv.index("--") + 1:]
     asset_root, out_dir = (Path(value).resolve() for value in arguments[:2])
     out_dir.mkdir(parents=True, exist_ok=True)
-    if "--counters-only" not in arguments:
+    if "--ledger-only" in arguments:
+        build(asset_root, out_dir / "ledger-vendor.glb", staff="ledger")
+    else:
+        if "--counters-only" not in arguments:
+            if "--driver-only" not in arguments:
+                build(asset_root, out_dir / "bank-clerk.glb")
+                build(asset_root, out_dir / "shopkeeper.glb", female=True)
+            build(asset_root, out_dir / "detective.glb", driver=True)
         if "--driver-only" not in arguments:
-            build(asset_root, out_dir / "bank-clerk.glb")
-            build(asset_root, out_dir / "shopkeeper.glb", female=True)
-        build(asset_root, out_dir / "detective.glb", driver=True)
-    if "--driver-only" not in arguments:
-        build(asset_root, out_dir / "pharmacist.glb", staff="chemist")
-        build(asset_root, out_dir / "crown-proprietor.glb", female=True, staff="lunch")
-        build(asset_root, out_dir / "street-worker.glb", worker=True)
+            build(asset_root, out_dir / "pharmacist.glb", staff="chemist")
+            build(asset_root, out_dir / "crown-proprietor.glb", female=True, staff="lunch")
+            build(asset_root, out_dir / "street-worker.glb", worker=True)

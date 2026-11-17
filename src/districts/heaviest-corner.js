@@ -16,6 +16,7 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { addPavementApron, getStreetSegments } from '../engine/street-layout.js';
 import { loadShopSurfaces } from '../engine/shop-surfaces.js';
 import { add20thStreetStores } from './twentieth-street-stores.js';
+import { addCornerNewsstand } from './corner-newsstand.js';
 import { build20thStreetLandmark, loadFacadeSurfaces } from './twentieth-street-facades.js';
 
 export async function build(ctx) {
@@ -406,20 +407,7 @@ export async function build(ctx) {
     group.add(benchSeats, benchLegs);
   }
 
-  // Newsboy's newspaper stand near the Corner.
-  const newsstand = new THREE.Group();
-  const standBody = new THREE.Mesh(new THREE.BoxGeometry(3, 2.6, 2), materials.brick);
-  standBody.position.y = 1.3;
-  newsstand.add(standBody);
-  const standAwning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.15, 2.4), materials.marquee);
-  standAwning.position.set(0, 2.75, 0.2);
-  newsstand.add(standAwning);
-  const headPage = deco.canvasSign('THE BIRMINGHAM LEDGER — EXTRA!', { width: 3, canvasWidth: 512, canvasHeight: 128 });
-  headPage.position.set(0, 1.8, 1.05);
-  newsstand.add(headPage);
-  newsstand.position.set(16, 0.18, -8);
-  newsstand.rotation.y = -Math.PI / 4;
-  group.add(newsstand);
+  addCornerNewsstand(ctx,group,shopSurfaces);
 
   // ------------------------------------------------------------------
   // Readables — World Bible Voice fragments, verbatim
@@ -433,13 +421,7 @@ export async function build(ctx) {
     body: 'Framed lede, The Birmingham Ledger, Nov 5, 1907:\n\n"WOODWARD SAYS NO. — TCI Declines Northern Bonds; \'Our Iron Will Carry Its Own Freight,\' Declares President, as Syndicate of the South Rallies to the Rescue."',
   });
 
-  // 2. Newspaper stand front page.
-  registerInteractive(headPage.children[0], {
-    title: 'The Birmingham Ledger — Extra Edition, October 1928',
-    body: '"EXTRA! BARONS TAKE THE SOUTHERN PENNANT — CROWDS PACK RICKWOOD FIELD! LEDGER, TWO CENTS!"',
-  });
-
-  // 3. Painted wall advertisement on an infill wall (Age-Herald back page).
+  // 2. Painted wall advertisement on an infill wall (Age-Herald back page).
   const paintedAd = deco.canvasSign('MADE WHERE IT’S MINED!', { width: 14, canvasWidth: 512, canvasHeight: 160 });
   paintedAd.position.set(86 - 12.4, 9, -64);
   paintedAd.rotation.y = -Math.PI / 2;

@@ -2,7 +2,7 @@ import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
 import { findCounterFace, updateCounterFace } from './counter-face.js';
 
-const MODELS = ['bank-clerk','shopkeeper','street-worker','pharmacist','crown-proprietor'];
+const MODELS = ['bank-clerk','shopkeeper','street-worker','pharmacist','crown-proprietor','ledger-vendor'];
 const TINTS = [0xb09774,0x977655,0x919592,0x9d714f,0x767a64,0xa77878,0x737f9e,0x817451];
 const STRIDE_SPEED = 1.10;
 
@@ -127,7 +127,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
       }
       action.paused=!!controlled;
       if (controlled) action.time=action.getClip().duration*Math.min(.99999,cue.phase);
-      else if (moving) action.setEffectiveTimeScale((person.speed || STRIDE_SPEED)/(STRIDE_SPEED*person.scale));
+      else if (moving) action.setEffectiveTimeScale((person.actor?.speed || person.speed || STRIDE_SPEED)/(STRIDE_SPEED*person.scale));
 
       slot.instance.position.set(x,floor,z);
       slot.instance.rotation.y=facing;
@@ -141,12 +141,12 @@ export function createStreetCharacters({THREE, scene, camera}) {
         const angle=THREE.MathUtils.euclideanModulo(Math.atan2(dx,dz)-facing+Math.PI,Math.PI*2)-Math.PI;
         slot.head.rotateY(THREE.MathUtils.clamp(angle*.65,-.53,.53));
       }
-      const drink=person.actor?.carries;
-      if (drink && slot.hand) {
+      const held=person.actor?.carries;
+      if (held && slot.hand) {
         slot.hand.getWorldPosition(hand);
-        drink.parent.worldToLocal(hand);
-        drink.position.copy(hand);
-        drink.position.y=Math.max(drink.userData.restHeight,hand.y-.067);
+        held.parent.worldToLocal(hand);
+        held.position.copy(hand);
+        held.position.y=Math.max(held.userData.restHeight,hand.y-(held.userData.gripOffset ?? .067));
       }
       slot.frame=frame;
       return true;

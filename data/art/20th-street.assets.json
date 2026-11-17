@@ -18,7 +18,8 @@
       "detective.glb",
       "pharmacist.glb",
       "crown-proprietor.glb",
-      "street-worker.glb"
+      "street-worker.glb",
+      "ledger-vendor.glb"
     ],
     "tool": "Blender with MakeHuman Community MPFB 2.0.18",
     "script": "scripts/author-downtown-characters.py",
@@ -45,6 +46,10 @@
     "source": "https://polyhaven.com/a/brown_brick_02",
     "license": "CC0-1.0",
     "licenseSource": "https://polyhaven.com/license"
+  },
+  "ledger-kiosk": {
+    "description": "Original wood, zinc and canvas kiosk, folded newspaper and newsprint artwork. The 1928 headline comes from the game's existing edition.",
+    "reference": "https://www.loc.gov/item/2018675789/"
   },
   "landmark-stone-grain": {
     "description": "Photographed color, normal and roughness maps by Dimitrios Savva, tinted for the cast stone on the two landmark facades",
