@@ -6,7 +6,7 @@
  * banker-grade infill fabric, marble-threshold sidewalks, period signage
  * and readables drawn verbatim from the World Bible.
  *
- * Woodward and American Trust have masonry shells with real window recesses.
+ * The four Heaviest Corner towers have masonry shells with recessed glazing.
  * The downtown skyline uses the shared cornice, window, and rooftop parts.
  * Brick background-fabric infill buildings get deco.fireEscape on a side
  * wall. Storefronts near the Corner get deco.awning + deco.shopSign with
@@ -26,18 +26,23 @@ export async function build(ctx) {
     loadShopSurfaces(ctx.environment),
     loadFacadeSurfaces(ctx),
   ]);
-  facadeSurfaces.brick = shopSurfaces.brick;
+  Object.assign(facadeSurfaces, {
+    brick:shopSurfaces.brick, marble:shopSurfaces.marble, walnut:shopSurfaces.walnut,
+  });
 
   const poly = district.polygon;
   const minX = poly[0][0], maxX = poly[1][0], minZ = poly[1][1], maxZ = poly[3][1];
 
   // Pavement between the municipal curbs and the two landmark frontages.
   const streetSegments = ctx.streetSegments ?? getStreetSegments(plan.streets);
-  for (const span of [{minX: -19, maxX: -14}, {minX: 14, maxX: 18}]) {
-    addPavementApron(group, streetSegments, materials.sidewalk, {
-      ...span, minZ: 10, maxZ: 52.5,
-    });
-  }
+  for (const span of [
+    {minX:-19,maxX:-14,minZ:10,maxZ:52.5},
+    {minX:14,maxX:18,minZ:10,maxZ:52.5},
+    {minX:-51,maxX:-17,minZ:-13.1,maxZ:-9.2},
+    {minX:21,maxX:47,minZ:-13.1,maxZ:-9.2},
+    {minX:-17,maxX:-14,minZ:-39,maxZ:-12.97},
+    {minX:14,maxX:21,minZ:-39,maxZ:-12.97},
+  ]) addPavementApron(group, streetSegments, materials.sidewalk,span);
 
   // ------------------------------------------------------------------
   // Helper: place a landmark tower exactly per plan
@@ -106,88 +111,10 @@ export async function build(ctx) {
   // local convention ('east' = +dx, 'south' = +dz).
   // ------------------------------------------------------------------
 
-  // Full masonry shells and window recesses for the two 20th Street frontages.
-  for (const id of ['woodward-building','american-trust-building']) {
+  // The four original street corners anchor the view through the junction.
+  for (const id of ['woodward-building','american-trust-building','brown-marx-building','empire-building']) {
     const landmark = plan.landmarks.find(item=>item.id===id);
     group.add(build20thStreetLandmark(ctx,landmark,facadeSurfaces));
-  }
-
-  // BROWN MARX BUILDING (1906, 16 floors) — NE corner. Buff brick,
-  // rusticated stone base with arched openings, bracketed cornice;
-  // E-plan light courts suggested by two recessed slots on the alley
-  // (north) face.
-  {
-    const lm = plan.landmarks.find(l => l.id === 'brown-marx-building');
-    towerAt(
-      lm,
-      { setbacks: 1, material: materials.limestone, windowMaterial: materials.glassNight },
-      g => {
-        entrance(g, lm, 'south');
-        const base = deco.pilasterFacade({ width: lm.footprint[0], height: 9, bays: 8,
-          material: materials.limestone, pilasterMaterial: materials.bronze });
-        base.position.set(0, 0, lm.footprint[1] / 2 + 0.25);
-        g.add(base);
-        for (const nx of [-6, 6]) {
-          const slot = new THREE.Mesh(
-            new THREE.BoxGeometry(4.5, lm.height * 0.8, 0.9),
-            materials.steelDark
-          );
-          slot.position.set(nx, lm.height * 0.55, -lm.footprint[1] / 2 + 0.2);
-          g.add(slot);
-        }
-        const cor = deco.corniceBox({ width: lm.footprint[0] + 1.2, depth: lm.footprint[1] + 1.2,
-          height: 1.1, material: materials.bronze });
-        cor.position.set(0, lm.height - 0.6, 0);
-        g.add(cor);
-        facadeSign(g, lm, 'BROWN MARX', lm.height * 0.3, 13, 'south');
-        landmarkDetail(g, lm, materials.limestone, 1906);
-      }
-    );
-  }
-
-  // EMPIRE BUILDING (1909, 16 floors) — NW corner. White glazed
-  // terra-cotta; crown = two-story engaged colonnade under a deep
-  // modillion cornice, lit warm at night.
-  {
-    const lm = plan.landmarks.find(l => l.id === 'empire-building');
-    towerAt(
-      lm,
-      { setbacks: 1, material: materials.limestone, windowMaterial: materials.glassNight },
-      g => {
-        entrance(g, lm, 'south');
-        entrance(g, lm, 'west');
-        const colonnadeY = lm.height - 7.2;
-        const colGeo = new THREE.CylinderGeometry(0.42, 0.46, 6.4, 8);
-        const perFace = 9;
-        const count = perFace * 4;
-        const cols = new THREE.InstancedMesh(colGeo, materials.limestone, count);
-        const m4 = new THREE.Matrix4();
-        let ci = 0;
-        const hx = lm.footprint[0] / 2 - 0.6, hz = lm.footprint[1] / 2 - 0.6;
-        for (let i = 0; i < perFace; i++) {
-          const t = -1 + (2 * i) / (perFace - 1);
-          m4.makeTranslation(t * (hx - 1.2), colonnadeY + 3.2, hz);   cols.setMatrixAt(ci++, m4);
-          m4.makeTranslation(t * (hx - 1.2), colonnadeY + 3.2, -hz);  cols.setMatrixAt(ci++, m4);
-          m4.makeTranslation(hx, colonnadeY + 3.2, t * (hz - 1.2));   cols.setMatrixAt(ci++, m4);
-          m4.makeTranslation(-hx, colonnadeY + 3.2, t * (hz - 1.2));  cols.setMatrixAt(ci++, m4);
-        }
-        cols.instanceMatrix.needsUpdate = true;
-        cols.castShadow = true;
-        g.add(cols);
-        const cor = deco.corniceBox({ width: lm.footprint[0] + 2.8, depth: lm.footprint[1] + 2.8,
-          height: 1.2, material: materials.limestone });
-        cor.position.set(0, lm.height - 0.4, 0);
-        g.add(cor);
-        const crownGlow = new THREE.Mesh(
-          new THREE.BoxGeometry(lm.footprint[0] - 1.2, 0.5, lm.footprint[1] - 1.2),
-          materials.marquee
-        );
-        crownGlow.position.set(0, colonnadeY + 0.3, 0);
-        g.add(crownGlow);
-        facadeSign(g, lm, 'EMPIRE', lm.height * 0.3, 9, 'south');
-        landmarkDetail(g, lm, materials.limestone, 1909);
-      }
-    );
   }
 
   // CITY FEDERAL BUILDING (1913, 27 floors) — 2nd Ave N & 21st St.

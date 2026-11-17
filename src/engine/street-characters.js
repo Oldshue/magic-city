@@ -25,6 +25,10 @@ export function in20thStreetBlock(x, z) {
   return Math.abs(x) < 24 && z > 6 && z < 58;
 }
 
+export function inHeaviestCorner(x,z) {
+  return z > -41 && z <= 6 && (Math.abs(x) < 24 || (Math.abs(x) < 49 && Math.abs(z) < 16));
+}
+
 /**
  * Reuse the living city's positions and behaviours with a detailed rig near
  * the camera. The existing instanced crowd still covers the rest of the city.
@@ -92,7 +96,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
     }
     slot.mixer.stopAllAction();
     slot.instance.userData.person = person.actor?.id ?? name;
-    wear(slot,person.actor ? undefined : person.paletteIdx);
+    wear(slot,person.actor ? person.actor.palette : person.paletteIdx);
     slot.personIndex = personIndex;
     slot.active = null;
     return slot;
@@ -102,7 +106,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
     beginFrame() { frame++; },
 
     show(index, person, x, z, facing, floor, moving, dt) {
-      if (person.prop || !in20thStreetBlock(x, z)) return false;
+      if (person.prop || (!person.actor?.model && !in20thStreetBlock(x,z) && !inHeaviestCorner(x,z))) return false;
       const authored = person.actor?.model ?? person.model;
       if (!authored && person.actor) return false;
       const range = authored ? 32 : 22;
@@ -131,7 +135,9 @@ export function createStreetCharacters({THREE, scene, camera}) {
       slot.instance.visible=true;
       slot.mixer.update(dt);
       if (slot.face) updateCounterFace(slot.face,person.actor,dt);
-      if (slot.head && (person.actor?.attending || (person.walkingBlock && dx*dx+dz*dz<17))) {
+      const metVisitor = person.actor?.lookAtVisitor && dx*dx+dz*dz<23;
+      const passedVisitor = moving && dx*dx+dz*dz<17;
+      if (slot.head && (person.actor?.attending || metVisitor || passedVisitor)) {
         const angle=THREE.MathUtils.euclideanModulo(Math.atan2(dx,dz)-facing+Math.PI,Math.PI*2)-Math.PI;
         slot.head.rotateY(THREE.MathUtils.clamp(angle*.65,-.53,.53));
       }

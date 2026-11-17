@@ -11,8 +11,8 @@
  * waiting knots (same instanced families, COUNT just grows), and keeps
  * walkers out of the railroad corridor except at its legal crossings.
  */
-import { SIDEWALK_HEIGHT } from '../engine/street-layout.js';
-import { createStreetCharacters, in20thStreetBlock } from '../engine/street-characters.js';
+import { inRoad, SIDEWALK_HEIGHT } from '../engine/street-layout.js';
+import { createStreetCharacters, in20thStreetBlock, inHeaviestCorner } from '../engine/street-characters.js';
 
 export function startPedestrians(ctx) {
   const { THREE, scene, plan, getDayPhase } = ctx;
@@ -401,7 +401,9 @@ export function startPedestrians(ctx) {
         q.setFromAxisAngle(up, heading);
         sBody.set(p.scale, p.scale, p.scale);
         const S = p.scale;
-        const floor = p.actor?.groundY ?? (in20thStreetBlock(ox, oz) && Math.abs(ox) > 11 ? SIDEWALK_HEIGHT : 0);
+        const onPavement = (in20thStreetBlock(ox,oz) && Math.abs(ox)>11)
+          || (inHeaviestCorner(ox,oz) && !inRoad(ox,oz,ctx.streetSegments ?? []));
+        const floor = p.actor?.groundY ?? (onPavement ? SIDEWALK_HEIGHT : 0);
         const groundY = floor + bobY;
 
         if (highDetail?.show(i, p, ox, oz, heading, floor, moving, dt)) {

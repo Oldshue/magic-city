@@ -79,7 +79,7 @@ export async function initNarrative(ctx) {
     let nearest = null; let distance = READ_RADIUS;
     for (const item of ctx.interactives) {
       item.object.getWorldPosition(scratch); const d = scratch.distanceTo(ctx.camera.position);
-      if (d < distance) { nearest = item; distance = d; }
+      if (d < distance && (!item.available || item.available(ctx.camera.position))) { nearest = item; distance = d; }
     }
     if (!nearest) return null;
     let candidate = readableCandidates.get(nearest);
@@ -448,7 +448,7 @@ function updateNearestReadable(ctx, root, state, scratch) {
   for (const it of ctx.interactives) {
     it.object.getWorldPosition(scratch);
     const dist = scratch.distanceTo(ctx.camera.position);
-    if (dist < nearestDist) { nearestDist = dist; nearest = it; }
+    if (dist < nearestDist && (!it.available || it.available(ctx.camera.position))) { nearestDist = dist; nearest = it; }
   }
   state.nearestReadable = nearest;
   const candidate = ctx.interactions.candidate();

@@ -3,6 +3,7 @@ import { mergeGeometries, rand } from '../engine/deco-shared.js';
 import { registerNightEmission } from '../engine/materials.js';
 import { loadPhotoSurface, mapShopUV } from '../engine/shop-surfaces.js';
 import { SHOP_HEIGHT } from './twentieth-street-stores.js';
+import { addBrownMarxLobby, lobbyDimensions } from './brown-marx-lobby.js';
 
 const REVEAL = .39;
 const GLASS_Z = -.29;
@@ -10,12 +11,26 @@ const ARCH_SEGMENTS = 12;
 
 const profiles = {
   'woodward-building': {
-    name: 'Woodward Building', facade: 'brick', storefrontSide: -1, year: 1902,
-    bays: 6, lowerTop: 9.45, shaftRows: 7, cap: 1.15,
+    name:'Woodward Building', year:1902, streetSide:-1, firstAvenue:Math.PI, shops:true,
+    bays:6, upperBays:6, lowerTop:9.45, shaftRows:7, cap:1.15, atticRise:.53,
+    base:'ashlar', shaft:'brick', crown:'brick', ornament:'terra', sash:'woodSash',
   },
   'american-trust-building': {
-    name: 'American Trust & Savings', facade: 'ashlar', storefrontSide: 1, year: 1912,
-    bays: 5, lowerTop: 12.65, shaftRows: 16, cap: 1.8,
+    name:'American Trust & Savings', year:1912, streetSide:1, firstAvenue:Math.PI, shops:true,
+    bays:5, upperBays:7, lowerTop:12.65, shaftRows:16, cap:1.8, lowerRise:1.2, courses:5,
+    base:'ashlar', shaft:'bone', crown:'ashlar', ornament:'trim', sash:'sash',
+  },
+  'brown-marx-building': {
+    name:'Brown-Marx Building', year:1906, streetSide:1, firstAvenue:0, lobby:true,
+    bays:7, upperBays:8, groundTop:7.35, lowerTop:12.75, shaftRows:12, cap:1.15,
+    lowerRise:.73, atticRise:.40, courses:6,
+    base:'brownstone', shaft:'buffBrick', crown:'buffBrick', ornament:'copper', sash:'woodSash',
+  },
+  'empire-building': {
+    name:'Empire Building', year:1909, streetSide:-1, firstAvenue:0, glazed:true,
+    bays:5, upperBays:7, groundTop:5.33, lowerTop:10.95, shaftRows:11, cap:1.52,
+    lowerRise:.75, atticRise:.55, atticRows:2, atticHeight:7.4, courses:3,
+    base:'glazedStone', shaft:'glazedStone', crown:'glazedStone', ornament:'ivory', sash:'sash',
   },
 };
 
@@ -41,9 +56,20 @@ function bakedOfficeWall() {
 }
 
 export async function loadFacadeSurfaces(ctx) {
-  const stone = await loadPhotoSurface(new THREE.TextureLoader(),'limestone-grain',1.28,{
-    color:0xbaad95, roughness:.94, normalScale:new THREE.Vector2(.39,.39),
-  });
+  const loader = new THREE.TextureLoader();
+  const [stone, buffBrick] = await Promise.all([
+    loadPhotoSurface(loader,'limestone-grain',1.28,{
+      color:0xbaad95, roughness:.94, normalScale:new THREE.Vector2(.39,.39),
+    }),
+    loadPhotoSurface(loader,'brown-brick',1.03,{
+      color:0xd7c0a4, roughness:.93, normalScale:new THREE.Vector2(.50,.50),
+    }),
+  ]);
+  const glazedStone = stoneTint(stone,0xe6dcc0);
+  glazedStone.roughness = .39;
+  glazedStone.normalScale.set(.25,.25);
+  glazedStone.envMap = ctx.environment;
+  glazedStone.envMapIntensity = .24;
   const glazing = new THREE.MeshPhysicalMaterial({
     color:0xb0b8b1, transparent:true, opacity:.22, depthWrite:false,
     roughness:.18, metalness:.27, clearcoat:.54, clearcoatRoughness:.18,
@@ -62,7 +88,14 @@ export async function loadFacadeSurfaces(ctx) {
   return {
     bone:stoneTint(stone,0xd4c3a5), ashlar:stone, trim:stoneTint(stone,0xb3a08a),
     terra:stoneTint(stone,0xb2845e), granite:stoneTint(stone,0x77716a),
-    glazing, plaster, rooms, shade,
+    glazing, plaster, rooms, shade, buffBrick, glazedStone,
+    ivory:stoneTint(glazedStone,0xf4e9cd), brownstone:stoneTint(stone,0xad8973),
+    accent:new THREE.MeshStandardMaterial({color:0x3f6254,roughness:.39,metalness:.08}),
+    clay:new THREE.MeshStandardMaterial({color:0xb68c5c,roughness:.44,metalness:.14}),
+    copper:new THREE.MeshStandardMaterial({color:0x584a3b,roughness:.54,metalness:.47,envMap:ctx.environment,envMapIntensity:.35}),
+    lobbyPlaster:registerNightEmission(new THREE.MeshStandardMaterial({
+      color:0xd1b894, emissive:0x795633, roughness:.87,
+    }),.20,.68),
     sash:new THREE.MeshStandardMaterial({color:0x343e39, metalness:.4, roughness:.49}),
     woodSash:new THREE.MeshStandardMaterial({color:0x49403a, roughness:.76}),
     terrace:new THREE.MeshStandardMaterial({color:0x7c7567, roughness:.92}),
@@ -231,28 +264,30 @@ function bays(width,count,bottom,top,fraction,rise=0) {
 }
 
 function baseMasonry(B, M, profile, width, openings) {
-  const isBank = profile.facade==='ashlar';
-  const plasterStart = SHOP_HEIGHT+.12;
+  const arched = Boolean(profile.lowerRise);
+  const stone = M[profile.base];
+  const pale = profile.glazed ? M.ivory : profile.lobby ? M.brownstone : M.bone;
+  const plasterStart = (profile.groundTop ?? SHOP_HEIGHT)+.12;
   const top = profile.lowerTop-.28;
   const stride = openings[1].x-openings[0].x;
   const count = openings.length;
   for (let i=0;i<=count;i++) {
     const x=(i-count/2)*stride;
-    const column = isBank ? .78 : .56;
+    const column = arched ? .78 : .56;
     const rows = Math.ceil((top-plasterStart)/.56);
     const spacing = (top-plasterStart)/rows;
     for (let r=0;r<rows;r++) {
-      const panel = r%6===3 ? M.trim : M.bone;
+      const panel = r%6===3 ? stone : pale;
       B.box(panel,x,plasterStart+(r+.5)*spacing,.105,column,spacing-.025,.25,'Rusticated piers');
     }
     B.box(M.granite,x,plasterStart+.23,.19,column+.20,.25,.40,'Pier bases');
-    B.box(M.bone,x,top-.17,.20,column+.27,.23,.39,'Pier capitals');
+    B.box(pale,x,top-.17,.20,column+.27,.23,.39,'Pier capitals');
     B.box(M.trim,x,top+.028,.22,column+.42,.12,.45,'Pier capitals');
   }
   for (const opening of openings) {
-    casing(B, isBank ? M.bone : M.terra, opening, isBank ? .19 : .13);
-    if (isBank) {
-      B.box(M.bone,opening.x,opening.top+.13,.139,.24,.38,.27,'Arch keystones');
+    casing(B, arched ? pale : M.terra, opening, arched ? .19 : .13);
+    if (arched) {
+      B.box(pale,opening.x,opening.top+.13,.139,.24,.38,.27,'Arch keystones');
       const spring = opening.top-opening.rise;
       for (const side of [-1,1]) B.box(M.trim,opening.x+side*(opening.width/2+.11),spring,.133,.38,.13,.24,
         'Arch spring stones');
@@ -260,14 +295,13 @@ function baseMasonry(B, M, profile, width, openings) {
       B.box(M.trim,opening.x,opening.top+.18,.11,opening.width+.43,.15,.30,'Terra cotta headers');
     }
   }
-  ledge(B,M.granite,width,SHOP_HEIGHT+.14,.25,.20);
-  ledge(B,M.bone,width,profile.lowerTop-.11,.24,.27);
+  ledge(B,M.granite,width,plasterStart+.02,.25,.20);
+  ledge(B,pale,width,profile.lowerTop-.11,.24,.27);
   ledge(B,M.trim,width,profile.lowerTop+.083,.16,.36);
 }
 
 function cornice(B,M,width,height,profile) {
-  const bank = profile.facade === 'ashlar';
-  const crown = bank ? M.bone : M.terra;
+  const crown = profile.shops && profile.lowerRise ? M.bone : M[profile.ornament];
   ledge(B,M.trim,width,height-.78,.18,.18);
   const span = width-.25;
   const dentils = Math.round(span/.63);
@@ -277,7 +311,7 @@ function cornice(B,M,width,height,profile) {
     B.box(M.trim,x,height-.675,.15,.194,.12,.26,'Cornice brackets');
   }
   ledge(B,crown,width,height-.24,.19,.38);
-  ledge(B,M.bone,width,height-.078,.145,.45);
+  ledge(B,profile.lobby ? M.copper : M.bone,width,height-.078,.145,.45);
 }
 
 function sideGround(B,M,width,signSide,random) {
@@ -306,54 +340,156 @@ function sideGround(B,M,width,signSide,random) {
   } else ledge(B,M.trim,width,.37,.48,.22);
 }
 
-function elevation(ctx, landmark, profile, width, adjacent, rotation, M, index) {
+function registerFootprint(ctx, face, rectangles) {
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  ctx.controls.addColliders(rectangles.map(([left,right,back,front])=>{
+    face.localToWorld(a.set(left,0,back));
+    face.localToWorld(b.set(right,0,front));
+    return {minX:Math.min(a.x,b.x),maxX:Math.max(a.x,b.x),minZ:Math.min(a.z,b.z),maxZ:Math.max(a.z,b.z)};
+  }));
+}
+
+function polishEmpire(B, M, width, openingRows, bottom, top) {
+  const row = openingRows[0];
+  const stride = row[1].x-row[0].x;
+  const height = top-bottom-.69;
+  for (let i=0;i<=row.length;i++) {
+    const x=(i-row.length/2)*stride;
+    B.box(M.ivory,x,bottom+.22,.187,.72,.33,.50,'Classical column plinths');
+    B.box(M.ivory,x,top-.36,.17,.77,.26,.53,'Glazed capitals');
+    const shaft = new THREE.CylinderGeometry(.215,.277,height,12)
+      .translate(x,bottom+.37+height/2,.078);
+    B.put(M.glazedStone,shaft,'Engaged columns');
+    for (const offset of [-.126,0,.126]) {
+      B.box(M.ivory,x+offset,bottom+.37+height/2,.242,.039,height-.03,.087,'Column flutes');
+    }
+    B.box(M.accent,x,top-.15,.23,.54,.25,.16,'Polychrome frieze');
+    B.put(M.clay,new THREE.BoxGeometry(.145,.145,.088).rotateZ(Math.PI/4)
+      .translate(x,top-.152,.328),'Terracotta medallions');
+  }
+  ledge(B,M.ivory,width,top+.028,.16,.43);
+}
+
+function cornerGround(ctx, B, M, face, profile, width, depth, isFirst, random) {
+  const height = profile.groundTop;
+  const openings = bays(width,5,.71,height-.89,.68,profile.glazed ? .68 : .23);
+  const doorway = openings[2];
+  if (isFirst) {
+    doorway.bottom = .158;
+    doorway.top = height-.63;
+    doorway.rise = profile.glazed ? .71 : .37;
+    doorway.width += .25;
+  }
+  const lobby = isFirst && profile.lobby;
+  wall(B,M[profile.base],width,0,height,openings);
+  for (const opening of openings) {
+    casing(B,M[profile.glazed ? 'ivory' : 'trim'],opening,.16);
+    if (opening === doorway && lobby) {
+      const transom = {...doorway,bottom:4.02};
+      const glass = new THREE.ShapeGeometry(new THREE.Shape(aperture(transom)));
+      B.put(M.glazing,glass.translate(0,0,-.26),'Lobby transom',false);
+      for (const x of [-1.05,0,1.05]) {
+        B.box(M.sash,x,(transom.bottom+transom.top-.11)/2,-.23,.052,transom.top-transom.bottom-.11,.06,'Transom mullions');
+      }
+      continue;
+    }
+    recessedWindow(B,M,opening,{sash:M[profile.sash],base:true,frame:M[profile.ornament],detailed:isFirst,random});
+    if (opening === doorway && isFirst) {
+      B.box(M.sash,0,.64,-.28,opening.width-.04,1.03,.096,'Closed entrance');
+      for (const x of [-.16,.16]) B.box(M.brass,x,1.19,-.218,.044,.29,.048,'Brass door pulls');
+    }
+  }
+  if (profile.glazed) {
+    polishEmpire(B,M,width,[openings],.16,height-.33);
+    for (const opening of openings) {
+      if (isFirst && opening===doorway) continue;
+      const ribbon = opening.width*.84;
+      B.box(M.accent,opening.x,height-.47,.117,ribbon,.30,.12,'Glazed entrance frieze');
+      for (let i=-2;i<=2;i++) {
+        const tile = new THREE.BoxGeometry(.15,.15,.063).rotateZ(Math.PI/4);
+        B.put(M.clay,tile.translate(opening.x+ribbon*i/5.3,height-.47,.197),'Frieze ceramic diamonds');
+      }
+    }
+  } else {
+    const stride = openings[1].x-openings[0].x;
+    for (let i=0;i<=openings.length;i++) {
+      const x=(i-openings.length/2)*stride;
+      B.box(M.brownstone,x,height*.50,.14,.69,height-.51,.35,'Two-storey brownstone pilasters');
+      B.box(M.trim,x,height-.26,.18,1.04,.24,.44,'Pilaster capitals');
+      B.box(M.granite,x,.37,.19,.93,.56,.47,'Brownstone plinths');
+    }
+  }
+
+  if (!isFirst) return;
+  const left = -width/2, right = width/2;
+  if (lobby) {
+    const {halfWidth,depth:lobbyDepth} = lobbyDimensions;
+    registerFootprint(ctx,face,[
+      [left,-halfWidth,-depth,0],[halfWidth,right,-depth,0],
+      [-halfWidth,halfWidth,-depth,-lobbyDepth+.14],
+      ...addBrownMarxLobby(ctx,face,B,M,doorway),
+    ]);
+  } else registerFootprint(ctx,face,[[left,right,-depth,0]]);
+}
+
+function elevation(ctx, tower, landmark, profile, width, adjacent, rotation, M, index) {
   const face = new THREE.Group();
   face.rotation.y = rotation;
   face.position.set(Math.sin(rotation)*adjacent/2,0,Math.cos(rotation)*adjacent/2);
-  const primary = rotation === profile.storefrontSide * Math.PI/2;
-  face.name = primary ? '20th Street elevation' : rotation === Math.PI ? 'First Avenue elevation' : 'Side elevation';
-  const bank = profile.facade==='ashlar';
+  tower.add(face);
+  const primary = rotation === profile.streetSide * Math.PI/2;
+  const isFirst = rotation === profile.firstAvenue;
+  face.name = primary ? '20th Street elevation' : isFirst ? 'First Avenue elevation' : 'Side elevation';
+  const fieldTop = profile.groundTop ?? SHOP_HEIGHT;
   const random = rand(profile.year*17+index*207);
   const B = batch(face);
-  const low = bays(width,profile.bays,SHOP_HEIGHT+.96,profile.lowerTop-1.04,bank ? .63 : .67,bank ? 1.2 : 0);
-  wall(B,M.ashlar,width,SHOP_HEIGHT,profile.lowerTop,low);
+  const low = bays(width,profile.bays,fieldTop+.96,profile.lowerTop-1.04,
+    profile.lowerRise ? .63 : .67,profile.lowerRise);
+  wall(B,M[profile.base],width,fieldTop,profile.lowerTop,low);
   baseMasonry(B,M,profile,width,low);
 
   const upperBase = profile.lowerTop;
-  const atticBase = landmark.height-profile.cap-3.23;
+  const atticHeight = profile.atticHeight ?? 3.23;
+  const atticBase = landmark.height-profile.cap-atticHeight;
   const rowHeight = (atticBase-upperBase)/profile.shaftRows;
   const shaft = [];
   for (let i=0;i<profile.shaftRows;i++) {
     const y = upperBase+i*rowHeight;
-    const row = bays(width,bank ? 7 : 6,y+rowHeight*.20,y+rowHeight*.80,bank ? .58 : .65);
-    shaft.push(...row);
-    if (i===0 || (bank && i%5===0)) ledge(B,M.trim,width,y+.11,.16,.15);
+    shaft.push(...bays(width,profile.upperBays,y+rowHeight*.20,y+rowHeight*.80,profile.lowerRise ? .58 : .65));
+    if (i===0 || (profile.courses && i%profile.courses===0)) ledge(B,M.trim,width,y+.11,.16,.15);
   }
-  const attic = bays(width,bank ? 7 : 6,atticBase+.51,landmark.height-profile.cap-.27,.52,bank ? 0 : .53);
-  wall(B,bank ? M.bone : M.brick,width,upperBase,atticBase,shaft);
-  wall(B,bank ? M.ashlar : M.brick,width,atticBase,landmark.height,attic);
-  ledge(B,bank ? M.trim : M.terra,width,atticBase+.07,.24,.28);
-  for (const opening of attic) casing(B,bank ? M.bone : M.terra,opening,.145);
-  for (const opening of [...low,...shaft,...attic]) {
+  const atticRows = profile.atticRows ?? 1;
+  const attic = [];
+  for (let i=0;i<atticRows;i++) {
+    const y = atticBase+i*atticHeight/atticRows;
+    attic.push(bays(width,profile.upperBays,y+.51,y+atticHeight/atticRows-.27,.52,profile.atticRise));
+  }
+  const atticWindows = attic.flat();
+  wall(B,M[profile.shaft],width,upperBase,atticBase,shaft);
+  wall(B,M[profile.crown],width,atticBase,landmark.height,atticWindows);
+  ledge(B,M[profile.ornament],width,atticBase+.07,.24,.28);
+  for (const opening of atticWindows) casing(B,M[profile.ornament],opening,.145);
+  if (profile.glazed) polishEmpire(B,M,width,attic,atticBase+.23,landmark.height-profile.cap);
+  for (const opening of [...low,...shaft,...atticWindows]) {
     recessedWindow(B,M,opening,{
-      sash:bank ? M.sash : M.woodSash, base:low.includes(opening),
-      frame:bank ? M.trim : M.terra, detailed:opening.bottom<19 && (primary || rotation===Math.PI), random,
+      sash:M[profile.sash], base:low.includes(opening),
+      frame:M[profile.ornament], detailed:opening.bottom<19 && (primary || isFirst), random,
     });
   }
 
-  if (!primary) {
-    sideGround(B,M,width,rotation===Math.PI,random);
-    if (rotation===Math.PI) {
-      const sign = ctx.deco.canvasSign(profile.name.toUpperCase(),{
-        width:bank ? 11 : 8, canvasWidth:1024, canvasHeight:74, colors:['#393731','#9f835f','#e6d3ad'],
-      });
-      sign.position.set(0,3.94,.18);
-      face.add(sign);
-    }
+  if (!profile.shops) {
+    cornerGround(ctx,B,M,face,profile,width,adjacent,isFirst,random);
+  } else if (!primary) sideGround(B,M,width,isFirst,random);
+  if (isFirst && !primary) {
+    const sign = ctx.deco.canvasSign(profile.name.toUpperCase(),{
+      width:profile.shops && profile.lowerRise ? 11 : 8, canvasWidth:1024, canvasHeight:74,
+      colors:['#393731','#9f835f','#e6d3ad'],
+    });
+    sign.position.set(0,profile.groundTop ? profile.groundTop-.33 : 3.94,.23);
+    face.add(sign);
   }
   cornice(B,M,width,landmark.height,profile);
   B.finish();
-  return face;
 }
 
 export function build20thStreetLandmark(ctx, landmark, M) {
@@ -366,7 +502,7 @@ export function build20thStreetLandmark(ctx, landmark, M) {
   const facades = [0,Math.PI/2,Math.PI,-Math.PI/2];
   for (const [i,rotation] of facades.entries()) {
     const edge = i%2!==0;
-    tower.add(elevation(ctx,landmark,profile,edge ? depth : width,edge ? width : depth,rotation,M,i));
+    elevation(ctx,tower,landmark,profile,edge ? depth : width,edge ? width : depth,rotation,M,i);
   }
   const roof = new THREE.Mesh(new THREE.BoxGeometry(width,.26,depth),M.terrace);
   roof.position.y = landmark.height-.225;

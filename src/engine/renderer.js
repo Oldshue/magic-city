@@ -31,6 +31,20 @@
  */
 import * as THREE from '../../vendor/three.module.min.js';
 
+// The vendored shader still evaluates the BRDF for point and spot lights
+// whose range function returned zero. Keep their shadows and attenuation,
+// and skip shading for those lights when they cannot contribute.
+function skipUnlitDirectShading() {
+  const code = THREE.ShaderChunk.lights_fragment_begin;
+  const start = code.indexOf('#if ( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )');
+  const end = code.indexOf('#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )', start);
+  if (start < 0 || end < 0) return;
+  const ranged = code.slice(start,end).replace(/\n\t\t(RE_Direct\([^\n]+;)/g,
+    '\n\t\tif ( directLight.visible ) { $1 }');
+  THREE.ShaderChunk.lights_fragment_begin = code.slice(0,start) + ranged + code.slice(end);
+}
+skipUnlitDirectShading();
+
 /**
  * Create the renderer bundle.
  * @param {HTMLElement} container - element the canvas is appended to and

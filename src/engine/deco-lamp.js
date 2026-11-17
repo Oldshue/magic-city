@@ -2,7 +2,8 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { materials } from './materials.js';
 
-const lampPositions = [];
+const streetLights = [];
+const interiorLights = [];
 const lampGlobes = [];
 export const lampGlobeMaterial = new THREE.MeshBasicMaterial({ color: 0x777773 });
 const globeDay = new THREE.Color(0x777773);
@@ -67,16 +68,20 @@ const nearest = new Array(LAMP_POOL_SIZE);
 const nearestDistances = new Float64Array(LAMP_POOL_SIZE);
 let lampPool = null;
 
-/** Register a stationary light from a batch of streetlamp globes. */
-export function registerLampPosition(x, y, z) {
-  lampPositions.push(new THREE.Vector3(x, y, z));
+/** Register a stationary lamp for the shared point-light pool. */
+export function registerLampPosition(x, y, z, {
+  color = 0xffba76, reach = LIGHT_RANGE, daytime = 0, nighttime = LIGHT_INTENSITY,
+} = {}) {
+  const lamp = {position:new THREE.Vector3(x,y,z), color, reach, daytime, nighttime};
+  (daytime > 0 ? interiorLights : streetLights).push(lamp);
 }
 
 /** Cache the mounted bulbs after all district transforms are in place. */
 export function initLampPool(scene) {
   if (lampPool) return lampPool;
   for (const globe of lampGlobes) {
-    lampPositions.push(globe.getWorldPosition(new THREE.Vector3()));
+    const position = globe.getWorldPosition(new THREE.Vector3());
+    registerLampPosition(position.x,position.y,position.z);
   }
   lampPool = [];
   for (let i = 0; i < LAMP_POOL_SIZE; i++) {
@@ -88,38 +93,40 @@ export function initLampPool(scene) {
   return lampPool;
 }
 
+function considerLight(source, position, bounded) {
+  const dx = source.position.x - position.x;
+  const dz = source.position.z - position.z;
+  const distance = dx * dx + dz * dz;
+  let slot = LAMP_POOL_SIZE - 1;
+  if (distance >= nearestDistances[slot] || (bounded && distance > (source.reach*2)**2)) return;
+  while (slot > 0 && distance < nearestDistances[slot - 1]) {
+    nearest[slot] = nearest[slot - 1];
+    nearestDistances[slot] = nearestDistances[slot - 1];
+    slot--;
+  }
+  nearest[slot] = source;
+  nearestDistances[slot] = distance;
+}
+
 /** Light nearby surfaces from the bulbs themselves. */
 export function updateLampPool(cameraPosition, nightFactor) {
   if (!lampPool || !cameraPosition) return;
-  if (nightFactor <= 0.05 || lampPositions.length === 0) {
-    for (const light of lampPool) light.visible = false;
-    return;
-  }
-
+  const night = nightFactor > .05 ? nightFactor : 0;
   nearest.fill(null);
   nearestDistances.fill(Infinity);
-  for (const position of lampPositions) {
-    const dx = position.x - cameraPosition.x;
-    const dz = position.z - cameraPosition.z;
-    const distance = dx * dx + dz * dz;
-    let slot = LAMP_POOL_SIZE - 1;
-    if (distance >= nearestDistances[slot]) continue;
-    while (slot > 0 && distance < nearestDistances[slot - 1]) {
-      nearest[slot] = nearest[slot - 1];
-      nearestDistances[slot] = nearestDistances[slot - 1];
-      slot--;
-    }
-    nearest[slot] = position;
-    nearestDistances[slot] = distance;
+  for (const source of interiorLights) considerLight(source,cameraPosition,true);
+  if (night > 0) {
+    for (const source of streetLights) considerLight(source,cameraPosition,false);
   }
-
   for (let i = 0; i < LAMP_POOL_SIZE; i++) {
     const light = lampPool[i];
     const source = nearest[i];
     light.visible = Boolean(source);
     if (source) {
-      light.position.copy(source);
-      light.intensity = LIGHT_INTENSITY * nightFactor;
+      light.position.copy(source.position);
+      light.color.setHex(source.color);
+      light.distance = source.reach;
+      light.intensity = source.daytime + (source.nighttime - source.daytime)*night;
     }
   }
 }

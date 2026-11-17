@@ -217,7 +217,7 @@ async function boot() {
   // --- Interactives registry -----------------------------------------
   const interactives = [];
   function registerInteractive(object3d, info) {
-    interactives.push({ object: object3d, title: info.title || '', body: info.body || '' });
+    interactives.push({ object: object3d, title: info.title || '', body: info.body || '', available: info.available });
   }
 
   // Shared context per TECH-CONTRACT v1:

@@ -39,6 +39,13 @@
     "source": "https://huggingface.co/hexgrad/Kokoro-82M",
     "modelLicense": "Apache-2.0"
   },
+  "brown-marx-brick": {
+    "description": "Buff brick color, OpenGL normal and roughness maps photographed by Rob Tuytel",
+    "files": ["brown-brick-color.jpg", "brown-brick-normal.jpg", "brown-brick-roughness.jpg"],
+    "source": "https://polyhaven.com/a/brown_brick_02",
+    "license": "CC0-1.0",
+    "licenseSource": "https://polyhaven.com/license"
+  },
   "landmark-stone-grain": {
     "description": "Photographed color, normal and roughness maps by Dimitrios Savva, tinted for the cast stone on the two landmark facades",
     "files": [
@@ -51,10 +58,11 @@
     "licenseSource": "https://polyhaven.com/license"
   },
   "landmark-architecture": {
-    "description": "Original game geometry for the Woodward and American Trust, informed by the historic district survey",
+    "description": "Original game geometry for all four Heaviest Corner towers and the Brown-Marx lobby, informed by the historic district survey",
     "sources": [
       "https://www.loc.gov/resource/hhh.al0996.photos/?sp=1",
-      "https://npgallery.nps.gov/GetAsset/7d809354-dd8b-49e7-a95f-32cb8a465b5d"
+      "https://npgallery.nps.gov/GetAsset/7d809354-dd8b-49e7-a95f-32cb8a465b5d",
+      "https://npgallery.nps.gov/GetAsset/d4a4af2e-40fe-48f9-88fe-d40714501fb4/"
     ]
   },
   "marble-counter": {
