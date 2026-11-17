@@ -228,7 +228,7 @@ async function boot() {
     THREE, scene, camera, renderer, plan, environment,
     materials, deco, registerInteractive, controls, streetSegments,
     getDayPhase: sky.getDayPhase,
-    interactives, characters: [], interactions: createInteractions(),
+    interactives, characters: [], shopCounters: [], interactions: createInteractions(),
   };
 
   // --- Districts (static registry lookup, skip missing) ----------------

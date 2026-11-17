@@ -33,6 +33,7 @@
  *   `isTouchPrimary()` below feature-detects without referencing `window`.
  */
 import { initDetective } from './detective.mjs';
+import { initCounterService } from './counter-service.mjs';
 import { NARRATIVE_CSS } from './style.js';
 import { DIVERGENCE_EXHIBIT, detectMasthead } from './content.js';
 import { findDistrict } from './geoUtils.js';
@@ -66,6 +67,7 @@ export async function initNarrative(ctx) {
 
   root.addEventListener('magic-city:modal-open', () => { if (state.openReadable) closeReadable(root, state); });
   await initDetective(ctx, root);
+  ctx.counterService = await initCounterService(ctx,root);
   ctx.interactions.block('title', true);
   const interactiveScratch = new ctx.THREE.Vector3();
   const readableCandidates = new WeakMap();

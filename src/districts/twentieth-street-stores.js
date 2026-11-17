@@ -1,9 +1,12 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { mergeGeometries } from '../engine/deco-shared.js';
 import { SIDEWALK_HEIGHT } from '../engine/street-layout.js';
+import { loadShopSurfaces, mapShopUV } from '../engine/shop-surfaces.js';
+import { SHOP_MENUS } from '../gameplay/shop-state.mjs';
+import { buildCounterFixture, STAFF_Z } from './counter-fixtures.js';
 
 export const SHOP_HEIGHT = 4.56;
-export const SHOP_DEPTH = 3.48;
+export const SHOP_DEPTH = 4.72;
 
 const STORES = [
   {
@@ -15,8 +18,7 @@ const STORES = [
   {
     landmark: 'american-trust-building', bay: 1, name: 'Crown Lunch Counter',
     subtitle: 'COFFEE 15¢ · SANDWICHES 10¢', kind: 'lunch',
-    paint: 0x593b2a, model: 'shopkeeper', open: true,
-    copy: 'Coffee, fifteen cents. Tomato and ham, ten. The woman at the counter saves the last booth for the streetcar men from Morris Avenue.',
+    paint: 0x663126, model: 'crown-proprietor', open: true,
   },
   {
     landmark: 'woodward-building', bay: -1, name: 'Walker Tailoring',
@@ -27,41 +29,18 @@ const STORES = [
   {
     landmark: 'woodward-building', bay: 1, name: 'Heaviest Corner Drug Co.',
     subtitle: 'PRESCRIPTIONS · SUNDRIES · SODA', kind: 'chemist',
-    paint: 0x284441, model: 'shopkeeper', open: true,
-    copy: 'The prescription books are upstairs. The druggist sets a clean glass on the marble and asks whether you want phosphate or coffee.',
+    paint: 0x284441, model: 'pharmacist', open: true,
   },
 ];
-
-const brickMaps = [
-  'brick-wall-001-color.jpg', 'brick-wall-001-normal.jpg', 'brick-wall-001-roughness.jpg',
-];
-
-async function loadBrick() {
-  const loader = new THREE.TextureLoader();
-  const textures = await Promise.allSettled(brickMaps.map(name => loader.loadAsync('./data/art/' + name)));
-  if (textures.some(result => result.status === 'rejected')) {
-    for (const texture of textures) if (texture.status === 'fulfilled') texture.value.dispose();
-    return new THREE.MeshStandardMaterial({color: 0x907465, roughness: 0.88});
-  }
-  const [map, normalMap, roughnessMap] = textures.map(result => result.value);
-  map.colorSpace = THREE.SRGBColorSpace;
-  for (const texture of [map, normalMap, roughnessMap]) {
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.anisotropy = 8;
-  }
-  return new THREE.MeshStandardMaterial({
-    color: 0xd6b4a0, map, normalMap, roughnessMap, roughness: 0.97,
-    normalScale: new THREE.Vector2(0.47, 0.47),
-  });
-}
 
 function interiorMaterial(color, roughness = 0.75) {
   return new THREE.MeshStandardMaterial({color, roughness, emissive:color, emissiveIntensity:0.19});
 }
 
-function makeShopMaterials(brick, reflection) {
+function makeShopMaterials(surfaces, reflection) {
   return {
-    brick,
+    ...surfaces,
+    oxblood:interiorMaterial(0x633634,.53),
     wood: interiorMaterial(0x4a2c20),
     plaster: interiorMaterial(0xd0b48a, 0.89),
     stone: interiorMaterial(0x9c9280, 0.61),
@@ -85,48 +64,15 @@ function makeShopMaterials(brick, reflection) {
   };
 }
 
-function brickUV(geometry) {
-  const coordinates = geometry.attributes.uv;
-  const points = geometry.attributes.position;
-  const normals = geometry.attributes.normal;
-  for (let i = 0; i < points.count; i++) {
-    const side = Math.abs(normals.getX(i)) > 0.5;
-    const top = Math.abs(normals.getY(i)) > 0.5;
-    coordinates.setXY(i,
-      (side ? points.getZ(i) : points.getX(i)) / 2.4,
-      (top ? points.getZ(i) : points.getY(i)) / 2.4);
-  }
-}
-
 function roomContents(put, box, M, kind) {
   // Shelving and a marble-topped counter keep the goods off the panes.
   box(M.wood, 0,0.47,-2.65,2.75,0.94,0.65);
   box(M.stone, 0,0.96,-2.65,2.91,0.10,0.77);
   for (const side of [-1, 1]) {
-    box(M.wood, side * 3.62,1.43,-3.27,1.82,2.85,0.15);
+    box(M.wood, side * 3.62,1.43,-SHOP_DEPTH+.17,1.82,2.85,0.15);
     for (let row = 0; row < 4; row++) {
-      box(M.wood, side * 3.62,0.56 + row * 0.47,-3.05,1.70,0.06,0.47);
+      box(M.wood, side * 3.62,0.56 + row * 0.47,-SHOP_DEPTH+.39,1.70,0.06,0.47);
     }
-  }
-
-  if (kind === 'chemist') {
-    const shades = [M.amber,M.moss,M.paper];
-    for (let row = 0; row < 4; row++) {
-      for (let col = 0; col < 9; col++) {
-        const x = 2.90 + col * 0.17;
-        const y = 0.69 + row * 0.47;
-        const h = 0.16 + ((col + row) % 3) * 0.036;
-        const shade = shades[(row + col) % shades.length];
-        put(shade, new THREE.CylinderGeometry(.047,.052,h,10).translate(x,y,-2.95));
-        put(M.brass, new THREE.CylinderGeometry(.032,.032,.037,10).translate(x,y+h*.58,-2.95));
-        box(M.linen,x,y,-2.899,.067,.064,.006);
-      }
-    }
-    box(M.amber,3.3,.86,-0.58,1.8,.38,.39);
-    for (let i = 0; i < 8; i++) {
-      box(shades[i%3],2.49+i*.21,1.15+((i%3)*.06),-.62,.16,.34,.24);
-    }
-    return;
   }
 
   if (kind === 'tailor') {
@@ -149,20 +95,6 @@ function roomContents(put, box, M, kind) {
     return;
   }
 
-  if (kind === 'lunch') {
-    for (const x of [-3.8, -2.58, 2.58, 3.8]) {
-      put(M.brass,new THREE.CylinderGeometry(.039,.052,.52,10).translate(x,.70,-1.05));
-      put(M.moss,new THREE.CylinderGeometry(.21,.19,.09,20).translate(x,.98,-1.05));
-      box(M.wood,x,1.24,-1.48,.76,.09,.55);
-      for (const offset of [-.21,.17]) {
-        put(M.linen,new THREE.CylinderGeometry(.045,.035,.091,12).translate(x+offset,1.33,-1.47));
-      }
-    }
-    put(M.brass,new THREE.CylinderGeometry(.18,.21,.37,18).translate(.9,1.22,-2.63));
-    box(M.paper,-.73,1.03,-2.63,.60,.044,.27);
-    return;
-  }
-
   for (const x of [-3.2, 0, 3.2]) {
     box(M.paper,x,1.26,-1.60,.57,.46,.046);
     box(M.wood,x,.84,-1.62,1.15,.09,.52);
@@ -177,9 +109,11 @@ function makeShop(spec, width, ctx, M) {
   const shop = new THREE.Group();
   shop.name = spec.name;
   const paint = interiorMaterial(spec.paint, 0.70);
-  const parts = new Map();
+  const serviceMenu = SHOP_MENUS[spec.kind];
+  const pharmacy = spec.kind==='chemist';
+  const parts = new Map(), furniture = [];
   const put = (material, geometry) => {
-    if (material === M.brick) brickUV(geometry);
+    if (material.userData.metresPerTile) mapShopUV(geometry,material.userData.metresPerTile);
     if (!parts.has(material)) parts.set(material, []);
     parts.get(material).push(geometry);
   };
@@ -192,23 +126,18 @@ function makeShop(spec, width, ctx, M) {
   const doorHalf = 0.79;
   const head = 2.82;
   const sill = 0.57;
-  box(M.stone,0,-0.028,-SHOP_DEPTH/2,width,.055,SHOP_DEPTH);
-  box(M.plaster,0,2.06,-SHOP_DEPTH + .059,width,4.12,.095);
+  box(serviceMenu ? pharmacy ? M.checker : M.lunchFloor : M.stone,
+    0,-0.028,-SHOP_DEPTH/2,width,.055,SHOP_DEPTH);
+  box(M.plaster,0,2.06,-SHOP_DEPTH+.059,width,4.12,.095);
   const rear = -SHOP_DEPTH + .12;
-  box(paint,0,.56,rear,width,1.12,.026);
-  box(M.wood,0,.105,rear+.022,width,.15,.045);
-  box(M.wood,0,1.09,rear+.022,width,.09,.065);
-  for (const x of [-2.23,2.23]) {
-    box(M.wood,x,1.82,rear+.018,.94,1.37,.047);
-    for (const y of [1.20,1.63,2.04,2.46]) box(M.wood,x,y,rear+.15,1.02,.052,.31);
-    for (let i = 0; i < 5; i++) {
-      const color = [M.moss,M.paper,M.amber][i%3];
-      const px = x - .35 + .17*i;
-      box(color,px,1.34,rear+.13,.108,.21,.14);
-      if (spec.kind === 'chemist') {
-        put(color,new THREE.CylinderGeometry(.053,.065,.24,10).translate(px,1.78,rear+.14));
-        put(M.brass,new THREE.CylinderGeometry(.038,.038,.035,10).translate(px,1.91,rear+.14));
-      }
+  const wainscot = serviceMenu ? pharmacy ? M.jade : M.milk : paint;
+  box(wainscot,0,.72,rear,width,1.44,.026);
+  box(M.walnut,0,.079,rear+.018,width,.10,.045);
+  box(paint,0,1.456,rear+.023,width,.073,.051);
+  if (serviceMenu) {
+    for (const side of [-1,1]) {
+      box(wainscot,side*(w-.256),.72,-SHOP_DEPTH/2,.034,1.44,SHOP_DEPTH-.25);
+      box(paint,side*(w-.224),1.456,-SHOP_DEPTH/2,.065,.071,SHOP_DEPTH-.28);
     }
   }
   box(M.plaster,0,4.27,-SHOP_DEPTH/2,width,.16,SHOP_DEPTH);
@@ -245,9 +174,13 @@ function makeShop(spec, width, ctx, M) {
   box(paint,0,2.83,.087,1.68,.14,.20);
   panel(M.glass,0,3.15,.105,1.42,.50);
   if (spec.open) {
-    // The door is folded back against its jamb. Its open geometry leaves a real passage.
-    box(paint,-.744,1.39,-.735,.067,2.78,1.42);
-    box(M.brass,-.691,1.07,-1.30,.061,.25,.035);
+    // A glazed wood leaf folded back against the jamb leaves a usable doorway.
+    box(paint,-.765,.505,-.742,.069,.997,1.398);
+    box(M.walnut,-.728,.516,-.742,.012,.80,1.210);
+    for (const z of [-.071,-1.417]) box(paint,-.765,1.871,z,.071,1.81,.093);
+    for (const y of [1.017,1.75,2.763]) box(paint,-.765,y,-.742,.071,.081,1.387);
+    put(M.glass,new THREE.PlaneGeometry(1.271,1.66).rotateY(Math.PI/2).translate(-.759,1.875,-.742));
+    box(M.brass,-.709,1.071,-1.33,.088,.175,.043);
   } else {
     box(paint,0,.50,.056,1.42,1.0,.11);
     panel(M.glass,0,1.88,.074,1.41,1.76);
@@ -261,10 +194,16 @@ function makeShop(spec, width, ctx, M) {
     shade.scale(1,.52,1);
     put(M.lamp,shade.translate(x,3.85,-1.47));
   }
-  roomContents(put, box, M, spec.kind);
+  const service = serviceMenu ? buildCounterFixture(spec,shop,put,box,M,furniture) : null;
+  if (!service) roomContents(put,box,M,spec.kind);
   const pendant = new THREE.PointLight(0xffdfb4, 31, 6.3, 2);
   pendant.position.set(0, 3.65, -1.51);
   shop.add(pendant);
+  if (service) {
+    const rearLight = new THREE.PointLight(pharmacy ? 0xffe8cb : 0xffdcab, 11, 4.2, 2);
+    rearLight.position.set(1.01,2.59,-2.06);
+    shop.add(rearLight);
+  }
   for (const [material, geometries] of parts) {
     const mesh = new THREE.Mesh(mergeGeometries(geometries), material);
     for (const geometry of geometries) geometry.dispose();
@@ -273,6 +212,7 @@ function makeShop(spec, width, ctx, M) {
   }
   const sign = ctx.deco.canvasSign(spec.name.toUpperCase(), {
     width:Math.min(width - .62, 8.3), canvasWidth:1536, canvasHeight:113,
+    colors:service ? pharmacy ? ['#17372f','#bca36c','#eed9a7'] : ['#581f20','#be9267','#f1e0b9'] : undefined,
   });
   sign.position.set(0,3.938,.173);
   shop.add(sign);
@@ -281,19 +221,29 @@ function makeShop(spec, width, ctx, M) {
   });
   transomSign.position.set(0,3.40,.174);
   shop.add(transomSign);
-  const notice = new THREE.Object3D();
-  notice.position.set(0,1.42,spec.open ? -1.88 : .23);
-  shop.add(notice);
-  ctx.registerInteractive(notice, {title:spec.name, body:spec.copy});
+  if (service) {
+    const menu = ctx.deco.canvasSign((serviceMenu.item+' · '+serviceMenu.price+'¢').toUpperCase(),{
+      width:pharmacy ? 3.77 : 2.16, canvasWidth:1024, canvasHeight:pharmacy ? 108 : 238,
+      colors:pharmacy ? ['#244537','#c8a767','#efdeb6'] : ['#57272a','#b79058','#f2dfb5'],
+    });
+    menu.position.set(0,pharmacy ? 3.57 : 2.55,-SHOP_DEPTH+.132);
+    shop.add(menu);
+  } else {
+    const notice = new THREE.Object3D();
+    notice.position.set(0,1.42,spec.open ? -1.88 : .23);
+    shop.add(notice);
+    ctx.registerInteractive(notice,{title:spec.name,body:spec.copy});
+  }
 
   // A 1.58 m opening remains between the jambs after padding for the player.
   const collision = [
     [-w,-doorHalf,-.13,.21], [doorHalf,w,-.13,.21],
     [-w,-w+.24,-SHOP_DEPTH,.21], [w-.24,w,-SHOP_DEPTH,.21],
-    [-1.49,1.49,-3.09,-2.24],
+    service ? [-1.63,1.63,-2.857,-2.039] : [-1.49,1.49,-3.09,-2.24],
+    ...furniture,
   ];
   if (!spec.open) collision.push([-doorHalf,doorHalf,-.13,.20]);
-  return {shop, collision};
+  return {shop, collision, service};
 }
 
 function orientedBox(x, z, side, [u0,u1,v0,v1]) {
@@ -303,7 +253,7 @@ function orientedBox(x, z, side, [u0,u1,v0,v1]) {
 }
 
 export async function add20thStreetStores(ctx, parent) {
-  const M = makeShopMaterials(await loadBrick(), ctx.environment);
+  const M = makeShopMaterials(await loadShopSurfaces(ctx.environment),ctx.environment);
   const footprintBoxes = [];
   for (const spec of STORES) {
     const landmark = ctx.plan.landmarks.find(building => building.id === spec.landmark);
@@ -312,16 +262,19 @@ export async function add20thStreetStores(ctx, parent) {
     const side = x < 0 ? 1 : -1;
     const frontX = x + side * width / 2;
     const frontZ = z + spec.bay * depth / 4;
-    const {shop, collision} = makeShop(spec, depth / 2, ctx, M);
+    const {shop, collision, service} = makeShop(spec, depth / 2, ctx, M);
     shop.position.set(frontX,SIDEWALK_HEIGHT,frontZ);
     shop.rotation.y = side * Math.PI/2;
     parent.add(shop);
     for (const box of collision) footprintBoxes.push(orientedBox(frontX,frontZ,side,box));
     if (spec.open) {
-      ctx.characters.push({
-        id:'staff-' + spec.kind, model:spec.model, position:[frontX - side*(SHOP_DEPTH-.12),frontZ],
+      const staffZ = service ? STAFF_Z : -SHOP_DEPTH+.28;
+      const actor = {
+        id:'staff-' + spec.kind, model:spec.model, position:[frontX + side*staffZ,frontZ],
         yawDeg:side*90, scale:0.97, groundY:SIDEWALK_HEIGHT,
-      });
+      };
+      ctx.characters.push(actor);
+      if (service) ctx.shopCounters.push({kind:spec.kind,name:spec.name,shop,actor,service});
     }
   }
 

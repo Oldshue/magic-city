@@ -1,14 +1,25 @@
 {
   "brick-wall-001": {
     "description": "Photogrammetry color, OpenGL normal and roughness maps used on the masonry surrounding the storefronts",
-    "files": ["brick-wall-001-color.jpg", "brick-wall-001-normal.jpg", "brick-wall-001-roughness.jpg"],
+    "files": [
+      "brick-wall-001-color.jpg",
+      "brick-wall-001-normal.jpg",
+      "brick-wall-001-roughness.jpg"
+    ],
     "source": "https://polyhaven.com/a/brick_wall_001",
     "license": "CC0-1.0",
     "licenseSource": "https://polyhaven.com/license"
   },
   "downtown-characters": {
-    "description": "Game-rigged characters with locally authored cloche, idle, walk, boarding and steering animations",
-    "files": ["bank-clerk.glb", "shopkeeper.glb", "detective.glb"],
+    "description": "Game-rigged characters with locally authored caps, apron, spectacles, idle, walk, boarding, steering, greeting and service animations",
+    "files": [
+      "bank-clerk.glb",
+      "shopkeeper.glb",
+      "detective.glb",
+      "pharmacist.glb",
+      "crown-proprietor.glb",
+      "street-worker.glb"
+    ],
     "tool": "Blender with MakeHuman Community MPFB 2.0.18",
     "script": "scripts/author-downtown-characters.py",
     "sources": [
@@ -18,5 +29,27 @@
     "clothingCredit": "Margaret Toigo and the MakeHuman Community",
     "upstreamAssetLicense": "CC0-1.0",
     "licenseSource": "https://static.makehumancommunity.org/about/license.html"
+  },
+  "marble-counter": {
+    "description": "Marble color, normal and roughness photographed by Rob Tuytel",
+    "files": [
+      "counter-marble-color.jpg",
+      "counter-marble-normal.jpg",
+      "counter-marble-roughness.jpg"
+    ],
+    "source": "https://polyhaven.com/a/marble_01",
+    "license": "CC0-1.0",
+    "licenseSource": "https://polyhaven.com/license"
+  },
+  "wood-cabinetry": {
+    "description": "Fine-grained wood color, normal and roughness photographed by Rob Tuytel",
+    "files": [
+      "counter-wood-color.jpg",
+      "counter-wood-normal.jpg",
+      "counter-wood-roughness.jpg"
+    ],
+    "source": "https://polyhaven.com/a/fine_grained_wood",
+    "license": "CC0-1.0",
+    "licenseSource": "https://polyhaven.com/license"
   }
 }

@@ -475,7 +475,6 @@ export async function build(ctx) {
     { x: -13.4, z: -34, rotY: Math.PI / 2, name: 'CORNER LUNCH — COFFEE 15¢' },
     { x: 13.4, z: -34, rotY: -Math.PI / 2, name: 'MAGIC CITY BARBER — HAIRCUT 25¢' },
     { x: 40, z: 13.6, rotY: Math.PI, name: 'VALLEY SHOE SHINE — 5¢' },
-    { x: -40, z: 13.6, rotY: 0, name: 'CROWN LUNCH COUNTER — SANDWICH 10¢' },
   ];
   for (const spot of storefrontSpots) {
     const aw = deco.awning({ width: 3.4, projection: 1.5, seed: Math.round(spot.x * 3 + spot.z) || 1 });

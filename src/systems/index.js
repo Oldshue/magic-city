@@ -44,6 +44,7 @@ export function startSystems(ctx) {
       if (driving) driving.update(dt, elapsed);
       if (traffic) traffic.update(dt, elapsed);
       if (police) police.update(dt, elapsed);
+      ctx.counterService?.update(dt);
       if (pedestrians) pedestrians.update(dt, elapsed);
       if (weather) weather.update(dt, elapsed);
     },

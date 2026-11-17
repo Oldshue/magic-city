@@ -16,19 +16,20 @@ import { materials } from './materials.js';
  * @returns {THREE.Group} plane centered at origin facing +Z
  */
 export function canvasSign(text, opts = {}) {
-  const { width = 10, canvasWidth = 512, canvasHeight = 128 } = opts;
+  const { width = 10, canvasWidth = 512, canvasHeight = 128,
+    colors = ['#101018','#b98d3e','#ffe6b0'] } = opts;
   const group = new THREE.Group();
   const canvas = document.createElement('canvas');
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
   const ctx = canvas.getContext('2d');
   const draw = () => {
-    ctx.fillStyle = '#101018';
+    ctx.fillStyle = colors[0];
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    ctx.strokeStyle = '#b98d3e';
+    ctx.strokeStyle = colors[1];
     ctx.lineWidth = 6;
     ctx.strokeRect(10, 10, canvasWidth - 20, canvasHeight - 20);
-    ctx.fillStyle = '#b98d3e';
+    ctx.fillStyle = colors[1];
     const step = 24;
     for (let x = 20; x < canvasWidth - 40; x += step * 2) {
       ctx.beginPath();
@@ -41,7 +42,7 @@ export function canvasSign(text, opts = {}) {
     ctx.font = 'bold ' + Math.floor(canvasHeight * 0.42) + 'px Georgia, serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffe6b0';
+    ctx.fillStyle = colors[2];
     ctx.fillText(text, canvasWidth / 2, canvasHeight / 2);
   };
   draw();

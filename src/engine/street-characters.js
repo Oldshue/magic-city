@@ -1,7 +1,8 @@
 import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
 
-const MODELS = ['bank-clerk', 'shopkeeper'];
+const MODELS = ['bank-clerk','shopkeeper','street-worker','pharmacist','crown-proprietor'];
+const TINTS = [0xb09774,0x977655,0x919592,0x9d714f,0x767a64,0xa77878,0x737f9e,0x817451];
 const STRIDE_SPEED = 1.10;
 
 export function prepareCharacter(asset) {
@@ -33,18 +34,44 @@ export function createStreetCharacters({THREE, scene, camera}) {
   root.name = '20th Street characters';
   scene.add(root);
   const models = new Map();
-  for (const name of MODELS) {
-    loader.loadAsync('./data/art/' + name + '.glb').then(({scene:asset, animations}) => {
-      const idle = animations.find(clip => clip.name === 'Idle');
-      const walk = animations.find(clip => clip.name === 'Walk');
-      if (!idle || !walk) throw new Error('Idle and Walk clips are required');
+  const tinted = new WeakMap();
+  const hand = new THREE.Vector3();
+  function loadModel(name) {
+    if (models.has(name) || !MODELS.includes(name)) return models.get(name);
+    models.set(name,null);
+    loader.loadAsync('./data/art/' + name + '.glb').then(({scene:asset,animations})=>{
+      if (!animations.find(clip=>clip.name==='Idle') || !animations.find(clip=>clip.name==='Walk')) {
+        throw new Error('Idle and Walk clips are required');
+      }
       prepareCharacter(asset);
-      models.set(name, {asset, idle, walk, slots:[]});
-    }).catch(error => console.warn('[magic-city] Character mesh ' + name + ' is unavailable:', error.message));
+      models.set(name,{asset,animations,slots:[]});
+    }).catch(error=>console.warn('[magic-city] Character mesh '+name+' is unavailable:',error.message));
+    return null;
+  }
+
+  function wear(slot,palette) {
+    for (const [mesh,material] of slot.wardrobe) {
+      if (palette===undefined) {
+        mesh.material=material;
+        continue;
+      }
+      let wardrobe = tinted.get(material);
+      if (!wardrobe) {
+        wardrobe=new Map();
+        tinted.set(material,wardrobe);
+      }
+      let dyed=wardrobe.get(palette);
+      if (!dyed) {
+        dyed=material.clone();
+        dyed.color.lerp(new THREE.Color(TINTS[palette]),.54);
+        wardrobe.set(palette,dyed);
+      }
+      mesh.material=dyed;
+    }
   }
   let frame = 0;
 
-  function useSlot(model, name, personIndex) {
+  function useSlot(model, name, personIndex, person) {
     let slot = model.slots.find(candidate => candidate.personIndex === personIndex);
     if (slot) return slot;
     slot = model.slots.find(candidate => candidate.frame < frame - 1);
@@ -53,10 +80,17 @@ export function createStreetCharacters({THREE, scene, camera}) {
       instance.name = name;
       root.add(instance);
       const mixer = new THREE.AnimationMixer(instance);
-      slot = {instance, mixer, idle:mixer.clipAction(model.idle), walk:mixer.clipAction(model.walk)};
+      const clips = new Map(model.animations.map(clip=>[clip.name,mixer.clipAction(clip)]));
+      const wardrobe = [];
+      instance.traverse(mesh=>{
+        if (mesh.isMesh && /suit|fedora|felt/i.test(mesh.material.name)) wardrobe.push([mesh,mesh.material]);
+      });
+      slot = {instance,mixer,clips,wardrobe,head:instance.getObjectByName('head'),hand:instance.getObjectByName('hand_r')};
       model.slots.push(slot);
     }
     slot.mixer.stopAllAction();
+    slot.instance.userData.person = person.actor?.id ?? name;
+    wear(slot,person.actor ? undefined : person.paletteIdx);
     slot.personIndex = personIndex;
     slot.active = null;
     return slot;
@@ -72,30 +106,46 @@ export function createStreetCharacters({THREE, scene, camera}) {
       const range = authored ? 32 : 22;
       const dx = camera.position.x - x, dz = camera.position.z - z;
       if (dx * dx + dz * dz > range * range || Math.abs(camera.position.y - floor) > 6) return false;
-      const name = authored ?? MODELS[person.hatStyle === 1 ? 1 : 0];
-      const model = models.get(name);
+      const name = authored ?? (person.hatStyle===1 ? 'shopkeeper' : person.paletteIdx%3===0 ? 'street-worker' : 'bank-clerk');
+      const model = loadModel(name);
       if (!model) return false;
-      const slot = useSlot(model, name, index);
-      const action = moving ? slot.walk : slot.idle;
+      const slot = useSlot(model,name,index,person);
+      const cue = person.actor?.performance;
+      const controlled = cue && slot.clips.get(cue.clip);
+      const action = controlled || slot.clips.get(moving ? 'Walk' : 'Idle');
       if (slot.active !== action) {
         action.reset().play();
-        action.time = (person.bob * 0.133) % action.getClip().duration;
-        if (slot.active) action.crossFadeFrom(slot.active, 0.19, false);
-        slot.active = action;
+        action.time = (person.bob*.133)%action.getClip().duration;
+        if (slot.active) action.crossFadeFrom(slot.active,.16,false);
+        slot.active=action;
       }
-      if (moving) slot.walk.setEffectiveTimeScale((person.speed || STRIDE_SPEED) / (STRIDE_SPEED * person.scale));
+      action.paused=!!controlled;
+      if (controlled) action.time=action.getClip().duration*Math.min(.99999,cue.phase);
+      else if (moving) action.setEffectiveTimeScale((person.speed || STRIDE_SPEED)/(STRIDE_SPEED*person.scale));
 
-      slot.instance.position.set(x, floor, z);
-      slot.instance.rotation.y = facing;
+      slot.instance.position.set(x,floor,z);
+      slot.instance.rotation.y=facing;
       slot.instance.scale.setScalar(person.scale);
-      slot.instance.visible = true;
+      slot.instance.visible=true;
       slot.mixer.update(dt);
-      slot.frame = frame;
+      if (slot.head && (person.actor?.attending || (person.walkingBlock && dx*dx+dz*dz<17))) {
+        const angle=THREE.MathUtils.euclideanModulo(Math.atan2(dx,dz)-facing+Math.PI,Math.PI*2)-Math.PI;
+        slot.head.rotateY(THREE.MathUtils.clamp(angle*.65,-.53,.53));
+      }
+      const drink=person.actor?.carries;
+      if (drink && slot.hand) {
+        slot.hand.getWorldPosition(hand);
+        drink.parent.worldToLocal(hand);
+        drink.position.copy(hand);
+        drink.position.y=Math.max(drink.userData.restHeight,hand.y-.067);
+      }
+      slot.frame=frame;
       return true;
     },
 
     endFrame() {
       for (const model of models.values()) {
+        if (!model) continue;
         for (const slot of model.slots) {
           if (slot.frame !== frame) slot.instance.visible = false;
         }

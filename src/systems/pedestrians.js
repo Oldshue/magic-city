@@ -227,15 +227,15 @@ export function startPedestrians(ctx) {
       pts:[new THREE.Vector3(0,0,17),new THREE.Vector3(0,0,17 + blockLength)],
       segLens:[blockLength], total:blockLength, width:22,
     };
-    for (const [side,dist,dir,scale,speed,model] of [
-      [-1, 14, -1, 1.04, 1.17, 'bank-clerk'],
-      [-1, 24,  1, 0.96, 1.05, 'shopkeeper'],
-      [ 1, 20,  1, 0.95, 1.09, 'shopkeeper'],
-      [ 1, 27, -1, 1.01, 1.21, 'bank-clerk'],
+    for (const [side,dist,dir,scale,speed,model,paletteIdx,windowAt] of [
+      [-1, 14, -1, 1.04, 1.24, 'street-worker',1,-1],
+      [-1, 24,  1, 0.96, 1.01, 'shopkeeper',5,14],
+      [ 1, 20,  1, 0.95, 1.08, 'shopkeeper',4,15],
+      [ 1, 27, -1, 1.01, 1.18, 'bank-clerk',6,-1],
     ]) {
       people.push({
-        route:blockRoute, side, dist, dir, scale, speed, walkingBlock:true, model,
-        bob:rand()*Math.PI*2, paletteIdx:2, hatStyle:model === 'shopkeeper' ? 1 : 0,
+        route:blockRoute, side, dist, dir, scale, speed, walkingBlock:true, model, windowAt, paletteIdx,
+        windowPause:0, passedWindow:false, sidestep:0, bob:rand()*Math.PI*2, hatStyle:model === 'shopkeeper' ? 1 : 0,
         hatDark:true, standing:false, prop:false,
       });
     }
@@ -357,10 +357,17 @@ export function startPedestrians(ctx) {
           oz = valid ? declared.position[1] : p.z;
           heading = valid && Number.isFinite(declared.yawDeg) ? declared.yawDeg * Math.PI / 180 : p.facing;
         } else {
-          p.dist += p.speed * p.dir * dt;
-          if (p.walkingBlock && (p.dist < 0 || p.dist > p.route.total)) {
-            p.dist = THREE.MathUtils.clamp(p.dist, 0, p.route.total);
-            p.dir *= -1;
+          const previous = p.dist;
+          if (p.windowPause > 0) p.windowPause=Math.max(0,p.windowPause-dt);
+          else p.dist += p.speed*p.dir*dt;
+          if (p.walkingBlock) {
+            if (!p.passedWindow && p.windowAt>=0 && (previous-p.windowAt)*(p.dist-p.windowAt)<=0) {
+              p.windowPause=1.9;p.passedWindow=true;
+            }
+            if (p.dist<0 || p.dist>p.route.total) {
+              p.dist=THREE.MathUtils.clamp(p.dist,0,p.route.total);
+              p.dir*=-1;p.passedWindow=false;
+            }
           }
           sample(p.route, p.dist, !p.walkingBlock);
           heading = Math.atan2(segDir.x * p.dir, segDir.z * p.dir);
@@ -369,6 +376,14 @@ export function startPedestrians(ctx) {
           ox = pos.x + segDir.z * edge * curbSide;
           oz = pos.z - segDir.x * edge * curbSide;
           if (p.walkingBlock) {
+            const eye=ctx.camera.position;
+            const distance=(eye.z-oz)*p.dir;
+            const beside=eye.x-ox;
+            const clear=eye.y<2.3 && distance>-.95 && distance<2.9 && Math.abs(beside)<1.17;
+            const aside=clear ? (beside>=0 ? -.89 : .89) : 0;
+            p.sidestep=THREE.MathUtils.damp(p.sidestep,aside,clear?7:3.8,dt);
+            ox+=p.sidestep;
+            if (p.windowPause>.28) heading=p.side*Math.PI/2;
             p.facing ??= heading;
             const turn = THREE.MathUtils.euclideanModulo(heading - p.facing + Math.PI, Math.PI*2) - Math.PI;
             p.facing += turn * (1 - Math.exp(-dt * 8));
@@ -378,7 +393,7 @@ export function startPedestrians(ctx) {
         const nx = Math.cos(heading);
         const nz = -Math.sin(heading);
         const fwdX = Math.sin(heading), fwdZ = Math.cos(heading);
-        const moving = !p.standing || (p.actor?.moving === true) ? 1 : 0;
+        const moving = ((!p.standing && !(p.windowPause>0)) || p.actor?.moving===true) ? 1 : 0;
         const stride = moving ? 5.2 : 1.2;
         const walkPhase = elapsed * stride + p.bob;
         const bobY = 0.02 * Math.sin(walkPhase * 2) * moving + (!moving ? 0.008 * Math.sin(walkPhase) : 0);

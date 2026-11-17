@@ -1,6 +1,6 @@
 """Build the Magic City street characters with Blender and MPFB 2.0.18.
 
-Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY [--driver-only].
+Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY [--driver-only | --counters-only].
 The MPFB extension must be installed in Blender's user_default repository.
 """
 import importlib
@@ -11,6 +11,7 @@ from pathlib import Path
 import addon_utils
 import bpy
 from mathutils import Matrix, Quaternion, Vector
+from mathutils.bvhtree import BVHTree
 
 MODULE = "bl_ext.user_default.mpfb"
 STRIDE_SPEED = 1.10
@@ -32,7 +33,7 @@ def attach_asset(human_service, assets, human, directory, filename, kind):
     )
 
 
-def felt_hat(rig, body):
+def felt_hat(rig, body, flat=False):
     """Fit a felt cloche to the baked scalp and bind it to the head bone."""
     neck = rig.data.bones["head"].head_local.z
     scalp = [v.co for v in body.data.vertices if v.co.z > neck + 0.05]
@@ -42,6 +43,9 @@ def felt_hat(rig, body):
     depth = (max(p.y for p in scalp) - min(p.y for p in scalp)) * 0.5 + 0.020
     rings = [(1.22,-.048),(1.25,-.043),(1.14,-.034),(1.10,-.023),
              (1.08,.002),(.94,.029),(.68,.048),(.32,.056),(.01,.060)]
+    if flat:
+        rings = [(1.24,-.046),(1.30,-.038),(1.17,-.031),(1.14,-.016),
+                 (1.06,.010),(.85,.027),(.48,.035),(.01,.036)]
     vertices = []
     faces = []
     for i, (radius, height) in enumerate(rings):
@@ -56,7 +60,7 @@ def felt_hat(rig, body):
                 prev = (i-1)*36+j
                 next_prev = (i-1)*36+(j+1)%36
                 faces.append((prev,next_prev,next_prev+36,prev+36))
-    mesh = bpy.data.meshes.new("Felt cloche")
+    mesh = bpy.data.meshes.new("Wool newsboy cap" if flat else "Felt cloche")
     mesh.from_pydata(vertices, [], faces)
     mesh.update()
     hat = bpy.data.objects.new(mesh.name, mesh)
@@ -64,7 +68,7 @@ def felt_hat(rig, body):
     material = bpy.data.materials.new("Garnet felt")
     material.use_nodes = True
     shader = material.node_tree.nodes.get("Principled BSDF")
-    shader.inputs["Base Color"].default_value = (0.15,0.031,0.034,1)
+    shader.inputs["Base Color"].default_value = (.12,.078,.053,1) if flat else (0.15,0.031,0.034,1)
     shader.inputs["Roughness"].default_value = 0.91
     mesh.materials.append(material)
     for face in mesh.polygons:
@@ -231,8 +235,7 @@ ENTRY_MARKS = [
 ]
 
 
-def bake_driver(rig):
-    scene = bpy.context.scene
+def limb_solver(rig):
     pose_bones = rig.pose.bones
     rest = {bone.name: bone.bone.matrix_local.to_quaternion() for bone in pose_bones}
     # Rig bones point along their local Y axes.
@@ -265,6 +268,15 @@ def bake_driver(rig):
             orientation = pose_bones[lower].matrix.to_quaternion() @ rest[lower].inverted() @ rest[end]
         pose_bones[end].matrix = Matrix.LocRotScale(target, orientation, unit)
         bpy.context.view_layer.update()
+
+    return rest, solve_limb
+
+
+def bake_driver(rig):
+    scene = bpy.context.scene
+    pose_bones = rig.pose.bones
+    unit = Vector((1, 1, 1))
+    rest, solve_limb = limb_solver(rig)
 
     def set_pose(marks):
         hips, heading, lean, hand_l, hand_r, foot_l, foot_r = marks
@@ -326,7 +338,201 @@ def bake_driver(rig):
     scene.frame_set(0)
 
 
-def build(asset_path, output, female=False, driver=False):
+
+def cloth(name, color, roughness=.86, metallic=0):
+    material = bpy.data.materials.new(name)
+    material.use_nodes = True
+    shader = material.node_tree.nodes.get("Principled BSDF")
+    shader.inputs["Base Color"].default_value = (*color, 1)
+    shader.inputs["Roughness"].default_value = roughness
+    shader.inputs["Metallic"].default_value = metallic
+    return material
+
+
+def rigid_accessory(rig, obj, bone_name):
+    obj.parent = rig
+    bone = obj.vertex_groups.new(name=bone_name)
+    bone.add(list(range(len(obj.data.vertices))), 1, "REPLACE")
+    obj.modifiers.new("Armature", "ARMATURE").object = rig
+
+
+def counter_apron(rig, garment, lunch):
+    # Measure the fitted outfit so the apron follows the shirt instead of
+    # sharing a fixed shape across the two figures.
+    vertices = [v.co.copy() for v in garment.data.vertices]
+    surface = BVHTree.FromPolygons(vertices, [list(face.vertices) for face in garment.data.polygons])
+    hips = rig.data.bones["pelvis"].head_local.z
+    chest = rig.data.bones["spine_03"].head_local.z + .034 if lunch else hips + .108
+    hem = hips - .34
+    points, faces, weights = [], [], []
+    columns, rows = 16, 26
+
+    def front(x,z):
+        hit, _, _, _ = surface.ray_cast(Vector((x,-.65,z)),Vector((0,1,0)),.75)
+        return hit.y if hit is not None else -.145
+
+    for row in range(rows+1):
+        t = row/rows
+        z = hem + (chest-hem)*t
+        bib = min(1,max(0,(t-.56)/.34)) if lunch else 0
+        width = (.204 - .038*t - .046*bib) * (1 if lunch else .96)
+        for column in range(columns+1):
+            u = 2*column/columns-1
+            x = width*u
+            fall = .031 + .046*(1-t)*(1-u*u) + .011*math.cos(u*13.5)*math.sin(math.pi*t)
+            points.append((x,front(x,z)-fall,z))
+            w_chest = max(0,min(1,(t-.55)/.3)) if lunch else 0
+            w_waist = max(0,1-abs(t-.50)/.27)*(1-w_chest)
+            weights.append((1-w_chest-w_waist,w_waist,w_chest))
+            if row and column:
+                a = (row-1)*(columns+1)+column-1
+                faces.append((a,a+1,a+columns+2,a+columns+1))
+
+    # Sewn shoulder straps and a front ticket pocket stand proud of the bib.
+    if lunch:
+        for x in [-.105,.105]:
+            a = len(points)
+            for z in [chest-.014,chest+.117]:
+                points.extend([(x-.022,front(x-.022,z)-.049,z),(x+.022,front(x+.022,z)-.049,z)])
+            faces.append((a,a+1,a+3,a+2))
+            weights.extend([(0,0,1)]*4)
+    pocket = len(points)
+    for z in [hips-.112,hips+.010]:
+        for x in [-.12,.08]:
+            points.append((x,front(x,z)-.075,z))
+    faces.append((pocket,pocket+1,pocket+3,pocket+2))
+    weights.extend([(.22,.78,0)]*4)
+    mesh = bpy.data.meshes.new("Counter apron")
+    mesh.from_pydata(points,[],faces)
+    mesh.update()
+    apron = bpy.data.objects.new("Counter apron",mesh)
+    bpy.context.collection.objects.link(apron)
+    apron.parent = rig
+    apron.modifiers.new("Armature","ARMATURE").object = rig
+    for slot, name in enumerate(("pelvis","spine_01","spine_03")):
+        group = apron.vertex_groups.new(name=name)
+        for i, weight in enumerate(weights):
+            if weight[slot] > 0:
+                group.add([i],weight[slot],"REPLACE")
+    main = (.357,.114,.085) if lunch else (.82,.77,.62)
+    seam = (.51,.22,.161) if lunch else (.63,.56,.43)
+    mesh.materials.append(cloth("Cotton apron",main))
+    mesh.materials.append(cloth("Apron tapes and sewing",seam))
+    for i, face in enumerate(mesh.polygons):
+        if i >= columns*rows or i%columns in (0,columns-1) or (lunch and i%columns in (4,11)):
+            face.material_index = 1
+
+
+def spectacles(rig, eyes):
+    vertices = [vertex.co for vertex in eyes.data.vertices]
+    y = min(p.y for p in vertices) - .005
+    z = (max(p.z for p in vertices)+min(p.z for p in vertices)) * .5
+    width = max(abs(p.x) for p in vertices) * .69
+    pieces = []
+    for sign in (-1,1):
+        bpy.ops.mesh.primitive_torus_add(major_segments=28,minor_segments=8,
+                                        location=(sign*width,y,z),rotation=(math.pi/2,0,0),
+                                        major_radius=.025,minor_radius=.0018)
+        pieces.append(bpy.context.object)
+    bpy.ops.mesh.primitive_cube_add(size=1,location=(0,y+.001,z+.008))
+    bridge = bpy.context.object
+    bridge.scale = (.018,.005,.0035)
+    pieces.append(bridge)
+    bpy.ops.object.select_all(action="DESELECT")
+    for part in pieces:
+        part.select_set(True)
+    bpy.context.view_layer.objects.active = pieces[0]
+    bpy.ops.object.join()
+    bpy.ops.object.transform_apply(location=True,rotation=True,scale=True)
+    frame = bpy.context.object
+    frame.name = "Round nickel spectacles"
+    frame.data.materials.append(cloth("Polished nickel",(.36,.28,.19),.29,.72))
+    rigid_accessory(rig,frame,"head")
+
+
+COUNTER_SCALE = .97
+SERVE_MARKS = [
+    # frame, body lean, hand placement; drink held from pickup to release
+    (0, .04, (-.26,.96,.24)),
+    (15,.17, (-.37,1.125,.40)),
+    (23,.20, (-.333,1.23,.60)),
+    (34,.21, (-.333,1.23,.60)),
+    (41,.22, (-.333,1.23,.60)),
+    (53,.34, (-.18,1.125,.744)),
+    (60,.08, (-.26,1.00,.40)),
+    (68,.04, (-.26,.96,.24)),
+]
+
+
+def bake_counter(rig):
+    pose = rig.pose.bones
+    rest, solve = limb_solver(rig)
+    neutral = Quaternion()
+    scene = bpy.context.scene
+
+    def point(mark):
+        x,y,z = mark
+        return Vector((x,-z,y))/COUNTER_SCALE
+
+    def blend_mark(frame):
+        for a,b in zip(SERVE_MARKS,SERVE_MARKS[1:]):
+            if frame <= b[0]:
+                t = (frame-a[0])/(b[0]-a[0])
+                t = t*t*(3-2*t)
+                return a[1]+(b[1]-a[1])*t,tuple(x+(y-x)*t for x,y in zip(a[2],b[2]))
+        return SERVE_MARKS[-1][1:]
+
+    for name,length in (("Greet",34),("Speak",56),("Serve",68)):
+        action = bpy.data.actions.new(name)
+        rig.animation_data.action = action
+        for frame in range(length+1):
+            scene.frame_set(frame)
+            t = frame/length
+            beat = math.sin(math.pi*t)**2
+            for bone in pose:
+                bone.rotation_mode = "QUATERNION"
+                bone.rotation_quaternion = Quaternion()
+                bone.location = (0,0,0)
+                bone.scale = (1,1,1)
+            if name == "Serve":
+                lean, hand = blend_mark(frame)
+            elif name == "Speak":
+                lean = .04+.10*beat
+                hand = (-.23-.10*beat,.96+.22*beat,.24+.17*beat)
+            else:
+                lean = .04+.07*beat
+                hand = (-.26,.96+.217*beat,.24+.21*beat)
+            hips = pose["pelvis"].bone.matrix_local.copy()
+            hips.translation.y -= .10 * min(1,lean/.32)
+            hips.translation.z -= .033 * min(1,lean/.32)
+            pose["pelvis"].matrix = hips
+            spine = rest["spine_01"]
+            pose["spine_01"].rotation_quaternion = spine.inverted() @ Quaternion((1,0,0),lean) @ spine
+            head = rest["head"]
+            nod = .16*math.sin(2*math.pi*t)*beat if name == "Greet" else .065*math.sin(t*math.tau)*beat
+            pose["head"].rotation_quaternion = head.inverted() @ Quaternion((1,0,0),nod-lean*.33) @ head
+            bpy.context.view_layer.update()
+            for side,sign in SIDES:
+                foot = pose[f"foot_{side}"].bone.head_local.copy()
+                foot.y -= .03 * sign
+                solve(f"thigh_{side}",f"calf_{side}",f"foot_{side}",foot,Vector((sign*.11,-1,.03)),neutral)
+                target = (.26,1.00,.26+beat*.075) if sign>0 else hand
+                solve(f"upperarm_{side}",f"lowerarm_{side}",f"hand_{side}",point(target),Vector((sign*.6,.34,-.65)),neutral)
+                for finger in ("index","middle","ring","pinky"):
+                    for segment in ("02","03"):
+                        curl = .52 if name == "Serve" and sign<0 and 15 <= frame <= 53 else .18
+                        pose[f"{finger}_{segment}_{side}"].rotation_quaternion = Quaternion((1,0,0),curl)
+            for bone in pose:
+                bone.keyframe_insert(data_path="rotation_quaternion",frame=frame,group=bone.name)
+                bone.keyframe_insert(data_path="location",frame=frame,group=bone.name)
+        track = rig.animation_data.nla_tracks.new()
+        track.name = name
+        track.strips.new(name,0,action)
+        rig.animation_data.action = None
+    scene.frame_set(0)
+
+
+def build(asset_path, output, female=False, driver=False, staff=None, worker=False):
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
     addon_utils.enable(MODULE, default_set=True)
@@ -340,16 +546,28 @@ def build(asset_path, output, female=False, driver=False):
 
     state = targets.get_default_macro_info_dict()
     state.update(gender=0.0 if female else 1.0, age=0.41 if female else 0.65 if driver else 0.48)
+    if staff:
+        state.update(age=.57 if female else .67)
+    if worker:
+        state.update(age=.36,muscle=.69)
     body = humans.create_human(macro_detail_dict=state)
     skin_name = "young_caucasian_female.mhmat" if female else "young_african_male.mhmat"
+    if staff:
+        skin_name = "middleage_caucasian_female.mhmat" if female else "middleage_african_male.mhmat"
+    if worker:
+        skin_name = "young_caucasian_male2.mhmat"
     skin = assets.find_asset_absolute_path(skin_name, asset_subdir="skins")
     if not skin:
         raise RuntimeError(f"Missing skin {skin_name}")
     humans.set_character_skin(skin, body, skin_type="GAMEENGINE")
     humans.add_builtin_rig(body, "game_engine")
     outfit = "female_elegantsuit01.mhclo" if female else "toigo_male_double-breasted_suit.mhclo"
-    if driver:
+    if driver or staff == "chemist":
         outfit = "toigo_male_suit_tie_and_jacket.mhclo"
+    if staff == "lunch":
+        outfit = "toigo_female_suit.mhclo"
+    if worker:
+        outfit = "male_worksuit01.mhclo"
     pieces = [
         ("eyes", "low-poly.mhclo", "Eyes"),
         ("eyebrows", "eyebrow001.mhclo", "Eyebrows"),
@@ -358,7 +576,7 @@ def build(asset_path, output, female=False, driver=False):
         ("clothes", "shoes01.mhclo", "Clothes"),
         ("clothes", outfit, "Clothes"),
     ]
-    if not female:
+    if not female and not staff and not worker:
         pieces.append(("clothes", "fedora_cocked.mhclo" if driver else "fedora01.mhclo", "Clothes"))
     for directory, filename, kind in pieces:
         attach_asset(humans, assets, body, directory, filename, kind)
@@ -374,8 +592,15 @@ def build(asset_path, output, female=False, driver=False):
     bpy.context.view_layer.objects.active = export_body
     if export_body.data.shape_keys:
         bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
-    if female:
-        felt_hat(rig, export_body)
+    if (female and not staff) or worker:
+        felt_hat(rig, export_body, flat=worker)
+    if staff:
+        wardrobe = objects.get_list_of_children(rig)
+        garment = next(obj for obj in wardrobe if outfit.removesuffix(".mhclo") in obj.name)
+        counter_apron(rig,garment,staff == "lunch")
+        if staff == "chemist":
+            eyes = next(obj for obj in wardrobe if "low-poly" in obj.name)
+            spectacles(rig,eyes)
     export_objects = [rig] + objects.get_list_of_children(rig)
     meshes = [obj for obj in export_objects if obj.type == "MESH"]
     for obj in meshes:
@@ -405,6 +630,8 @@ def build(asset_path, output, female=False, driver=False):
     bake_walk(rig, meshes)
     if driver:
         bake_driver(rig)
+    if staff:
+        bake_counter(rig)
 
     bpy.ops.object.select_all(action="DESELECT")
     for obj in export_objects:
@@ -423,7 +650,12 @@ if __name__ == "__main__":
     arguments = sys.argv[sys.argv.index("--") + 1:]
     asset_root, out_dir = (Path(value).resolve() for value in arguments[:2])
     out_dir.mkdir(parents=True, exist_ok=True)
+    if "--counters-only" not in arguments:
+        if "--driver-only" not in arguments:
+            build(asset_root, out_dir / "bank-clerk.glb")
+            build(asset_root, out_dir / "shopkeeper.glb", female=True)
+        build(asset_root, out_dir / "detective.glb", driver=True)
     if "--driver-only" not in arguments:
-        build(asset_root, out_dir / "bank-clerk.glb")
-        build(asset_root, out_dir / "shopkeeper.glb", female=True)
-    build(asset_root, out_dir / "detective.glb", driver=True)
+        build(asset_root, out_dir / "pharmacist.glb", staff="chemist")
+        build(asset_root, out_dir / "crown-proprietor.glb", female=True, staff="lunch")
+        build(asset_root, out_dir / "street-worker.glb", worker=True)
