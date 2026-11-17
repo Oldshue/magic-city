@@ -39,11 +39,16 @@ export function canvasSign(text, opts = {}) {
       ctx.moveTo(x, 16); ctx.lineTo(x + step, 26);
       ctx.lineTo(x + step * 2, 16); ctx.closePath(); ctx.fill();
     }
-    ctx.font = 'bold ' + Math.floor(canvasHeight * 0.42) + 'px Georgia, serif';
+    const framedWidth = Math.max(1,canvasWidth-40);
+    const preferred = Math.floor(canvasHeight*.42);
+    ctx.font = 'bold ' + preferred + 'px Georgia, serif';
+    const measured = ctx.measureText(text).width;
+    const fitted = Math.max(1,Math.floor(preferred*Math.min(1,framedWidth/Math.max(1,measured))));
+    ctx.font = 'bold ' + fitted + 'px Georgia, serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = colors[2];
-    ctx.fillText(text, canvasWidth / 2, canvasHeight / 2);
+    ctx.fillText(text,canvasWidth/2,canvasHeight/2,framedWidth);
   };
   draw();
   const texture = new THREE.CanvasTexture(canvas);
