@@ -4,6 +4,7 @@ const BRAKING = 4.2;
 const ACCELERATION = 2.25;
 const YIELD_MARGIN = .95;
 const LOOKAHEAD = 27;
+const ADMISSION_RANGE = 16;
 
 export const HEAVIEST_CORNER_CROSSWALK = Object.freeze({
   offset:14.5, depth:3.4, sidewalkApproach:3,
@@ -95,7 +96,11 @@ export function makeJunction(routeA,routeB,crosswalk) {
           crossing.route=crossing.axis==='x' ? routeA : routeB;
           crossing.requested=false;
         }
-        return {x,z,halfX:routeA.width/2,halfZ:routeB.width/2,crossings,owner:null};
+        const turns=new Map([routeA,routeB].map(route=>[route,{
+          crossings:crossings.filter(crossing=>crossing.route===route),
+          group:new Set(),requests:[],walking:false,carDue:false,car:null,
+        }]));
+        return {x,z,halfX:routeA.width/2,halfZ:routeB.width/2,crossings,turns,owner:null};
       }
       stationB+=routeB.segLens[j];
     }
@@ -121,13 +126,49 @@ function atJunction(junction,visitor) {
     || junction.crossings.some(crossing=>atCrosswalk(crossing,visitor));
 }
 
-const hasCrossingRequest = (junction,route)=>junction.crossings.some(c=>c.requested && c.route===route);
+const hasCrossingRequest = (junction,route)=>junction.turns.get(route)?.crossings.some(c=>c.requested);
+const requestsCrossing = (person,crossing)=>(!person.crosswalk || person.crosswalk===crossing.id)
+  && atCrosswalk(crossing,person);
+
+// A moving group keeps its right-of-way. When cars are waiting, the next
+// arrival joins the next group and a car moves between the two groups.
+function grantCrosswalkTurns(junction,cars,pedestrians) {
+  for (const [route,turn] of junction.turns) {
+    const {group,requests,crossings}=turn;
+    if (!crossings.length) continue;
+    requests.length=0;
+    for (const person of pedestrians) {
+      if (crossings.some(crossing=>requestsCrossing(person,crossing))) requests.push(person);
+    }
+    for (const person of group) {
+      if (!requests.includes(person)) group.delete(person);
+    }
+    const walking=requests.some(person=>person.committed);
+    const waitingCar=!junction.blocked && cars.some(car=>{
+      if (car.route!==route) return false;
+      const before=beforeCenter(car);
+      return before>=-route.junction.edge && before<stopLine(route)+ADMISSION_RANGE;
+    });
+    if (turn.walking && !walking) {
+      group.clear();
+      turn.carDue=waitingCar;
+    }
+    turn.walking=walking;
+    if (!waitingCar && !turn.car) turn.carDue=false;
+    if (!turn.carDue && (!walking || !waitingCar)) {
+      for (const person of requests) group.add(person);
+    }
+    for (const crossing of crossings) {
+      crossing.requested=!turn.carDue && requests.some(person=>group.has(person) && requestsCrossing(person,crossing));
+    }
+  }
+}
 
 /** Cars with a live right-of-way clear before a pedestrian steps down. */
-export function canEnterCrosswalk(junction,id,obstacles=[]) {
+export function canEnterCrosswalk(junction,person,obstacles=[]) {
   if (!junction) return true;
-  const crossing=junction.crossings.find(crossing=>crossing.id===id);
-  if (!crossing?.requested) return false;
+  const crossing=junction.crossings.find(crossing=>crossing.id===person.crosswalk);
+  if (!crossing?.requested || !junction.turns.get(crossing.route).group.has(person)) return false;
   const owner=junction.owner;
   if (owner?.route===crossing.route && !Number.isFinite(junctionGap(junction,owner))) return false;
   const road=crossing.road;
@@ -138,16 +179,20 @@ export function canEnterCrosswalk(junction,id,obstacles=[]) {
 export function reserveJunction(junction, cars, blocker, pedestrians = []) {
   if (!junction) return;
   junction.blocked = atJunction(junction,blocker);
-  for (const crossing of junction.crossings) {
-    crossing.requested=pedestrians.some(person=>(!person.crosswalk || person.crosswalk===crossing.id)
-      && atCrosswalk(crossing,person));
+  if (junction.owner && beforeCenter(junction.owner) < -junction.owner.route.junction.edge) {
+    const turn=junction.turns.get(junction.owner.route);
+    if (turn.car===junction.owner) {
+      turn.carDue=false;
+      turn.car=null;
+    }
+    junction.owner=null;
   }
-  if (junction.owner && beforeCenter(junction.owner) < -junction.owner.route.junction.edge) junction.owner=null;
+  grantCrosswalkTurns(junction,cars,pedestrians);
   if (junction.owner && hasCrossingRequest(junction,junction.owner.route)
       && beforeCenter(junction.owner)>=stopLine(junction.owner.route)-.6) junction.owner=null;
   if (junction.owner || junction.blocked) return;
 
-  let best = 16;
+  let best=ADMISSION_RANGE, next=null;
   for (const car of cars) {
     if (!car.route.junction) continue;
     const before=beforeCenter(car);
@@ -155,15 +200,20 @@ export function reserveJunction(junction, cars, blocker, pedestrians = []) {
     const yielding=hasCrossingRequest(junction,car.route);
     // A committed car clears the box before admitting another approach.
     if (before >= -car.route.junction.edge && before < halt-(yielding ? .6 : 0)) {
-      junction.owner=car;
-      return;
+      next=car;
+      break;
     }
     if (yielding) continue;
     const remaining=before-halt;
     if (remaining >= 0 && remaining < best) {
-      junction.owner=car;
+      next=car;
       best=remaining;
     }
+  }
+  if (next) {
+    junction.owner=next;
+    const turn=junction.turns.get(next.route);
+    if (turn.carDue) turn.car=next;
   }
 }
 

@@ -108,7 +108,7 @@ function makeCustomers(ctx,x,z) {
       position:initial, groundY:SIDEWALK_HEIGHT, scale:i ? .95 : 1.02, yawDeg:i ? 210 : 90,
       speed:i ? 1.32 : 1.45, moving:true,
     };
-    const pedestrian = {x:initial[0], z:initial[1], y:1.7, crosswalk:'north', active:false};
+    const pedestrian = {x:initial[0], z:initial[1], y:1.7, crosswalk:'north', active:false, committed:false};
     ctx.characters.push(actor);
     ctx.crossingVisitors.push(pedestrian);
     return {actor,steps,pedestrian,index:start,time:0};
@@ -124,10 +124,10 @@ function advanceCustomer(customer,traffic,dt) {
     actor.moving=false;
     return;
   }
-  if (step.crossing && !customer.crossing) {
+  if (step.crossing && !pedestrian.committed) {
     actor.moving=false;
-    if (traffic && !traffic.canCross(pedestrian.crosswalk)) return;
-    customer.crossing=true;
+    if (traffic && !traffic.canCross(pedestrian)) return;
+    pedestrian.committed=true;
   }
   const dx=step.to[0]-oldX, dz=step.to[1]-oldZ;
   const distance=Math.hypot(dx,dz);
@@ -140,7 +140,7 @@ function advanceCustomer(customer,traffic,dt) {
     if (step.approach) pedestrian.active=true;
     if (step.crossing) {
       pedestrian.active=false;
-      customer.crossing=false;
+      pedestrian.committed=false;
     }
     actor.groundY=SIDEWALK_HEIGHT;
     customer.index=(customer.index+1)%steps.length;

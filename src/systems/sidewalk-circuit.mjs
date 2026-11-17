@@ -48,9 +48,9 @@ export function sidewalkCircuit(crossings,side) {
 export function createSidewalkWalker(circuit,cruise,{z,before}={}) {
   const {legs}=circuit;
   const pose={point:new Vector3(),heading:Math.PI,activity:'walking',crosswalk:null,wait:0,speed:cruise};
-  const request={x:0,z:0,y:1.7,crosswalk:null,active:false};
+  const request={x:0,z:0,y:1.7,crosswalk:null,active:false,committed:false};
   const tangent=new Vector3(), ahead=new Vector3();
-  let index=0, distance=0, committed=false;
+  let index=0, distance=0;
 
   function locate() {
     const {curve,length}=legs[index];
@@ -82,16 +82,16 @@ export function createSidewalkWalker(circuit,cruise,{z,before}={}) {
     const leg=legs[index], next=legs[(index+1)%legs.length];
     const {crosswalk,curve,length}=leg;
     pose.crosswalk=crosswalk ?? null;
-    if (crosswalk && !committed) {
+    if (crosswalk && !request.committed) {
       request.crosswalk=crosswalk;
       request.active=true;
-      if (traffic && !traffic.canCross(crosswalk)) {
+      if (traffic && !traffic.canCross(request)) {
         pose.activity='waiting to cross';
         pose.wait+=dt;
         pose.speed=0;
         return pose;
       }
-      committed=true;
+      request.committed=true;
     }
     pose.wait=0;
     pose.activity=crosswalk ? 'crossing' : leg.turning ? 'rounding the corner' : 'walking';
@@ -111,7 +111,7 @@ export function createSidewalkWalker(circuit,cruise,{z,before}={}) {
 
     if (crosswalk) {
       request.active=false;
-      committed=false;
+      request.committed=false;
     }
     if (next.crosswalk) {
       request.crosswalk=next.crosswalk;

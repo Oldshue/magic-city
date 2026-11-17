@@ -120,9 +120,9 @@ test('every painted arm reserves its actual road and allows perpendicular cars t
     reserveJunction(junction,[car,perpendicular],null,[walker]);
     assert.equal(junction.owner,perpendicular,id);
     assert.ok(Number.isFinite(junctionGap(junction,car)));
-    assert.ok(canEnterCrosswalk(junction,id));
-    assert.equal(canEnterCrosswalk(junction,id,[{...crossing.road}]),false);
-    assert.ok(canEnterCrosswalk(junction,id,[{minX:100,maxX:105,minZ:100,maxZ:102}]));
+    assert.ok(canEnterCrosswalk(junction,walker));
+    assert.equal(canEnterCrosswalk(junction,walker,[{...crossing.road}]),false);
+    assert.ok(canEnterCrosswalk(junction,walker,[{minX:100,maxX:105,minZ:100,maxZ:102}]));
   }
 });
 
@@ -134,9 +134,31 @@ test('a sedan inside the junction clears both the east and west stripes before c
   reserveJunction(junction,[car],null,[crossing]);
   assert.equal(junction.owner,car);
   assert.equal(junctionGap(junction,car),Infinity);
-  assert.equal(canEnterCrosswalk(junction,'west'),false);
+  assert.equal(canEnterCrosswalk(junction,crossing),false);
   car.dist=121;
   reserveJunction(junction,[car],null,[crossing]);
   assert.equal(junction.owner,null);
-  assert.ok(canEnterCrosswalk(junction,'west'));
+  assert.ok(canEnterCrosswalk(junction,crossing));
+});
+
+
+test('arrivals at the other end of a road wait while a car takes its turn between groups',()=>{
+  const [twentieth,first]=roads();
+  const junction=makeJunction(twentieth,first,HEAVIEST_CORNER_CROSSWALK);
+  const firstWalker={x:-12.6,z:14.5,y:1.7,crosswalk:'south',committed:false};
+  const nextWalker={x:12.6,z:-14.5,y:1.7,crosswalk:'north'};
+  const car={route:twentieth,dist:75,dir:1};
+  reserveJunction(junction,[car],null,[firstWalker]);
+  assert.ok(canEnterCrosswalk(junction,firstWalker));
+  firstWalker.committed=true;
+  reserveJunction(junction,[car],null,[firstWalker,nextWalker]);
+  assert.equal(canEnterCrosswalk(junction,nextWalker),false);
+  assert.ok(Number.isFinite(junctionGap(junction,car)));
+  reserveJunction(junction,[car],null,[nextWalker]);
+  assert.equal(junction.owner,car);
+  assert.equal(canEnterCrosswalk(junction,nextWalker),false);
+  assert.equal(junctionGap(junction,car),Infinity);
+  car.dist=121;
+  reserveJunction(junction,[car],null,[nextWalker]);
+  assert.ok(canEnterCrosswalk(junction,nextWalker));
 });

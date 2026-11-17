@@ -40,7 +40,7 @@ test('a walker waits on pavement, completes a granted crossing, and releases onc
   const walker=createSidewalkWalker(sidewalkCircuit(crossings,1),1.18,{before:east.id});
   let clear=false;
   const permits=[];
-  const traffic={canCross(id){permits.push(id);return clear;}};
+  const traffic={canCross(person){permits.push(person.crosswalk);return clear;}};
   const dt=1/60;
   for (let frame=0;frame<180 && !walker.request.active;frame++) walker.step(dt,traffic);
   assert.ok(walker.request.active);

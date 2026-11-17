@@ -365,11 +365,11 @@ export function startTraffic(ctx) {
   }
 
   return {
-    canCross(id) {
+    canCross(person) {
       const obstacles=ctx.controls?.getMovingColliderBoxes?.() ?? colliders;
       const player=playerPosition?.mounted
         ? setCarBounds(playerCrossingBox,playerPosition.x,playerPosition.z,playerPosition.heading) : null;
-      return canEnterCrosswalk(junction,id,player ? [player,...obstacles] : obstacles);
+      return canEnterCrosswalk(junction,person,player ? [player,...obstacles] : obstacles);
     },
     update(dt) {
       const phase = getDayPhase();
