@@ -32,6 +32,7 @@ import { createRenderer, createVignette } from './engine/renderer.js';
 import { createControls, EYE_HEIGHT } from './engine/controls.js';
 import { createSky } from './engine/sky.js';
 import { createStreetReflection } from './engine/street-reflections.js';
+import { HEAVIEST_CORNER_CROSSWALK } from './engine/traffic-motion.mjs';
 import { addStreetSurfaces, getStreetSegments, inRoad } from './engine/street-layout.js';
 import { materials } from './engine/materials.js';
 import * as deco from './engine/deco.js';
@@ -174,15 +175,18 @@ async function boot() {
   // merged into one geometry, one draw call, worn off-white.
   {
     const bars = [];
-    const BAR_W = 0.55, BAR_L = 3.4, GAP = 0.55, N = 8;
-    const SPAN = N * (BAR_W + GAP);
-    for (const [ax, az, horizontal] of [
-      [0, 14.5, true], [0, -14.5, true],   // across 20th, north & south approaches
-      [14.5, 0, false], [-14.5, 0, false], // across 1st Ave, east & west approaches
+    const {offset,depth} = HEAVIEST_CORNER_CROSSWALK;
+    const bar = .55, gap = .55;
+    const width20th = plan.streets.find(street=>street.name==='20th Street North')?.width ?? 0;
+    const widthFirst = plan.streets.find(street=>street.name==='1st Avenue North')?.width ?? 0;
+    for (const [ax,az,horizontal,width] of [
+      [0,offset,true,width20th],[0,-offset,true,width20th],
+      [offset,0,false,widthFirst],[-offset,0,false,widthFirst],
     ]) {
-      for (let i = 0; i < N; i++) {
-        const off = -SPAN / 2 + (BAR_W + GAP) * i + BAR_W / 2;
-        const g = new THREE.PlaneGeometry(horizontal ? BAR_W : BAR_L, horizontal ? BAR_L : BAR_W);
+      const count = Math.floor((width-.50+gap)/(bar+gap));
+      for (let i=0;i<count;i++) {
+        const off = (i-(count-1)/2)*(bar+gap);
+        const g = new THREE.PlaneGeometry(horizontal ? bar : depth, horizontal ? depth : bar);
         g.rotateX(-Math.PI / 2);
         g.translate(ax + (horizontal ? off : 0), 0.05, az + (horizontal ? 0 : off));
         bars.push(g);

@@ -3,7 +3,7 @@ import { buildPeriodSedan, updateSedanWheels, TYRE_RADIUS } from '../engine/peri
 import { HALF_LENGTH, setCarBounds } from '../engine/vehicle-motion.mjs';
 import { createDriverPerformer } from '../engine/driver-performer.js';
 import { ROAD_HEIGHT } from '../engine/street-layout.js';
-import { advanceTraffic, blockerGap, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore, wrapDistance } from '../engine/traffic-motion.mjs';
+import { advanceTraffic, blockerGap, HEAVIEST_CORNER_CROSSWALK, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore, wrapDistance } from '../engine/traffic-motion.mjs';
 
 export function startTraffic(ctx) {
   const { THREE, scene, plan, getDayPhase, streetReflection } = ctx;
@@ -38,7 +38,7 @@ export function startTraffic(ctx) {
   }
 
   const junction = makeJunction(routes.find(route=>route.name === '20th Street North'),
-    routes.find(route=>route.name === '1st Avenue North'));
+    routes.find(route=>route.name === '1st Avenue North'),HEAVIEST_CORNER_CROSSWALK);
   const CARS_PER_LANE_KM = 5;
   const instances = [];
   for (const route of routes) {

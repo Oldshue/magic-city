@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  advanceTraffic, blockerGap, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore,
+  advanceTraffic, blockerGap, HEAVIEST_CORNER_CROSSWALK, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore,
 } from '../src/engine/traffic-motion.mjs';
+import { HALF_LENGTH } from '../src/engine/vehicle-motion.mjs';
 
 test('opposite directions occupy opposite sides of a two-way street', () => {
   const north = lanePosition(0,30,Math.PI,4.84);
@@ -58,4 +59,26 @@ test('the junction keeps new vehicles outside while a pedestrian is in the cross
   reserveJunction(junction,[approach],{x:16,z:15,y:1.7});
   assert.equal(junction.owner,approach);
   assert.equal(junctionGap(junction,approach),Infinity);
+});
+
+
+test('traffic yields before the painted crosswalk when a person approaches from the sidewalk', () => {
+  const [twentieth,first] = roads();
+  const crossing = HEAVIEST_CORNER_CROSSWALK;
+  const junction = makeJunction(twentieth,first,crossing);
+  const lead = {route:first,dist:72,dir:1};
+  reserveJunction(junction,[lead],{x:-13.8,z:12.6,y:1.7});
+  assert.equal(junction.owner,null);
+  const halt = lead.dist+junctionGap(junction,lead);
+  const outerEdge = crossing.offset+crossing.depth/2;
+  assert.ok(first.junction.at-halt-HALF_LENGTH>outerEdge);
+
+  reserveJunction(junction,[lead],{x:-23,z:18,y:1.7});
+  assert.equal(junction.owner,lead);
+  lead.dist=first.junction.at+outerEdge+.5;
+  reserveJunction(junction,[lead]);
+  assert.equal(junction.owner,lead);
+  lead.dist=first.junction.at+outerEdge+HALF_LENGTH+.1;
+  reserveJunction(junction,[lead]);
+  assert.equal(junction.owner,null);
 });

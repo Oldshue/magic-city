@@ -5,6 +5,10 @@ const ACCELERATION = 2.25;
 const YIELD_MARGIN = .95;
 const LOOKAHEAD = 27;
 
+export const HEAVIEST_CORNER_CROSSWALK = Object.freeze({
+  offset:14.5, depth:3.4, sidewalkApproach:3,
+});
+
 export function wrapDistance(value, length) {
   return ((value % length) + length) % length;
 }
@@ -52,7 +56,7 @@ function intersectSegments(a,b,c,d) {
   return u>=0 && u<=1 && v>=0 && v<=1 ? [u,v] : null;
 }
 
-export function makeJunction(routeA,routeB) {
+export function makeJunction(routeA,routeB,crosswalk) {
   if (!routeA || !routeB) return null;
   let stationA=0;
   for (let i=0;i<routeA.segLens.length;i++) {
@@ -62,12 +66,13 @@ export function makeJunction(routeA,routeB) {
       const cross=intersectSegments(a,b,routeB.pts[j],routeB.pts[j+1]);
       if (cross) {
         const [u,v]=cross;
-        // An approach is measured from the road centerline. Cars wait
-        // behind the crosswalk, then keep the reservation until the tail clears.
-        routeA.junction={at:stationA+u*routeA.segLens[i],edge:routeB.width/2+HALF_LENGTH};
-        routeB.junction={at:stationB+v*routeB.segLens[j],edge:routeA.width/2+HALF_LENGTH};
+        // The footprint must clear the far edge of the crossing before
+        // perpendicular traffic gets a reservation.
+        const outerEdge = crosswalk ? crosswalk.offset+crosswalk.depth/2 : 0;
+        routeA.junction={at:stationA+u*routeA.segLens[i],edge:Math.max(routeB.width/2,outerEdge)+HALF_LENGTH};
+        routeB.junction={at:stationB+v*routeB.segLens[j],edge:Math.max(routeA.width/2,outerEdge)+HALF_LENGTH};
         return {x:a.x+(b.x-a.x)*u,z:a.z+(b.z-a.z)*u,
-          halfX:routeA.width/2,halfZ:routeB.width/2,owner:null};
+          halfX:routeA.width/2,halfZ:routeB.width/2,crosswalk,owner:null};
       }
       stationB+=routeB.segLens[j];
     }
@@ -81,9 +86,18 @@ const beforeCenter = car => (car.route.junction.at-car.dist)*car.dir;
 
 export function reserveJunction(junction, cars, blocker) {
   if (!junction) return;
-  junction.blocked = blocker && !blocker.riding && (blocker.mounted || blocker.y<=2.6)
-    && Math.abs(blocker.x-junction.x) < junction.halfX+.7
-    && Math.abs(blocker.z-junction.z) < junction.halfZ+.7;
+  junction.blocked = false;
+  if (blocker && !blocker.riding && (blocker.mounted || blocker.y<=2.6)) {
+    const x = Math.abs(blocker.x-junction.x);
+    const z = Math.abs(blocker.z-junction.z);
+    junction.blocked = x<junction.halfX+.7 && z<junction.halfZ+.7;
+    if (junction.crosswalk) {
+      const {offset,depth,sidewalkApproach} = junction.crosswalk;
+      const marked = depth/2+.7;
+      junction.blocked ||= (Math.abs(x-offset)<marked && z<junction.halfZ+sidewalkApproach+.7)
+        || (Math.abs(z-offset)<marked && x<junction.halfX+sidewalkApproach+.7);
+    }
+  }
   if (junction.owner && beforeCenter(junction.owner) < -junction.owner.route.junction.edge) junction.owner=null;
   if (junction.owner || junction.blocked) return;
 
