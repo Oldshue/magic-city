@@ -11,9 +11,10 @@
  * waiting knots (same instanced families, COUNT just grows), and keeps
  * walkers out of the railroad corridor except at its legal crossings.
  */
-import { inRoad, SIDEWALK_HEIGHT } from '../engine/street-layout.js';
+import { createStreetContact, inRoad, SIDEWALK_HEIGHT } from '../engine/street-layout.js';
 import { createStreetCharacters, in20thStreetBlock, inHeaviestCorner } from '../engine/street-characters.js';
 import { createWindowVisit } from './window-visit.mjs';
+import { createSidewalkWalker, sidewalkCircuit } from './sidewalk-circuit.mjs';
 
 export function startPedestrians(ctx) {
   const { THREE, scene, plan, getDayPhase } = ctx;
@@ -219,34 +220,36 @@ export function startPedestrians(ctx) {
     const scale = Number.isFinite(actor.scale) && actor.scale > 0 ? actor.scale : 1;
     addStandingFigure(actor.position[0], actor.position[1], yaw, scale, actor);
   }
-  // A short circuit keeps both curbs of the first block populated in play.
-  // These walkers use the same animation, route and fallback as the rest of the crowd.
   const blockWalkers = [];
-  if (highDetail) {
-    const blockLength = 31;
-    const blockRoute = {
-      pts:[new THREE.Vector3(0,0,17),new THREE.Vector3(0,0,17 + blockLength)],
-      segLens:[blockLength], total:blockLength, width:22,
-    };
-    for (const [id,side,dist,dir,scale,speed,model,paletteIdx,shop,linger] of [
-      ['west-street-worker',-1,14,-1,1.04,1.24,'street-worker',1],
-      ['crown-window-shopper',-1,25,-1,.99,1.01,'bank-clerk',5,'lunch',2.76],
-      ['walker-window-shopper',1,13,-1,.95,1.08,'shopkeeper',4,'tailor',3.42],
-      ['east-street-clerk',1,27,-1,1.01,1.18,'bank-clerk',6],
+  if (highDetail && ctx.crossings?.length) {
+    const streetHeight=createStreetContact(scene,0);
+    const circuits=new Map([-1,1].map(side=>[side,sidewalkCircuit(ctx.crossings,side)]));
+    for (const [id,side,start,scale,speed,model,paletteIdx,shop,linger] of [
+      ['west-street-worker',-1,{z:24.85},1.04,1.24,'street-worker',1],
+      ['crown-window-shopper',-1,{z:42},.99,1.01,'bank-clerk',5,'lunch',2.76],
+      ['walker-window-shopper',1,{z:30},.95,1.08,'shopkeeper',4,'tailor',3.42],
+      ['east-street-clerk',1,{before:'south'},1.01,1.18,'bank-clerk',6],
     ]) {
-      const laneX=side*(blockRoute.width/2+2);
+      const circuit=circuits.get(side);
+      if (!circuit) continue;
+      const journey=createSidewalkWalker(circuit,speed,start);
+      const {x,z}=journey.pose.point;
       const window=ctx.shopCounters?.find(counter=>counter.kind===shop)?.window;
       const person={
-        id,route:blockRoute,side,dist,dir,scale,speed,walkingBlock:true,model,paletteIdx,
-        visit:window && createWindowVisit(window,laneX,speed,linger),
+        id,journey,scale,speed,walkingBlock:true,model,paletteIdx,streetHeight,
+        visit:window && createWindowVisit(window,circuit.laneX,speed,linger),
         sidestep:0,bob:rand()*Math.PI*2,hatStyle:model==='shopkeeper' ? 1 : 0,
-        hatDark:true,standing:false,prop:false,x:laneX,z:blockRoute.pts[0].z+dist,
+        hatDark:true,standing:false,prop:false,x,z,floor:streetHeight(x,z),
       };
       person.blocked=(x,z,radius)=>{
         const eye=ctx.camera.position;
         return (eye.y<2.38 && Math.hypot(eye.x-x,eye.z-z)<radius)
-          || blockWalkers.some(other=>other!==person && other.side===side && Math.hypot(other.x-x,other.z-z)<radius);
+          || blockWalkers.some(other=>other!==person && Math.hypot(other.x-x,other.z-z)<radius);
       };
+      person.following=(x,z,heading)=>blockWalkers.some(other=>other!==person
+        && Math.hypot(other.x-x,other.z-z)<.73
+        && Math.cos((other.facing ?? other.journey.pose.heading)-heading)>.25);
+      ctx.crossingVisitors.push(journey.request);
       blockWalkers.push(person);
       people.push(person);
     }
@@ -367,50 +370,46 @@ export function startPedestrians(ctx) {
           ox = valid ? declared.position[0] : p.x;
           oz = valid ? declared.position[1] : p.z;
           heading = valid && Number.isFinite(declared.yawDeg) ? declared.yawDeg * Math.PI / 180 : p.facing;
-        } else {
-          const previous = p.dist;
-          const startZ = p.route.pts[0].z;
+        } else if (p.journey) {
+          const journey=p.journey;
           if (!p.visit?.pose.phase) {
-            p.dist += p.speed*p.dir*dt;
-            if (p.walkingBlock) {
-              if (p.dir<0 && Math.abs(p.sidestep)<.13) p.visit?.enter(startZ+previous,startZ+p.dist,p.blocked);
-              if (p.dist<0 || p.dist>p.route.total) {
-                p.dist=THREE.MathUtils.clamp(p.dist,0,p.route.total);
-                p.dir*=-1;
-              }
+            const previousZ=journey.pose.point.z;
+            journey.step(dt,ctx.traffic,p.following);
+            if (journey.onShopfront && Math.abs(p.sidestep)<.13) {
+              p.visit?.enter(previousZ,journey.pose.point.z,p.blocked);
             }
           }
-          const visit = p.visit?.pose.phase && p.visit.step(dt,p.blocked);
-          if (visit) {
-            ox=visit.point.x;
-            oz=visit.point.z;
-            p.dist=oz-startZ;
-            heading=visit.heading;
-          } else {
-            sample(p.route, p.dist, !p.walkingBlock);
-            heading = Math.atan2(segDir.x * p.dir, segDir.z * p.dir);
-            const edge = p.route.width / 2 + 2.0;
-            const curbSide = p.side * (p.walkingBlock ? 1 : p.dir);
-            ox = pos.x + segDir.z * edge * curbSide;
-            oz = pos.z - segDir.x * edge * curbSide;
+          const visit=p.visit?.pose.phase && p.visit.step(dt,p.blocked);
+          const step=visit || journey.pose;
+          ox=step.point.x;oz=step.point.z;heading=step.heading;
+          if (visit && !visit.phase) journey.resumeShopfront(oz);
+          if (!visit) {
+            const eye=ctx.camera.position;
+            const sx=Math.sin(heading), cz=Math.cos(heading);
+            const dx=eye.x-ox, dz=eye.z-oz;
+            const along=dx*sx+dz*cz, beside=dx*cz-dz*sx;
+            const passing=!journey.request.active && eye.y<2.3
+              && along>-.95 && along<2.9 && Math.abs(beside)<1.17;
+            const offset=passing ? (beside>=0 ? -.89 : .89) : 0;
+            const awayFromRoad=offset===0 || p.streetHeight(ox+cz*offset,oz-sx*offset)>.13;
+            p.sidestep=THREE.MathUtils.damp(p.sidestep,awayFromRoad?offset:0,passing?7:5,dt);
+            ox+=cz*p.sidestep;
+            oz-=sx*p.sidestep;
           }
-          if (p.walkingBlock) {
-            if (!visit) {
-              const eye=ctx.camera.position;
-              const distance=(eye.z-oz)*p.dir;
-              const beside=eye.x-ox;
-              const clear=eye.y<2.3 && distance>-.95 && distance<2.9 && Math.abs(beside)<1.17;
-              const aside=clear ? (beside>=0 ? -.89 : .89) : 0;
-              p.sidestep=THREE.MathUtils.damp(p.sidestep,aside,clear?7:3.8,dt);
-              ox+=p.sidestep;
-            }
-            p.facing ??= heading;
-            const turn = THREE.MathUtils.euclideanModulo(heading - p.facing + Math.PI, Math.PI*2) - Math.PI;
-            p.facing += turn * (1 - Math.exp(-dt * 9));
-            heading = p.facing;
-            p.strideSpeed=dt>0 ? Math.hypot(ox-p.x,oz-p.z)/dt : p.speed;
-            p.x=ox;p.z=oz;
-          }
+          p.facing ??= heading;
+          const turn = THREE.MathUtils.euclideanModulo(heading - p.facing + Math.PI, Math.PI*2) - Math.PI;
+          p.facing += turn * (1 - Math.exp(-dt * 9));
+          heading = p.facing;
+          p.strideSpeed=dt>0 ? Math.hypot(ox-p.x,oz-p.z)/dt : p.speed;
+          p.floor=THREE.MathUtils.damp(p.floor,p.streetHeight(ox,oz),15,dt);
+          p.x=ox;p.z=oz;
+        } else {
+          p.dist += p.speed*p.dir*dt;
+          sample(p.route,p.dist,true);
+          heading=Math.atan2(segDir.x*p.dir,segDir.z*p.dir);
+          const edge=(p.route.width/2+2)*p.side*p.dir;
+          ox=pos.x+segDir.z*edge;
+          oz=pos.z-segDir.x*edge;
         }
         const nx = Math.cos(heading);
         const nz = -Math.sin(heading);
@@ -425,7 +424,7 @@ export function startPedestrians(ctx) {
         const S = p.scale;
         const onPavement = (in20thStreetBlock(ox,oz) && Math.abs(ox)>11)
           || (inHeaviestCorner(ox,oz) && !inRoad(ox,oz,ctx.streetSegments ?? []));
-        const floor = p.actor?.groundY ?? (onPavement ? SIDEWALK_HEIGHT : 0);
+        const floor = p.floor ?? p.actor?.groundY ?? (onPavement ? SIDEWALK_HEIGHT : 0);
         const groundY = floor + bobY;
 
         if (highDetail?.show(i, p, ox, oz, heading, floor, moving, dt)) {

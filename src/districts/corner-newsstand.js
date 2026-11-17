@@ -108,7 +108,7 @@ function makeCustomers(ctx,x,z) {
       position:initial, groundY:SIDEWALK_HEIGHT, scale:i ? .95 : 1.02, yawDeg:i ? 210 : 90,
       speed:i ? 1.32 : 1.45, moving:true,
     };
-    const pedestrian = {x:initial[0], z:initial[1], y:1.7, active:false};
+    const pedestrian = {x:initial[0], z:initial[1], y:1.7, crosswalk:'north', active:false};
     ctx.characters.push(actor);
     ctx.crossingVisitors.push(pedestrian);
     return {actor,steps,pedestrian,index:start,time:0};
@@ -126,7 +126,7 @@ function advanceCustomer(customer,traffic,dt) {
   }
   if (step.crossing && !customer.crossing) {
     actor.moving=false;
-    if (traffic && !traffic.canCross()) return;
+    if (traffic && !traffic.canCross(pedestrian.crosswalk)) return;
     customer.crossing=true;
   }
   const dx=step.to[0]-oldX, dz=step.to[1]-oldZ;

@@ -32,8 +32,8 @@ import { createRenderer, createVignette } from './engine/renderer.js';
 import { createControls, EYE_HEIGHT } from './engine/controls.js';
 import { createSky } from './engine/sky.js';
 import { createStreetReflection } from './engine/street-reflections.js';
-import { HEAVIEST_CORNER_CROSSWALK } from './engine/traffic-motion.mjs';
-import { addStreetSurfaces, getStreetSegments, inRoad } from './engine/street-layout.js';
+import { cornerCrosswalks } from './engine/traffic-motion.mjs';
+import { addStreetSurfaces, getStreetSegments, inRoad, ROAD_HEIGHT } from './engine/street-layout.js';
 import { materials } from './engine/materials.js';
 import * as deco from './engine/deco.js';
 import { createInteractions } from './engine/interactions.mjs';
@@ -171,24 +171,21 @@ async function boot() {
   }
 
   // --- Crosswalks: parallel-bar markings at the Heaviest Corner --------
-  // Four approaches at 20th & 1st (x=0, z=0). Bars sit 5cm above asphalt;
-  // merged into one geometry, one draw call, worn off-white.
+  // The stripes share the dimensions used for curb waits and traffic.
+  const crossings = cornerCrosswalks(0,0,
+    plan.streets.find(street=>street.name==='20th Street North')?.width,
+    plan.streets.find(street=>street.name==='1st Avenue North')?.width);
   {
     const bars = [];
-    const {offset,depth} = HEAVIEST_CORNER_CROSSWALK;
     const bar = .55, gap = .55;
-    const width20th = plan.streets.find(street=>street.name==='20th Street North')?.width ?? 0;
-    const widthFirst = plan.streets.find(street=>street.name==='1st Avenue North')?.width ?? 0;
-    for (const [ax,az,horizontal,width] of [
-      [0,offset,true,width20th],[0,-offset,true,width20th],
-      [offset,0,false,widthFirst],[-offset,0,false,widthFirst],
-    ]) {
-      const count = Math.floor((width-.50+gap)/(bar+gap));
+    for (const {x,z,axis,halfSpan,depth} of crossings) {
+      const horizontal=axis==='x';
+      const count = Math.floor((2*halfSpan-.50+gap)/(bar+gap));
       for (let i=0;i<count;i++) {
         const off = (i-(count-1)/2)*(bar+gap);
         const g = new THREE.PlaneGeometry(horizontal ? bar : depth, horizontal ? depth : bar);
         g.rotateX(-Math.PI / 2);
-        g.translate(ax + (horizontal ? off : 0), 0.05, az + (horizontal ? 0 : off));
+        g.translate(x + (horizontal ? off : 0), ROAD_HEIGHT+.002, z + (horizontal ? 0 : off));
         bars.push(g);
       }
     }
@@ -210,8 +207,10 @@ async function boot() {
     cwGeo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     cwGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     cwGeo.setIndex(new THREE.BufferAttribute(idx, 1));
-    const cwMat = new THREE.MeshStandardMaterial({ color: 0xcfc8b4, roughness: 0.9, metalness: 0.0 });
+    const cwMat = new THREE.MeshStandardMaterial({color:0xcfc8b4,roughness:.9,
+      polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
     const cw = new THREE.Mesh(cwGeo, cwMat);
+    cw.name = 'First and 20th marked crossings';
     cw.receiveShadow = true;
     cw.castShadow = false;
     cw.userData.noShadow = true;
@@ -232,7 +231,7 @@ async function boot() {
   // and read controls.getColliderBoxes() for their own collision checks.
   const ctx = {
     THREE, scene, camera, renderer, plan, environment, streetReflection,
-    materials, deco, registerInteractive, controls, streetSegments,
+    materials, deco, registerInteractive, controls, streetSegments, crossings,
     getDayPhase: sky.getDayPhase,
     wardrobe: {pocketSquare:null},
     interactives, characters: [], shopCounters: [], newsstands: [], crossingVisitors: [], interactions: createInteractions(),

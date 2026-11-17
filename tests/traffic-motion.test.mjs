@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  advanceTraffic, blockerGap, HEAVIEST_CORNER_CROSSWALK, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore,
+  advanceTraffic, blockerGap, canEnterCrosswalk, HEAVIEST_CORNER_CROSSWALK, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore,
 } from '../src/engine/traffic-motion.mjs';
 import { HALF_LENGTH } from '../src/engine/vehicle-motion.mjs';
 
@@ -92,7 +92,7 @@ test('kiosk customers hold their crossing while perpendicular traffic can procee
   junction.owner=approaching;
   reserveJunction(junction,[approaching,across],null,[{x:-12.9,z:-14.5,y:1.7}]);
   assert.equal(junction.owner,across);
-  assert.equal(junction.crossingRequested,true);
+  assert.ok(junction.crossings.find(crossing=>crossing.id==='north').requested);
   assert.ok(Number.isFinite(junctionGap(junction,approaching)));
   assert.equal(junctionGap(junction,across),Infinity);
 });
@@ -104,4 +104,39 @@ test('a committed sedan clears a crosswalk only when a waiting walker is outside
   assert.equal(blockerGap(car, walker), 0);
   assert.equal(blockerGap(car, walker, true), Infinity);
   assert.equal(blockerGap(car, {...walker, z:5.9}, true), 0);
+});
+
+
+test('every painted arm reserves its actual road and allows perpendicular cars to proceed',()=>{
+  for (const id of ['north','south','east','west']) {
+    const [twentieth,first] = roads();
+    const junction=makeJunction(twentieth,first,HEAVIEST_CORNER_CROSSWALK);
+    const crossing=junction.crossings.find(crossing=>crossing.id===id);
+    const other=crossing.axis==='x' ? first : twentieth;
+    const car={route:crossing.route,dist:77,dir:1};
+    const perpendicular={route:other,dist:72,dir:1};
+    const walker={x:crossing.x,z:crossing.z,y:1.7,crosswalk:id};
+    walker[crossing.axis]+=crossing.halfSpan+1.6;
+    reserveJunction(junction,[car,perpendicular],null,[walker]);
+    assert.equal(junction.owner,perpendicular,id);
+    assert.ok(Number.isFinite(junctionGap(junction,car)));
+    assert.ok(canEnterCrosswalk(junction,id));
+    assert.equal(canEnterCrosswalk(junction,id,[{...crossing.road}]),false);
+    assert.ok(canEnterCrosswalk(junction,id,[{minX:100,maxX:105,minZ:100,maxZ:102}]));
+  }
+});
+
+test('a sedan inside the junction clears both the east and west stripes before crossing admission',()=>{
+  const [twentieth,first] = roads();
+  const junction=makeJunction(twentieth,first,HEAVIEST_CORNER_CROSSWALK);
+  const crossing= {x:-14.5,z:11.6,y:1.7,crosswalk:'west'};
+  const car={route:first,dist:84,dir:1};
+  reserveJunction(junction,[car],null,[crossing]);
+  assert.equal(junction.owner,car);
+  assert.equal(junctionGap(junction,car),Infinity);
+  assert.equal(canEnterCrosswalk(junction,'west'),false);
+  car.dist=121;
+  reserveJunction(junction,[car],null,[crossing]);
+  assert.equal(junction.owner,null);
+  assert.ok(canEnterCrosswalk(junction,'west'));
 });

@@ -9,6 +9,21 @@ export const HEAVIEST_CORNER_CROSSWALK = Object.freeze({
   offset:14.5, depth:3.4, sidewalkApproach:3,
 });
 
+/** The painted crossing, pedestrian route and clearance use the same bounds. */
+export function cornerCrosswalks(x,z,width20th,widthFirst,style=HEAVIEST_CORNER_CROSSWALK) {
+  if (!style || !(width20th>0 && widthFirst>0)) return [];
+  const {offset,depth,sidewalkApproach}=style;
+  return [
+    ['south','x',x,z+offset,width20th/2], ['north','x',x,z-offset,width20th/2],
+    ['east','z',x+offset,z,widthFirst/2], ['west','z',x-offset,z,widthFirst/2],
+  ].map(([id,axis,x,z,halfSpan])=>{
+    const halfX=axis==='x' ? halfSpan : depth/2;
+    const halfZ=axis==='z' ? halfSpan : depth/2;
+    const road={minX:x-halfX,minZ:z-halfZ,maxX:x+halfX,maxZ:z+halfZ};
+    return {id,axis,x,z,halfSpan,depth,sidewalkApproach,road};
+  });
+}
+
 export function wrapDistance(value, length) {
   return ((value % length) + length) % length;
 }
@@ -74,8 +89,13 @@ export function makeJunction(routeA,routeB,crosswalk) {
         const outerEdge = crosswalk ? crosswalk.offset+crosswalk.depth/2 : 0;
         routeA.junction={at:stationA+u*routeA.segLens[i],edge:Math.max(routeB.width/2,outerEdge)+HALF_LENGTH};
         routeB.junction={at:stationB+v*routeB.segLens[j],edge:Math.max(routeA.width/2,outerEdge)+HALF_LENGTH};
-        return {x:a.x+(b.x-a.x)*u,z:a.z+(b.z-a.z)*u,
-          halfX:routeA.width/2,halfZ:routeB.width/2,crosswalk,crossedRoute:routeA,owner:null};
+        const x=a.x+(b.x-a.x)*u, z=a.z+(b.z-a.z)*u;
+        const crossings=cornerCrosswalks(x,z,routeA.width,routeB.width,crosswalk ?? null);
+        for (const crossing of crossings) {
+          crossing.route=crossing.axis==='x' ? routeA : routeB;
+          crossing.requested=false;
+        }
+        return {x,z,halfX:routeA.width/2,halfZ:routeB.width/2,crossings,owner:null};
       }
       stationB+=routeB.segLens[j];
     }
@@ -87,24 +107,43 @@ export function makeJunction(routeA,routeB,crosswalk) {
 const stopLine = route => route.junction.edge + 1.55;
 const beforeCenter = car => (car.route.junction.at-car.dist)*car.dir;
 
-function atJunction(junction, visitor) {
+function atCrosswalk(crossing,visitor) {
+  const dx=Math.abs(visitor.x-crossing.x), dz=Math.abs(visitor.z-crossing.z);
+  const across=crossing.axis==='x' ? dx : dz;
+  const along=crossing.axis==='x' ? dz : dx;
+  return along<crossing.depth/2+.7 && across<crossing.halfSpan+crossing.sidewalkApproach+.7;
+}
+
+function atJunction(junction,visitor) {
   if (!visitor || visitor.riding || !(visitor.mounted || visitor.y<=2.6)) return false;
-  const x = Math.abs(visitor.x-junction.x);
-  const z = Math.abs(visitor.z-junction.z);
-  if (x<junction.halfX+.7 && z<junction.halfZ+.7) return true;
-  if (!junction.crosswalk) return false;
-  const {offset,depth,sidewalkApproach} = junction.crosswalk;
-  const marked = depth/2+.7;
-  return (Math.abs(x-offset)<marked && z<junction.halfZ+sidewalkApproach+.7)
-    || (Math.abs(z-offset)<marked && x<junction.halfX+sidewalkApproach+.7);
+  const x=Math.abs(visitor.x-junction.x), z=Math.abs(visitor.z-junction.z);
+  return (x<junction.halfX+.7 && z<junction.halfZ+.7)
+    || junction.crossings.some(crossing=>atCrosswalk(crossing,visitor));
+}
+
+const hasCrossingRequest = (junction,route)=>junction.crossings.some(c=>c.requested && c.route===route);
+
+/** Cars with a live right-of-way clear before a pedestrian steps down. */
+export function canEnterCrosswalk(junction,id,obstacles=[]) {
+  if (!junction) return true;
+  const crossing=junction.crossings.find(crossing=>crossing.id===id);
+  if (!crossing?.requested) return false;
+  const owner=junction.owner;
+  if (owner?.route===crossing.route && !Number.isFinite(junctionGap(junction,owner))) return false;
+  const road=crossing.road;
+  return !obstacles.some(box=>box.minX<road.maxX && box.maxX>road.minX
+    && box.minZ<road.maxZ && box.maxZ>road.minZ);
 }
 
 export function reserveJunction(junction, cars, blocker, pedestrians = []) {
   if (!junction) return;
   junction.blocked = atJunction(junction,blocker);
-  junction.crossingRequested = pedestrians.some(person=>atJunction(junction,person));
+  for (const crossing of junction.crossings) {
+    crossing.requested=pedestrians.some(person=>(!person.crosswalk || person.crosswalk===crossing.id)
+      && atCrosswalk(crossing,person));
+  }
   if (junction.owner && beforeCenter(junction.owner) < -junction.owner.route.junction.edge) junction.owner=null;
-  if (junction.owner && junction.crossingRequested && junction.owner.route===junction.crossedRoute
+  if (junction.owner && hasCrossingRequest(junction,junction.owner.route)
       && beforeCenter(junction.owner)>=stopLine(junction.owner.route)-.6) junction.owner=null;
   if (junction.owner || junction.blocked) return;
 
@@ -113,7 +152,7 @@ export function reserveJunction(junction, cars, blocker, pedestrians = []) {
     if (!car.route.junction) continue;
     const before=beforeCenter(car);
     const halt=stopLine(car.route);
-    const yielding=junction.crossingRequested && car.route===junction.crossedRoute;
+    const yielding=hasCrossingRequest(junction,car.route);
     // A committed car clears the box before admitting another approach.
     if (before >= -car.route.junction.edge && before < halt-(yielding ? .6 : 0)) {
       junction.owner=car;
@@ -132,7 +171,7 @@ export function junctionGap(junction,car) {
   if (!junction || !car.route.junction) return Infinity;
   const before=beforeCenter(car);
   if (before < -car.route.junction.edge || before > stopLine(car.route)+LOOKAHEAD) return Infinity;
-  const stoppedForCrossing = junction.blocked || (junction.crossingRequested && car.route===junction.crossedRoute);
+  const stoppedForCrossing = junction.blocked || hasCrossingRequest(junction,car.route);
   if (junction.owner===car && (!stoppedForCrossing || before < stopLine(car.route)-.6)) return Infinity;
   return Math.max(0,before-stopLine(car.route));
 }

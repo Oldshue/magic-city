@@ -3,7 +3,7 @@ import { applySedanRide, buildPeriodSedan, updateSedanWheels } from '../engine/p
 import { HALF_LENGTH, setCarBounds, stepSedanRide, TYRE_RADIUS } from '../engine/vehicle-motion.mjs';
 import { createDriverPerformer } from '../engine/driver-performer.js';
 import { ROAD_HEIGHT } from '../engine/street-layout.js';
-import { advanceTraffic, blockerGap, HEAVIEST_CORNER_CROSSWALK, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore, wrapDistance } from '../engine/traffic-motion.mjs';
+import { advanceTraffic, blockerGap, canEnterCrosswalk, HEAVIEST_CORNER_CROSSWALK, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore, wrapDistance } from '../engine/traffic-motion.mjs';
 
 export function startTraffic(ctx) {
   const { THREE, scene, plan, getDayPhase, streetReflection } = ctx;
@@ -168,6 +168,7 @@ export function startTraffic(ctx) {
   scene.add(detailedTraffic);
   const detailedPools = lacquer.map(()=>[]);
   const colliders = [];
+  const playerCrossingBox = {};
   ctx.controls?.addMovingColliders?.(colliders);
   const player = {};
   const approachingPedestrians = [];
@@ -229,10 +230,10 @@ export function startTraffic(ctx) {
     return Math.abs(car.x-junction.x) < 79 && car.z-junction.z > -45 && car.z-junction.z < 64;
   }
 
-  function updateCollider(car,blocker) {
-    if (!car.route.junction || !isOnFirstBlock(car)
-        || Math.abs(car.x-blocker.x) > 35 || Math.abs(car.z-blocker.z) > 35) return;
-    colliders.push(setCarBounds(car.bodyBox,car.x,car.z,car.heading,car));
+  function updateCollider(car) {
+    if (car.route.junction && isOnFirstBlock(car)) {
+      colliders.push(setCarBounds(car.bodyBox,car.x,car.z,car.heading,car));
+    }
   }
 
   const legacyParts = [[bodyMesh,1],[hoodMesh,1],[cowlMesh,1],[cabinMesh,1],[roofMesh,1],
@@ -359,22 +360,16 @@ export function startTraffic(ctx) {
       car.speed = car.nextSpeed;
       car.dist = wrapDistance(car.dist+car.travel*car.dir,car.route.total);
       locate(car);
-      if (blocker) updateCollider(car,blocker);
+      updateCollider(car);
     }
   }
 
   return {
-    canCross() {
-      if (!junction || !junction.crossingRequested) return !junction;
-      const owner=junction.owner;
-      if (owner?.route===junction.crossedRoute && !Number.isFinite(junctionGap(junction,owner))) return false;
-      const stripe=junction.z-HEAVIEST_CORNER_CROSSWALK.offset;
-      const reach=HEAVIEST_CORNER_CROSSWALK.depth/2;
-      if (playerPosition?.mounted && Math.abs(playerPosition.x-junction.x)<junction.halfX+1.2
-          && Math.abs(playerPosition.z-stripe)<reach+HALF_LENGTH+3.6) return false;
-      return !ctx.controls?.getMovingColliderBoxes?.().some(box=>
-        box.minX<junction.x+junction.halfX && box.maxX>junction.x-junction.halfX
-        && box.minZ<stripe+reach && box.maxZ>stripe-reach);
+    canCross(id) {
+      const obstacles=ctx.controls?.getMovingColliderBoxes?.() ?? colliders;
+      const player=playerPosition?.mounted
+        ? setCarBounds(playerCrossingBox,playerPosition.x,playerPosition.z,playerPosition.heading) : null;
+      return canEnterCrosswalk(junction,id,player ? [player,...obstacles] : obstacles);
     },
     update(dt) {
       const phase = getDayPhase();

@@ -154,11 +154,12 @@ export function createStreetCharacters({THREE, scene, camera}) {
         if (gait!=null) {
           slot.feet ??= createWalkFootContacts(slot.instance);
           if (slot.frame < frame-1) slot.feet.clear();
-          slot.feet.apply(gait);
+          slot.feet.apply(gait,floor,person.streetHeight);
         } else {
           slot.feet?.clear();
         }
-        slot.instance.userData.activity = visit?.phase ?? 'walking';
+        slot.instance.userData.activity = visit?.phase ?? person.journey.pose.activity;
+        slot.instance.userData.crosswalk = person.journey.pose.crosswalk;
         slot.instance.userData.motion = action.getClip().name;
         slot.instance.userData.gait = gait;
       }
@@ -167,7 +168,8 @@ export function createStreetCharacters({THREE, scene, camera}) {
       const passedVisitor = moving && dx*dx+dz*dz<17;
       const glance=visit?.glance ?? 0;
       const lookAtWindow=glance>.001;
-      slot.headAdjusted=Boolean(slot.head && (lookAtWindow || person.actor?.attending || metVisitor || passedVisitor));
+      const wait=person.journey?.pose.wait ?? 0;
+      slot.headAdjusted=Boolean(slot.head && (lookAtWindow || wait>0 || person.actor?.attending || metVisitor || passedVisitor));
       if (slot.headAdjusted) {
         slot.headRotation.copy(slot.head.quaternion);
         if (lookAtWindow) {
@@ -177,6 +179,8 @@ export function createStreetCharacters({THREE, scene, camera}) {
           const pitch = Math.atan2(floor+1.61*person.scale-wy,Math.hypot(wx-x,wz-z));
           slot.head.rotateY(glance*THREE.MathUtils.clamp(angle,-.78,.78));
           slot.head.rotateX(glance*THREE.MathUtils.clamp(pitch,-.15,.19));
+        } else if(wait>0) {
+          slot.head.rotateY(.67*Math.sin(wait*2.75));
         } else {
           const angle=THREE.MathUtils.euclideanModulo(Math.atan2(dx,dz)-facing+Math.PI,Math.PI*2)-Math.PI;
           slot.head.rotateY(THREE.MathUtils.clamp(angle*.65,-.53,.53));

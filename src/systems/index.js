@@ -28,7 +28,7 @@ export function startSystems(ctx) {
   const driving = safeStart((c) => startDriving({ ...c, streetcars }), ctx, 'driving');
   const traffic = safeStart((c) => startTraffic({ ...c, driving }), ctx, 'traffic');
   const police = driving ? safeStart((c) => startPolice({ ...c, driving }), ctx, 'police') : null;
-  const pedestrians = safeStart(startPedestrians, ctx, 'pedestrians');
+  const pedestrians = safeStart((c) => startPedestrians({ ...c, traffic }), ctx, 'pedestrians');
   const weather = safeStart(startWeather, ctx, 'weather');
 
   const carPositions = streetcars && streetcars.getCarPositions ? streetcars.getCarPositions() : [];
