@@ -73,7 +73,7 @@ export function startDriving(ctx) {
   const bounds = plan.bounds;
   const streetContact = createStreetContact(scene, TYRE_RADIUS, 0.042);
   const streetHeight = createStreetContact(scene, 0);
-  const player = createDriverPerformer(scene);
+  const player = createDriverPerformer(scene,{wardrobe:ctx.wardrobe});
 
   // --- Build parked sedans ------------------------------------------------
   const cars = SEDAN_SPECS.map((spec) => {

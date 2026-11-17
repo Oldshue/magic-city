@@ -11,7 +11,7 @@
     "licenseSource": "https://polyhaven.com/license"
   },
   "downtown-characters": {
-    "description": "Game-rigged characters with locally authored caps, apron, spectacles, idle, walk, boarding and disembarking from either door, steering, greeting and service animations, and fitted MPFB expression targets for the two shopkeepers",
+    "description": "Game-rigged characters with locally authored caps, apron, spectacles, idle, walk, boarding and disembarking from either door, steering, greeting and service animations, and silk-folding and fitted MPFB expression targets for the counter staff",
     "files": [
       "bank-clerk.glb",
       "shopkeeper.glb",
@@ -19,7 +19,8 @@
       "pharmacist.glb",
       "crown-proprietor.glb",
       "street-worker.glb",
-      "ledger-vendor.glb"
+      "ledger-vendor.glb",
+      "walker-tailor.glb"
     ],
     "tool": "Blender with MakeHuman Community MPFB 2.0.18",
     "script": "scripts/author-downtown-characters.py",
@@ -29,6 +30,13 @@
       "https://github.com/makehumancommunity/mpfb2/blob/master/LICENSE.md"
     ],
     "clothingCredit": "Margaret Toigo and the MakeHuman Community",
+    "upstreamAssetLicense": "CC0-1.0",
+    "licenseSource": "https://static.makehumancommunity.org/about/license.html"
+  },
+  "walker-window-suits": {
+    "description": "Original window forms made from the fitted CC0 downtown suits, with carved wooden necks and woven navy serge and tobacco herringbone finishes",
+    "files": ["walker-window-suits.glb"],
+    "script": "scripts/author-walker-windows.py",
     "upstreamAssetLicense": "CC0-1.0",
     "licenseSource": "https://static.makehumancommunity.org/about/license.html"
   },

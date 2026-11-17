@@ -2,7 +2,7 @@ import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
 import { findCounterFace, updateCounterFace } from './counter-face.js';
 
-const MODELS = ['bank-clerk','shopkeeper','street-worker','pharmacist','crown-proprietor','ledger-vendor'];
+const MODELS = ['bank-clerk','shopkeeper','street-worker','pharmacist','crown-proprietor','ledger-vendor','walker-tailor'];
 const TINTS = [0xb09774,0x977655,0x919592,0x9d714f,0x767a64,0xa77878,0x737f9e,0x817451];
 const STRIDE_SPEED = 1.10;
 
@@ -41,6 +41,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
   const models = new Map();
   const tinted = new WeakMap();
   const hand = new THREE.Vector3();
+  const knuckle = new THREE.Vector3();
   function loadModel(name) {
     if (models.has(name) || !MODELS.includes(name)) return models.get(name);
     models.set(name,null);
@@ -91,7 +92,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
         if (mesh.isMesh && /suit|fedora|felt/i.test(mesh.material.name)) wardrobe.push([mesh,mesh.material]);
       });
       slot = {instance,mixer,clips,wardrobe,face:findCounterFace(instance),
-        head:instance.getObjectByName('head'),hand:instance.getObjectByName('hand_r')};
+        head:instance.getObjectByName('head'),hand:instance.getObjectByName('hand_r'),finger:instance.getObjectByName('middle_01_r')};
       model.slots.push(slot);
     }
     slot.mixer.stopAllAction();
@@ -140,6 +141,12 @@ export function createStreetCharacters({THREE, scene, camera}) {
       if (slot.head && (person.actor?.attending || metVisitor || passedVisitor)) {
         const angle=THREE.MathUtils.euclideanModulo(Math.atan2(dx,dz)-facing+Math.PI,Math.PI*2)-Math.PI;
         slot.head.rotateY(THREE.MathUtils.clamp(angle*.65,-.53,.53));
+      }
+      const fabric = person.actor?.fabricContact;
+      if (fabric && slot.hand && slot.finger) {
+        slot.hand.getWorldPosition(hand);
+        hand.lerp(slot.finger.getWorldPosition(knuckle), .67);
+        fabric.followHand(hand);
       }
       const held=person.actor?.carries;
       if (held && slot.hand) {

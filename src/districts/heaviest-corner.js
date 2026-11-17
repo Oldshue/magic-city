@@ -610,6 +610,6 @@ export async function build(ctx) {
     use: 'warehouse', floorsRange: [2, 4], alley: false,
   }));
 
-  add20thStreetStores(ctx, group, shopSurfaces);
+  await add20thStreetStores(ctx, group, shopSurfaces);
   scene.add(group);
 }

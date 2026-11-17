@@ -234,6 +234,7 @@ async function boot() {
     THREE, scene, camera, renderer, plan, environment, streetReflection,
     materials, deco, registerInteractive, controls, streetSegments,
     getDayPhase: sky.getDayPhase,
+    wardrobe: {pocketSquare:null},
     interactives, characters: [], shopCounters: [], newsstands: [], crossingVisitors: [], interactions: createInteractions(),
   };
 

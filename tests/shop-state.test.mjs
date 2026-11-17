@@ -41,3 +41,36 @@ test('bad counter receipts leave valid progression intact',()=>{
     assert.equal(shop.cash(),80);
   }
 });
+
+
+test('silk finishes before pickup charges the shared wallet and equips the chosen square', () => {
+  const shop = createShopState();
+  assert.equal(shop.restore({version:1,sales:{chemist:1,lunch:1}}),true);
+  assert.equal(shop.appearance(),null);
+  assert.equal(shop.order('tailor','toString'),false);
+  assert.equal(shop.order('tailor','oxblood'),true);
+  assert.equal(shop.available(),55);
+  assert.equal(shop.cash(),80);
+  assert.equal(shop.appearance(),null);
+  assert.equal(shop.collect('tailor'),false);
+  assert.equal(shop.served('tailor'),true);
+  assert.equal(shop.collect('tailor'),true);
+  assert.equal(shop.appearance(),'oxblood');
+  assert.equal(shop.cash(),55);
+  assert.equal(shop.order('tailor','oxblood'),false);
+  assert.equal(shop.order('tailor','champagne'),true);
+  assert.equal(shop.served('tailor'),true);
+  assert.equal(shop.collect('tailor'),true);
+  assert.equal(shop.wear('oxblood'),true);
+  assert.equal(shop.cash(),30);
+  const saved = shop.save();
+  const resumed = createShopState();
+  assert.equal(resumed.restore(saved),true);
+  assert.equal(resumed.appearance(),'oxblood');
+  assert.equal(resumed.ownsSquare('champagne'),true);
+  assert.equal(resumed.cash(),30);
+  assert.equal(resumed.restore({...saved,worn:'saffron'}),false);
+  assert.equal(resumed.restore({...saved,squares:['oxblood','oxblood']}),false);
+  assert.equal(resumed.restore({...saved,sales:{...saved.sales,tailor:1}}),false);
+  assert.equal(resumed.appearance(),'oxblood');
+});

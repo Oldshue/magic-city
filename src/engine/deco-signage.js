@@ -13,10 +13,11 @@ import { materials } from './materials.js';
  * @param {number} [opts.width=10] world width (m); height follows aspect
  * @param {number} [opts.canvasWidth=512]
  * @param {number} [opts.canvasHeight=128]
+ * @param {boolean} [opts.chevrons=true] draw the decorative border pattern
  * @returns {THREE.Group} plane centered at origin facing +Z
  */
 export function canvasSign(text, opts = {}) {
-  const { width = 10, canvasWidth = 512, canvasHeight = 128,
+  const { width = 10, canvasWidth = 512, canvasHeight = 128, chevrons = true,
     colors = ['#101018','#b98d3e','#ffe6b0'] } = opts;
   const group = new THREE.Group();
   const canvas = document.createElement('canvas');
@@ -31,7 +32,7 @@ export function canvasSign(text, opts = {}) {
     ctx.strokeRect(10, 10, canvasWidth - 20, canvasHeight - 20);
     ctx.fillStyle = colors[1];
     const step = 24;
-    for (let x = 20; x < canvasWidth - 40; x += step * 2) {
+    for (let x = 20; chevrons && x < canvasWidth - 40; x += step * 2) {
       ctx.beginPath();
       ctx.moveTo(x, canvasHeight - 16); ctx.lineTo(x + step, canvasHeight - 26);
       ctx.lineTo(x + step * 2, canvasHeight - 16); ctx.closePath(); ctx.fill();

@@ -1,6 +1,6 @@
 import { createCounterVoices } from './counter-voices.mjs';
 import { createPersistentStorage } from '../gameplay/persistence.mjs';
-import { createShopState, SHOP_MENUS } from '../gameplay/shop-state.mjs';
+import { createShopState, POCKET_SQUARES, pocketSquare, SHOP_MENUS } from '../gameplay/shop-state.mjs';
 import { getAudio, makeNoiseBuffer, makeRng } from '../systems/audioBus.js';
 
 const SAVE = 'magic-city:counter-purchases';
@@ -22,6 +22,7 @@ export async function initCounterService(ctx,root) {
     const data = await storage.getItem(SAVE);
     if (data) state.restore(JSON.parse(data));
   } catch (_) { /* The counter keeps working in a private or isolated browser. */ }
+  ctx.wardrobe.pocketSquare = state.appearance();
   const ui = document.createElement('section');
   ui.id = 'mc-counter-ui';
   ui.innerHTML = `<div id="mc-counter-dialog" role="dialog" aria-modal="true" aria-labelledby="mc-counter-speaker" hidden>
@@ -69,17 +70,17 @@ export async function initCounterService(ctx,root) {
     if (!audio) return;
     const {ctx:ac,master}=audio;
     audioNoise ??= makeNoiseBuffer(ac,1.12,rng);
-    const tap = phase==='set down';
+    const tap = phase==='set down', silk = phase==='silk';
     const source = ac.createBufferSource();
     source.buffer = audioNoise;
     const tone = ac.createBiquadFilter();
     tone.type = 'bandpass';
-    tone.frequency.value = tap ? 1960 : kind==='chemist' ? 1280 : 554;
+    tone.frequency.value = silk ? 975 : tap ? 1960 : kind==='chemist' ? 1280 : 554;
     tone.Q.value = tap ? 3.1 : .74;
     const envelope = ac.createGain();
-    const now=ac.currentTime, duration=tap ? .14 : .58;
+    const now=ac.currentTime, duration=silk ? .27 : tap ? .14 : .58;
     envelope.gain.setValueAtTime(.001,now);
-    envelope.gain.linearRampToValueAtTime(tap ? .115 : .148,now+.039);
+    envelope.gain.linearRampToValueAtTime(silk ? .061 : tap ? .115 : .148,now+.039);
     envelope.gain.exponentialRampToValueAtTime(.001,now+duration);
     source.connect(tone).connect(envelope).connect(master);
     source.start(now,0,duration);
@@ -108,25 +109,64 @@ export async function initCounterService(ctx,root) {
     counter.actor.performance = counter.performance;
   }
 
-  function consume(counter) {
-    if (!state.collect(counter.kind)) return;
-    counter.service.group.visible=false;
-    counter.service.stream.visible=false;
-    counter.actor.carries=null;
+  function itemName(kind) {
+    return pocketSquare(state.choice(kind))?.name || SHOP_MENUS[kind].item;
+  }
+
+  function save() {
+    ctx.wardrobe.pocketSquare = state.appearance();
     storage.setItem(SAVE,JSON.stringify(state.save())).catch(()=>{});
-    const menu=SHOP_MENUS[counter.kind];
-    receipt.textContent = menu.item+' · '+cost(menu.price)+' spent · '+cost(state.cash())+' left';
+  }
+
+  function showReceipt(text) {
+    receipt.textContent = text;
     receipt.hidden=false; toastTime=3.65;
-    sound('set down',counter.kind);
+  }
+
+  function consume(counter) {
+    const kind=counter.kind, item=itemName(kind);
+    if (!state.collect(kind)) return;
+    counter.service.group.visible=false;
+    if (counter.service.stream) counter.service.stream.visible=false;
+    counter.actor.carries=null;
+    counter.actor.fabricContact=null;
+    save();
+    showReceipt(item+' · '+cost(SHOP_MENUS[kind].price)+' spent · '+cost(state.cash())+' left');
+    sound(kind==='tailor' ? 'silk' : 'set down',kind);
     close();
   }
 
-  function serve(counter) {
-    if (!state.order(counter.kind)) return;
-    const {group,stock,filled}=counter.service;
-    group.position.set(...stock);group.visible=true;filled.scale.y=.02;
-    perform(counter,'Serve',SERVE);
+  function serve(counter,choice) {
+    if (!state.order(counter.kind,choice)) return;
+    const service=counter.service;
+    service.group.position.set(...service.stock);
+    service.group.visible=true;
+    if (counter.kind==='tailor') {
+      service.select(choice);
+      service.setFold(0);
+      perform(counter,'FoldSquare',SERVE);
+    } else {
+      service.filled.scale.y=.02;
+      perform(counter,'Serve',SERVE);
+    }
     draw(counter);
+  }
+
+  function showSilks(counter,price) {
+    for (const [id,{name}] of Object.entries(POCKET_SQUARES)) {
+      const item=name.toLowerCase();
+      if (state.ownsSquare(id)) {
+        const wearing=state.appearance()===id;
+        action((wearing ? 'Wearing ' : 'Wear ')+item,()=>{
+          if (!state.wear(id)) return;
+          save();
+          showReceipt(name+' · '+cost(state.cash())+' left');
+          close();
+        },wearing);
+      } else {
+        action('Choose '+item+' · '+cost(price),()=>serve(counter,id),state.available()<price);
+      }
+    }
   }
 
   function draw(counter,message) {
@@ -139,9 +179,10 @@ export async function initCounterService(ctx,root) {
     line.textContent=menu[dialogue];
     voices.play(counter,dialogue);
     choices.replaceChildren();
-    if (phase==='ready') action('Take '+menu.item.toLowerCase()+' · '+cost(menu.price),()=>consume(counter));
+    if (phase==='ready') action('Take '+itemName(kind).toLowerCase()+' · '+cost(menu.price),()=>consume(counter));
     if (!phase) {
-      action('Order '+menu.item.toLowerCase()+' · '+cost(menu.price),()=>serve(counter),state.available()<menu.price);
+      if (kind==='tailor') showSilks(counter,menu.price);
+      else action('Order '+menu.item.toLowerCase()+' · '+cost(menu.price),()=>serve(counter),state.available()<menu.price);
       action(menu.question,()=>{perform(counter,'Speak',56/30);draw(counter,'reply');});
     }
     action('Leave the counter',close);
@@ -175,7 +216,7 @@ export async function initCounterService(ctx,root) {
           || scratch.y<.68 || scratch.y>2.45) return null;
       const phase=state.status(counter.kind);
       interact.distance=Math.hypot(scratch.x,scratch.z+2.04);
-      interact.label=phase==='ready' ? 'TAKE · '+menu.item+' · '+cost(menu.price) : 'TALK · '+menu.person;
+      interact.label=phase==='ready' ? 'TAKE · '+itemName(counter.kind)+' · '+cost(menu.price) : 'TALK · '+menu.person;
       return interact;
     });
   }
@@ -215,6 +256,16 @@ export async function initCounterService(ctx,root) {
     }
   }
 
+  function moveSilk(counter,pose,previous) {
+    const {group,stock,edge,setFold}=counter.service;
+    const frame=pose.phase*68;
+    const slide=ease((frame-45)/18);
+    setFold(ease((frame-13)/23));
+    group.position.set(stock[0],stock[1],stock[2]+(edge[2]-stock[2])*slide);
+    counter.actor.fabricContact=frame>=13 && frame<36 ? counter.service : null;
+    if (previous<16/68 && frame>=16) sound('silk',counter.kind);
+  }
+
   return {update(dt) {
     voices.update(dt);
     const targetFov = open ? defaultFov - 10 : defaultFov;
@@ -227,7 +278,7 @@ export async function initCounterService(ctx,root) {
     if (toastTime===0) receipt.hidden=true;
     if (open && cameraTime<.39) {
       cameraTime+=dt;
-      focus.set(0,1.40,-3.2);
+      focus.set(0,open.kind==='tailor' ? 1.22 : 1.40,-3.2);
       open.shop.localToWorld(focus);
       aim.copy(ctx.camera.quaternion);
       ctx.camera.lookAt(focus);
@@ -245,12 +296,11 @@ export async function initCounterService(ctx,root) {
       if (!pose) continue;
       const previous=pose.phase;
       pose.time+=dt;pose.phase=Math.min(1,pose.time/pose.duration);
-      if (pose.clip==='Serve') {
-        moveDrink(counter,pose,previous);
-        if (pose.phase===1 && state.served(counter.kind) && open===counter) draw(counter);
-      }
+      if (pose.clip==='Serve') moveDrink(counter,pose,previous);
+      if (pose.clip==='FoldSquare') moveSilk(counter,pose,previous);
       if (pose.phase===1) {
         counter.performance=null;counter.actor.performance=null;
+        if ((pose.clip==='Serve' || pose.clip==='FoldSquare') && state.served(counter.kind) && open===counter) draw(counter);
       }
     }
   }};

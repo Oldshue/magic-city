@@ -1,4 +1,13 @@
-/** Counter purchases use cents and commit when the player takes the drink. */
+/** Shop sales use cents and commit when the player takes the item. */
+export const POCKET_SQUARES = Object.freeze({
+  oxblood: Object.freeze({name:'Oxblood silk', color:0xa63c48}),
+  champagne: Object.freeze({name:'Champagne silk', color:0xe2c282}),
+});
+
+export function pocketSquare(id) {
+  return typeof id === 'string' && Object.hasOwn(POCKET_SQUARES, id) ? POCKET_SQUARES[id] : null;
+}
+
 export const SHOP_MENUS = Object.freeze({
   chemist: Object.freeze({
     person: 'Nathaniel Brooks', item: 'Lemon phosphate', price: 5,
@@ -18,6 +27,15 @@ export const SHOP_MENUS = Object.freeze({
     ordered: 'One coffee coming up.',
     ready: 'There’s cream on the counter.',
   }),
+  tailor: Object.freeze({
+    person: 'Jonah Walker', item: 'Silk pocket square', price: 25,
+    greeting: 'Come in. Here for a fitting, or just a bit of color?',
+    familiar: 'Good to see you again. Which silk would you like today?',
+    question: 'Ask about station deliveries',
+    reply: 'If it’s for Terminal Station, pin the name inside the coat. I send the finished work down with the afternoon parcels.',
+    ordered: 'I’ll fold it for your breast pocket.',
+    ready: 'There you are. Let just the edge of the silk show.',
+  }),
 });
 
 const STARTING_CENTS = 100;
@@ -26,6 +44,8 @@ const entries = Object.entries(SHOP_MENUS);
 export function createShopState() {
   const sales = new Map(entries.map(([shop])=>[shop,0]));
   const orders = new Map();
+  const ownedSquares = new Set();
+  let worn = null;
 
   function cash() {
     return STARTING_CENTS - entries.reduce((spent,[shop,menu])=>spent + sales.get(shop)*menu.price,0);
@@ -39,34 +59,63 @@ export function createShopState() {
   return {
     cash, available,
     visited(shop) { return sales.get(shop) > 0; },
-    status(shop) { return orders.get(shop); },
-    order(shop) {
+    status(shop) { return orders.get(shop)?.phase; },
+    choice(shop) { return orders.get(shop)?.choice; },
+    ownsSquare(id) { return ownedSquares.has(id); },
+    appearance() { return worn; },
+    wear(id) {
+      if (!ownedSquares.has(id)) return false;
+      worn = id;
+      return true;
+    },
+    order(shop, choice = null) {
       if (!sales.has(shop) || orders.has(shop) || available() < SHOP_MENUS[shop].price) return false;
-      orders.set(shop,'serving');
+      if (shop === 'tailor' && (!pocketSquare(choice) || ownedSquares.has(choice))) return false;
+      orders.set(shop,{phase:'serving',choice});
       return true;
     },
     served(shop) {
-      if (orders.get(shop) !== 'serving') return false;
-      orders.set(shop,'ready');
+      const order = orders.get(shop);
+      if (order?.phase !== 'serving') return false;
+      order.phase = 'ready';
       return true;
     },
     collect(shop) {
-      if (orders.get(shop) !== 'ready') return false;
+      const order = orders.get(shop);
+      if (order?.phase !== 'ready') return false;
       orders.delete(shop);
       sales.set(shop,sales.get(shop)+1);
+      if (shop === 'tailor') {
+        ownedSquares.add(order.choice);
+        worn = order.choice;
+      }
       return true;
     },
-    save() { return { version:1, sales:Object.fromEntries(sales) }; },
+    save() {
+      return {version:2,sales:Object.fromEntries(sales),squares:[...ownedSquares],worn};
+    },
     restore(saved) {
-      if (saved?.version !== 1 || !saved.sales || orders.size) return false;
+      if ((saved?.version !== 1 && saved?.version !== 2) || !saved.sales || orders.size) return false;
+      const legacy = saved.version === 1;
+      const squares = legacy ? [] : saved.squares;
+      const appearance = legacy ? null : saved.worn;
+      if (!Array.isArray(squares) || squares.some(id=>!pocketSquare(id))
+          || new Set(squares).size !== squares.length
+          || (appearance === null ? squares.length > 0 : !squares.includes(appearance))) return false;
+      const counts = new Map();
       let spent = 0;
       for (const [shop,menu] of entries) {
-        const count = saved.sales[shop];
-        if (!Number.isSafeInteger(count) || count < 0 || count > STARTING_CENTS / menu.price) return false;
+        const count = legacy && shop === 'tailor' ? 0 : saved.sales[shop];
+        if (!Number.isSafeInteger(count) || count < 0 || count > STARTING_CENTS / menu.price
+            || (shop === 'tailor' && count !== squares.length)) return false;
         spent += count * menu.price;
+        counts.set(shop,count);
       }
       if (spent > STARTING_CENTS) return false;
-      for (const [shop] of entries) sales.set(shop,saved.sales[shop]);
+      for (const [shop,count] of counts) sales.set(shop,count);
+      ownedSquares.clear();
+      for (const id of squares) ownedSquares.add(id);
+      worn = appearance;
       return true;
     },
   };

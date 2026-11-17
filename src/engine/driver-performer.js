@@ -3,13 +3,14 @@ import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 import { prepareCharacter } from './street-characters.js';
 import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
 import { createDriverContacts } from './driver-contact.js';
+import { pocketSquare } from '../gameplay/shop-state.mjs';
 
 const SCALE = .94;
 const WALK_SPEED = 1.10;
 let driverSource;
 
 function loadDriver() {
-  driverSource ??= new GLTFLoader().loadAsync('./data/art/detective.glb?v=boarding').then(source=>{
+  driverSource ??= new GLTFLoader().loadAsync('./data/art/detective.glb?v=tailoring').then(source=>{
     prepareCharacter(source.scene);
     return source;
   });
@@ -17,17 +18,25 @@ function loadDriver() {
 }
 
 /** The same detective steps into the cabin, grips the wheel and steps out. */
-export function createDriverPerformer(scene,{motoristColor}={}) {
+export function createDriverPerformer(scene,{motoristColor,wardrobe}={}) {
   const group = new THREE.Group();
   group.name = motoristColor === undefined ? 'Playable detective' : 'Traffic motorist';
   group.scale.setScalar(SCALE);
   group.visible = false;
   scene.add(group);
   const actions = new Map();
-  let mixer, active, waiting, contacts;
+  let mixer, active, waiting, contacts, silk, worn;
   const arrival = new THREE.Vector3();
   loadDriver().then(({scene:source,animations})=>{
     const asset = clone(source);
+    asset.traverse(object=>{
+      if (!object.isMesh || object.material.name!=='Pocket square silk') return;
+      object.visible=false;
+      if (wardrobe) {
+        silk=object;
+        silk.material=silk.material.clone();
+      }
+    });
     if (motoristColor !== undefined) {
       const tint = new THREE.Color(motoristColor);
       asset.traverse(object=>{
@@ -72,6 +81,12 @@ export function createDriverPerformer(scene,{motoristColor}={}) {
     next.paused = pose !== null;
     if (pose !== null) next.time = next.getClip().duration * Math.min(0.999999,pose);
     mixer.update(dt);
+    if (silk && worn!==wardrobe.pocketSquare) {
+      worn=wardrobe.pocketSquare;
+      const variant=pocketSquare(worn);
+      silk.visible=Boolean(variant);
+      if (variant) silk.material.color.setHex(variant.color);
+    }
     group.userData.motion = name;
     return true;
   }

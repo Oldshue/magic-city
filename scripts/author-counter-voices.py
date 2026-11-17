@@ -3,6 +3,7 @@
 Run from the repository root with Kokoro 0.9.4, misaki[en], soundfile, Node,
 and ffmpeg installed. Audio is published in data/art/counter-voices.
 """
+import argparse
 import io
 import json
 import subprocess
@@ -13,7 +14,7 @@ import torch
 from kokoro import KPipeline
 
 LINES = ("greeting", "familiar", "reply", "ordered", "ready")
-VOICES = {"chemist": "am_michael", "lunch": "af_sarah"}
+VOICES = {"chemist": "am_michael", "lunch": "af_sarah", "tailor": "am_adam"}
 PHONEMES = {
     "open": "aAæɑɐəʌɜɚɝ",
     "round": "oOɔɒʊuɹwʷW",
@@ -41,14 +42,20 @@ def align(result):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--shop", choices=tuple(VOICES), help="Replace one shop’s dialogue and lip timings")
+    args = parser.parse_args()
     menus = json.loads(subprocess.check_output(["node", "--input-type=module", "-e",
         "import {SHOP_MENUS} from './src/gameplay/shop-state.mjs'; console.log(JSON.stringify(SHOP_MENUS));"]))
     torch.set_num_threads(2)
     pipeline = KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M", device="cpu")
     output = Path("data/art/counter-voices")
     output.mkdir(exist_ok=True)
-    manifest = {}
-    for kind, voice in VOICES.items():
+    timings = output / "lip-timings.json"
+    manifest = json.loads(timings.read_text()) if args.shop and timings.exists() else {}
+    selected = (args.shop,) if args.shop else tuple(VOICES)
+    for kind in selected:
+        voice = VOICES[kind]
         manifest[kind] = {}
         for line in LINES:
             chunks = list(pipeline(menus[kind][line].replace("’", "'"), voice=voice, speed=.96))
@@ -73,7 +80,7 @@ def main():
                 "-b:a", "64k", str(output / f"{kind}-{line}.mp3")], input=wave.getvalue(), check=True)
             manifest[kind][line] = {"duration": round(seconds, 3), "cues": cues}
             print(f"{kind}/{line}: {seconds:.2f}s, {len(cues)} cues", flush=True)
-    (output / "lip-timings.json").write_text(json.dumps(manifest, separators=(",", ":")) + "\n")
+    timings.write_text(json.dumps(manifest, separators=(",", ":")) + "\n")
 
 
 if __name__ == "__main__":

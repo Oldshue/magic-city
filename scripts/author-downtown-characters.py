@@ -1,6 +1,6 @@
 """Build the Magic City street characters with Blender and MPFB 2.0.18.
 
-Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY [--driver-only | --counters-only | --ledger-only].
+Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY [--driver-only | --counters-only | --ledger-only | --tailor-only].
 The MPFB extension must be installed in Blender's user_default repository.
 """
 import importlib
@@ -403,6 +403,40 @@ def rigid_accessory(rig, obj, bone_name):
     obj.modifiers.new("Armature", "ARMATURE").object = rig
 
 
+def detective_square(rig, garment):
+    """Fit a tucked silk fold to the detective's left breast pocket."""
+    vertices = [v.co.copy() for v in garment.data.vertices]
+    surface = BVHTree.FromPolygons(vertices, [list(p.vertices) for p in garment.data.polygons])
+    chest = rig.data.bones["spine_03"].head_local.z
+    profile = [0.009, .014, .038, .030, .051, .030, .016, .026, .013, .010]
+
+    def fit(level, near):
+        points = []
+        for i, peak in enumerate(profile):
+            x = near + .0074*i
+            for z, depth in [(level-.010, .010), (level+peak, .019 + .003*(i%2))]:
+                hit, _, _, _ = surface.ray_cast(Vector((x,-.65,z)), Vector((0,1,0)), .96)
+                if hit is None:
+                    return None
+                points.append((x,hit.y-depth,z))
+        return points
+
+    candidates = (fit(chest-lower,x) for lower in (.024,.050,.071) for x in (.102,.092,.081))
+    points = next((result for result in candidates if result),None)
+    if not points:
+        raise RuntimeError("Could not fit the breast pocket inside the coat’s chest seam")
+    quads = [(j,j+2,j+3,j+1) for j in range(0,len(points)-2,2)]
+    mesh = bpy.data.meshes.new("Pocket square folds")
+    mesh.from_pydata(points,[],quads)
+    mesh.update()
+    square = bpy.data.objects.new("Detective pocket square",mesh)
+    bpy.context.collection.objects.link(square)
+    silk = cloth("Pocket square silk", (.88,.87,.81), .40)
+    silk.node_tree.nodes.get("Principled BSDF").inputs["Sheen Weight"].default_value = .32
+    mesh.materials.append(silk)
+    rigid_accessory(rig,square,"spine_03")
+
+
 def counter_apron(rig, garment, lunch):
     # Measure the fitted outfit so the apron follows the shirt instead of
     # sharing a fixed shape across the two figures.
@@ -522,7 +556,7 @@ PAPER_MARKS = [
 ]
 
 
-def bake_counter(rig, paper=False):
+def bake_counter(rig, paper=False, tailor=False):
     pose = rig.pose.bones
     rest, solve = limb_solver(rig)
     neutral = Quaternion()
@@ -543,7 +577,22 @@ def bake_counter(rig, paper=False):
                 return a[1]+(b[1]-a[1])*t,tuple(x+(y-x)*t for x,y in zip(a[2],b[2]))
         return marks[-1][1:]
 
-    clips = (("SellEdition",59),) if paper else (("Greet",34),("Speak",56),("Serve",68))
+    def fold_hands(frame):
+        # One hand lifts the loose edge, the other keeps the square on the bench.
+        # The window cloth uses the same 18 cm half width and fold interval.
+        raising = min(1, max(0, (frame-13)/23))
+        angle = math.pi * raising**2 * (3-2*raising)
+        push = min(1, max(0, (frame-45)/18))
+        push = push**2 * (3-2*push)
+        lift = min(1, frame/12, (68-frame)/4)
+        crease = (-.18*math.cos(angle),1.07+.18*math.sin(angle),.424)
+        r = crease if frame < 38 else (.11,1.10,.416+.34*push)
+        l = (.232,1.055,.523) if frame < 39 else (.25,1.08,.49+.03*push)
+        return .18+.28*lift, r,l
+
+    clips = (("SellEdition",59),) if paper else (
+        ("Greet",34), ("Speak",56), ("FoldSquare" if tailor else "Serve",68),
+    )
     for name,length in clips:
         action = bpy.data.actions.new(name)
         rig.animation_data.action = action
@@ -556,7 +605,9 @@ def bake_counter(rig, paper=False):
                 bone.rotation_quaternion = Quaternion()
                 bone.location = (0,0,0)
                 bone.scale = (1,1,1)
-            if name in ("Serve","SellEdition"):
+            if name == "FoldSquare":
+                lean, hand, support = fold_hands(frame)
+            elif name in ("Serve","SellEdition"):
                 lean, hand = blend_mark(frame)
             elif name == "Speak":
                 lean = .04+.10*beat
@@ -578,11 +629,11 @@ def bake_counter(rig, paper=False):
                 foot = pose[f"foot_{side}"].bone.head_local.copy()
                 foot.y -= .03 * sign
                 solve(f"thigh_{side}",f"calf_{side}",f"foot_{side}",foot,Vector((sign*.11,-1,.03)),neutral)
-                target = (.26,1.00,.26+beat*.075) if sign>0 else hand
+                target = (support if name == 'FoldSquare' else (.26,1.00,.26+beat*.075)) if sign>0 else hand
                 solve(f"upperarm_{side}",f"lowerarm_{side}",f"hand_{side}",point(target),Vector((sign*.6,.34,-.65)),neutral)
                 for finger in ("index","middle","ring","pinky"):
                     for segment in ("02","03"):
-                        curl = .52 if name in ("Serve","SellEdition") and sign<0 and pickup <= frame <= release else .18
+                        curl = .52 if (name in ('Serve','SellEdition') and sign<0 and pickup <= frame <= release) or (name == 'FoldSquare' and 12 <= frame <= 36) else .18
                         pose[f"{finger}_{segment}_{side}"].rotation_quaternion = Quaternion((1,0,0),curl)
             for bone in pose:
                 bone.keyframe_insert(data_path="rotation_quaternion",frame=frame,group=bone.name)
@@ -636,6 +687,8 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
         state.update(age=.36,muscle=.69)
     if staff == "ledger":
         state.update(age=.78,muscle=.42)
+    if staff == "tailor":
+        state.update(age=.72,muscle=.45)
     body = humans.create_human(macro_detail_dict=state)
     skin_name = "young_caucasian_female.mhmat" if female else "young_african_male.mhmat"
     if staff:
@@ -654,6 +707,8 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
         outfit = "toigo_male_suit_tie_and_jacket.mhclo"
     if staff == "lunch":
         outfit = "toigo_female_suit.mhclo"
+    if staff == "tailor":
+        outfit = "toigo_suit_with_jacket_and_bowtie.mhclo"
     if staff == "ledger":
         outfit = "toigo_male_suit_3.mhclo"
     if worker:
@@ -692,9 +747,12 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
         wardrobe = objects.get_list_of_children(rig)
         garment = next(obj for obj in wardrobe if outfit.removesuffix(".mhclo") in obj.name)
         counter_apron(rig,garment,staff == "lunch")
-        if staff == "chemist":
+        if staff in ("chemist","tailor"):
             eyes = next(obj for obj in wardrobe if "low-poly" in obj.name)
             spectacles(rig,eyes)
+    if driver:
+        garment = next(obj for obj in objects.get_list_of_children(rig) if outfit.removesuffix(".mhclo") in obj.name)
+        detective_square(rig,garment)
     export_objects = [rig] + objects.get_list_of_children(rig)
     meshes = [obj for obj in export_objects if obj.type == "MESH"]
     for obj in meshes:
@@ -725,7 +783,7 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
     if driver:
         bake_driver(rig)
     if staff:
-        bake_counter(rig, paper=staff == "ledger")
+        bake_counter(rig, paper=staff == "ledger", tailor=staff == "tailor")
 
     bpy.ops.object.select_all(action="DESELECT")
     for obj in export_objects:
@@ -744,7 +802,9 @@ if __name__ == "__main__":
     arguments = sys.argv[sys.argv.index("--") + 1:]
     asset_root, out_dir = (Path(value).resolve() for value in arguments[:2])
     out_dir.mkdir(parents=True, exist_ok=True)
-    if "--ledger-only" in arguments:
+    if "--tailor-only" in arguments:
+        build(asset_root, out_dir / "walker-tailor.glb", staff="tailor")
+    elif "--ledger-only" in arguments:
         build(asset_root, out_dir / "ledger-vendor.glb", staff="ledger")
     else:
         if "--counters-only" not in arguments:
