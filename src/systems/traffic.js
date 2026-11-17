@@ -1,15 +1,9 @@
-/**
- * traffic.js — instanced period automobiles driving avenue-class streets.
- * 1929 sedan silhouette built from a handful of shared box/cylinder parts:
- * chassis, distinct front hood, cabin with a slight roof crown, running
- * boards, four dark wheels with pale hubs, a chrome-ish radiator face, and
- * small round headlamps. Body + hood carry one of three period lacquer
- * colors (deep green / black / burgundy). At night the headlamp lenses go
- * warm-emissive and a soft transparent gradient quad lights the road ahead
- * of each car — no real lights, no movement-logic changes. Every part is a
- * shared InstancedMesh: draw call count is constant regardless of car count.
- */
-import { buildPeriodSedan } from '../engine/period-sedan.js';
+/** Period traffic with lane spacing, and right-of-way at First and 20th. */
+import { buildPeriodSedan, updateSedanWheels, TYRE_RADIUS } from '../engine/period-sedan.js';
+import { HALF_LENGTH, setCarBounds } from '../engine/vehicle-motion.mjs';
+import { createDriverPerformer } from '../engine/driver-performer.js';
+import { ROAD_HEIGHT } from '../engine/street-layout.js';
+import { advanceTraffic, blockerGap, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore, wrapDistance } from '../engine/traffic-motion.mjs';
 
 export function startTraffic(ctx) {
   const { THREE, scene, plan, getDayPhase } = ctx;
@@ -18,7 +12,7 @@ export function startTraffic(ctx) {
   if (has20thStreet) {
     const parked = buildPeriodSedan(0x2b4540, ctx.environment, {powered:false});
     parked.group.name = 'Parked green sedan';
-    parked.group.position.set(9.3, 0.044, 40);
+    parked.group.position.set(9.3, ROAD_HEIGHT, 40);
     parked.group.rotation.y = Math.PI;
     scene.add(parked.group);
     ctx.controls?.addColliders([{minX:8.20,maxX:10.40,minZ:37.74,maxZ:42.26}]);
@@ -36,26 +30,38 @@ export function startTraffic(ctx) {
       total += l;
     }
     if (total <= 0) continue;
-    routes.push({ pts, segLens, total, width: st.width || 18 });
+    routes.push({ name:st.name, pts, segLens, total, width:st.width || 18 });
   }
 
+  const junction = makeJunction(routes.find(route=>route.name === '20th Street North'),
+    routes.find(route=>route.name === '1st Avenue North'));
   const CARS_PER_LANE_KM = 5;
-  const MAX_INSTANCES = 140;
   const instances = [];
   for (const route of routes) {
-    const laneOffset = Math.max(2.2, route.width * 0.22);
-    for (const dir of [1, -1]) {
-      const count = Math.max(1, Math.round((route.total / 1000) * CARS_PER_LANE_KM));
-      for (let i = 0; i < count; i++) {
-        instances.push({
-          route, dir, laneOffset,
-          dist: (route.total / count) * i + Math.random() * 20,
-          speed: 6.5 + Math.random() * 2.5,
-        });
+    const laneOffset = Math.max(2.2, route.width*.22);
+    for (const dir of [1,-1]) {
+      const count = Math.max(1,Math.round(route.total/1000 * CARS_PER_LANE_KM));
+      const lane = [];
+      // Start with an approach on each leg so the first block is active
+      // as soon as the player leaves the introduction.
+      const start = route.junction
+        ? route.junction.at - dir*(dir > 0 ? 36 : 39)
+        : Math.random()*20;
+      for (let i=0;i<count;i++) {
+        const cruise = 6.5 + Math.random()*2.5;
+        const car = {
+          route,dir,laneOffset,cruise,speed:cruise,
+          dist:wrapDistance(start + route.total/count*i,route.total),
+          x:0,z:0,heading:0,bodyBox:{},
+        };
+        lane.push(car);
+        instances.push(car);
+      }
+      for (let i=0;i<lane.length;i++) {
+        lane[i].leader = count>1 ? lane[(i+dir+count)%count] : null;
       }
     }
   }
-  if (instances.length > MAX_INSTANCES) instances.length = MAX_INSTANCES;
 
   const COUNT = Math.max(1, instances.length);
 
@@ -152,6 +158,72 @@ export function startTraffic(ctx) {
 
   scene.add(bodyMesh, hoodMesh, cowlMesh, cabinMesh, roofMesh, visorMesh, boardMesh, radiatorMesh, fenderMesh, wheelMesh, hubMesh, lampMesh, barMesh, bumperMesh, spareMesh, glowMesh);
 
+  const detailedTraffic = new THREE.Group();
+  detailedTraffic.name = 'Detailed downtown traffic';
+  scene.add(detailedTraffic);
+  const detailedPools = lacquer.map(()=>[]);
+  const colliders = [];
+  ctx.controls?.addMovingColliders?.(colliders);
+  const player = {};
+
+  function makeDetail(color) {
+    const sedan = buildPeriodSedan(lacquer[color],ctx.environment,{powered:false});
+    sedan.group.name = 'Passing sedan';
+    const motoristColor = [0xb6a185,0x8f8680,0x766353][color];
+    createDriverPerformer(sedan.group,{motoristColor}).drive(sedan);
+    sedan.group.visible = false;
+    detailedTraffic.add(sedan.group);
+    return sedan;
+  }
+
+  if (junction) detailedPools.forEach((pool,i)=>pool.push(makeDetail(i)));
+
+  function showDetail(car,i,night,dt) {
+    const camera = ctx.camera?.position;
+    const nearby = camera && Math.abs(camera.y) < 10
+      && (camera.x-car.x)**2 + (camera.z-car.z)**2 < 39**2;
+    if (!nearby || !car.route.junction || !isOnFirstBlock(car)) {
+      if (car.detail) {
+        car.detail.group.visible = false;
+        detailedPools[i%lacquer.length].push(car.detail);
+        car.detail = null;
+      }
+      return false;
+    }
+    if (!car.detail) {
+      const color = i%lacquer.length;
+      car.detail = detailedPools[color].pop() ?? makeDetail(color);
+      car.detail.wheelAngle = (car.dist / TYRE_RADIUS) % (Math.PI*2);
+      car.detail.steeringAngle = 0;
+    }
+    const detail = car.detail;
+    detail.group.visible = true;
+    detail.group.position.set(car.x,ROAD_HEIGHT,car.z);
+    detail.group.rotation.y = car.heading;
+    detail.group.userData.street = car.route.name;
+    detail.group.userData.speed = car.speed;
+    detail.group.userData.yielding = car.yielding;
+    detail.stopLightMat.emissiveIntensity = car.braking ? 3.0 : night ? .64 : 0;
+    detail.headlightMat.emissiveIntensity = night ? 1.75 : .15;
+    for (const material of detail.reflective) material.envMapIntensity = night ? .23 : .69;
+    updateSedanWheels(detail,car.travel,0,dt);
+    return true;
+  }
+
+  function isOnFirstBlock(car) {
+    return Math.abs(car.x-junction.x) < 79 && car.z-junction.z > -45 && car.z-junction.z < 64;
+  }
+
+  function updateCollider(car,blocker) {
+    if (!car.route.junction || !isOnFirstBlock(car)
+        || Math.abs(car.x-blocker.x) > 35 || Math.abs(car.z-blocker.z) > 35) return;
+    colliders.push(setCarBounds(car.bodyBox,car.x,car.z,car.heading,car));
+  }
+
+  const legacyParts = [[bodyMesh,1],[hoodMesh,1],[cowlMesh,1],[cabinMesh,1],[roofMesh,1],
+    [visorMesh,1],[boardMesh,2],[radiatorMesh,1],[fenderMesh,4],[wheelMesh,4],
+    [hubMesh,4],[lampMesh,2],[barMesh,1],[bumperMesh,2],[spareMesh,1]];
+
   // --- One-time placement of the parked rows (indices COUNT..TOTAL-1). ---
   {
     const m = new THREE.Matrix4(); const q = new THREE.Quaternion(); const qW = new THREE.Quaternion(); const qS = new THREE.Quaternion();
@@ -219,7 +291,7 @@ export function startTraffic(ctx) {
   ];
 
   function sample(route, dist) {
-    let d = ((dist % route.total) + route.total) % route.total;
+    let d = dist;
     let i = 0;
     while (i < route.segLens.length && d > route.segLens[i]) {
       d -= route.segLens[i];
@@ -234,21 +306,65 @@ export function startTraffic(ctx) {
     segDir.subVectors(b, a).normalize();
   }
 
+  function locate(car) {
+    sample(car.route,car.dist);
+    car.heading = Math.atan2(segDir.x*car.dir,segDir.z*car.dir);
+    [car.x,car.z] = lanePosition(pos.x,pos.z,car.heading,car.laneOffset);
+  }
+
+  for (const car of instances) locate(car);
+
+  function stepTraffic(dt) {
+    let blocker = ctx.driving?.getState(player);
+    if (!blocker && ctx.camera) {
+      blocker = ctx.camera.position;
+    }
+    reserveJunction(junction,instances,blocker);
+    for (const car of instances) {
+      const crossing = junctionGap(junction,car);
+      const playerRoom = blockerGap(car,blocker);
+      const leadRoom = car.leader
+        ? wrapDistance((car.leader.dist-car.dist)*car.dir,car.route.total)-HALF_LENGTH*2
+        : Infinity;
+      const room = Math.min(crossing,playerRoom,leadRoom-.75);
+      const target = Math.min(car.cruise,speedBefore(crossing),speedBefore(playerRoom),
+        speedBefore(leadRoom-1.05,car.leader?.speed));
+      [car.nextSpeed,car.travel] = advanceTraffic(car.speed,target,room,dt);
+      car.yielding = Math.min(crossing,playerRoom) < 14 && target < car.cruise-.3;
+      car.braking = target < car.speed-.25 || (car.nextSpeed < .3 && target < .3);
+    }
+    colliders.length = 0;
+    for (const car of instances) {
+      car.speed = car.nextSpeed;
+      car.dist = wrapDistance(car.dist+car.travel*car.dir,car.route.total);
+      locate(car);
+      if (blocker) updateCollider(car,blocker);
+    }
+  }
+
   return {
     update(dt) {
       const phase = getDayPhase();
-      const night = phase < 0.22 || phase > 0.8 ? 1 : 0;
+      const night = phase < 0.22 || phase > 0.8;
+      stepTraffic(dt);
       for (let i = 0; i < instances.length; i++) {
         const car = instances[i];
-        car.dist += car.speed * car.dir * dt;
-        sample(car.route, car.dist);
-        const heading = Math.atan2(segDir.x * car.dir, segDir.z * car.dir);
+        const {heading,x:ox,z:oz} = car;
         const fwdX = Math.sin(heading), fwdZ = Math.cos(heading);
         const latX = Math.cos(heading), latZ = -Math.sin(heading);
-        const ox = pos.x + latX * car.laneOffset * car.dir;
-        const oz = pos.z + latZ * car.laneOffset * car.dir;
+        q.setFromAxisAngle(up,heading);
+        tmpPos.set(ox + fwdX*4.4,.04,oz + fwdZ*4.4);
+        qGlow.copy(q).multiply(glowTilt);
+        m.compose(tmpPos,qGlow,s);
+        glowMesh.setMatrixAt(i,m);
 
-        q.setFromAxisAngle(up, heading);
+        if (showDetail(car,i,night,dt)) {
+          m.makeScale(0,0,0);
+          for (const [mesh,count] of legacyParts) {
+            for (let part=0;part<count;part++) mesh.setMatrixAt(i*count+part,m);
+          }
+          continue;
+        }
 
         tmpPos.set(ox, 0.62, oz);
         m.compose(tmpPos, q, s);
@@ -321,10 +437,6 @@ export function startTraffic(ctx) {
         m.compose(tmpPos, qSpare, s);
         spareMesh.setMatrixAt(i, m);
 
-        tmpPos.set(ox + fwdX * 4.4, 0.04, oz + fwdZ * 4.4);
-        qGlow.copy(q).multiply(glowTilt);
-        m.compose(tmpPos, qGlow, s);
-        glowMesh.setMatrixAt(i, m);
       }
 
       // Render moving instances plus the static parked rows appended

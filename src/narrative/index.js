@@ -451,12 +451,14 @@ function updateNearestReadable(ctx, root, state, scratch) {
   state.nearestReadable = nearest;
   const candidate = ctx.interactions.candidate();
   const label = candidate?.label || '';
-  if (state.interactionLabel !== label) {
+  const actionable = Boolean(label && candidate.activate);
+  if (state.interactionLabel !== label || state.interactionActionable !== actionable) {
     state.interactionLabel = label;
-    root.querySelector('#mc-read-prompt').textContent = label ? '[ E ] ' + label : '';
+    state.interactionActionable = actionable;
+    root.querySelector('#mc-read-prompt').textContent = actionable ? '[ E ] ' + label : label;
     root.querySelector('#mc-touch-read-btn').textContent = label || 'INTERACT';
     root.querySelector('#mc-read-prompt').classList.toggle('mc-hidden', !label);
-    root.querySelector('#mc-touch-read-btn').classList.toggle('mc-hidden', !label);
+    root.querySelector('#mc-touch-read-btn').classList.toggle('mc-hidden', !actionable);
   }
 }
 

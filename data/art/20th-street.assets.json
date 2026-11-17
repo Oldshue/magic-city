@@ -7,8 +7,8 @@
     "licenseSource": "https://polyhaven.com/license"
   },
   "downtown-characters": {
-    "description": "Two game-rigged characters with locally authored cloche, idle, and walk animations",
-    "files": ["bank-clerk.glb", "shopkeeper.glb"],
+    "description": "Game-rigged characters with locally authored cloche, idle, walk, boarding and steering animations",
+    "files": ["bank-clerk.glb", "shopkeeper.glb", "detective.glb"],
     "tool": "Blender with MakeHuman Community MPFB 2.0.18",
     "script": "scripts/author-downtown-characters.py",
     "sources": [

@@ -1,6 +1,6 @@
-"""Build the two Magic City street characters with Blender and MPFB 2.0.18.
+"""Build the Magic City street characters with Blender and MPFB 2.0.18.
 
-Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY.
+Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY [--driver-only].
 The MPFB extension must be installed in Blender's user_default repository.
 """
 import importlib
@@ -197,7 +197,136 @@ def bake_walk(rig, meshes):
     scene.frame_set(0)
 
 
-def build(asset_path, output, female):
+# Car-space marks measured from the Packard mesh. The garage model uses Y up
+# and +Z forward; Blender's fitted character uses Z up and -Y forward.
+DRIVER_SCALE = 0.94
+
+
+def actor_point(mark):
+    x, y, z = mark
+    return Vector((x, -z, y)) / DRIVER_SCALE
+
+
+def wheel_grip(roll, side):
+    phase = (0.38 if side > 0 else math.pi - 0.38) + roll
+    height = 0.146 * math.sin(phase)
+    return (
+        0.35 + 0.152 * math.cos(phase) + 0.021 * side,
+        1.23 + math.cos(0.38) * height,
+        0.102 - math.sin(0.38) * height,
+    )
+
+
+# Hips, heading, chest pitch, reaching hand, free hand, and both ankle
+# marks. The outside foot stays on the running board while the other
+# clears the sill. The final pose matches the driving cycle at zero lock.
+ENTRY_MARKS = [
+    (0, (1.54,.86,-.18), -72, .02, (1.57,.78,-.36), (1.43,.77,.06), (1.65,.101,-.21), (1.43,.101,.02)),
+    (8, (1.49,.86,-.16), -72, .15, (1.65,.78,-.31), (.898,.981,-.498), (1.65,.101,-.21), (1.43,.101,.02)),
+    (15, (1.49,.89,-.17), -59, .22, (1.56,.94,-.48), (1.34,1.057,-.46), (1.67,.101,-.23), (1.14,.33,.017)),
+    (23, (1.09,1.045,-.21), -36, .35, (1.49,1.04,-.42), (.90,1.17,.09), (1.02,.52,-.28), (.62,.56,.13)),
+    (31, (.72,.98,-.22), -15, .41, (1.18,1.052,-.50), (.67,1.26,.12), (.94,.55,-.26), (.25,.62,.38)),
+    (39, (.39,.926,-.24), -7, .18, (1.05,1.014,-.40), (.254,1.262,.08), (.51,.65,.22), (.19,.625,.36)),
+    (48, (.35,.942,-.24), 0, .09, wheel_grip(0, 1), wheel_grip(0, -1), (.495,.625,.35), (.20,.625,.38)),
+]
+
+
+def bake_driver(rig):
+    scene = bpy.context.scene
+    pose_bones = rig.pose.bones
+    rest = {bone.name: bone.bone.matrix_local.to_quaternion() for bone in pose_bones}
+    # Rig bones point along their local Y axes.
+    bone_axis = Vector((0, 1, 0))
+    unit = Vector((1, 1, 1))
+
+    def steer_bone(name, start, end, rotation):
+        turned = rotation @ rest[name]
+        correction = (turned @ bone_axis).rotation_difference((end - start).normalized())
+        pose_bones[name].matrix = Matrix.LocRotScale(start, correction @ turned, unit)
+        bpy.context.view_layer.update()
+
+    def solve_limb(upper, lower, end, target, pole, yaw):
+        start = pose_bones[upper].head.copy()
+        direction = target - start
+        distance = direction.length
+        direction.normalize()
+        a, b = pose_bones[upper].bone.length, pose_bones[lower].bone.length
+        distance = max(abs(a-b) + .01, min(distance, (a+b)*.993))
+        target = start + direction * distance
+        projection = (a*a + distance*distance - b*b)/(2*distance)
+        pole -= direction * pole.dot(direction)
+        pole.normalize()
+        joint = start + direction * projection + pole * math.sqrt(max(0, a*a - projection*projection))
+        steer_bone(upper, start, joint, yaw)
+        steer_bone(lower, joint, target, yaw)
+        if end.startswith("foot"):
+            orientation = yaw @ rest[end]
+        else:
+            orientation = pose_bones[lower].matrix.to_quaternion() @ rest[lower].inverted() @ rest[end]
+        pose_bones[end].matrix = Matrix.LocRotScale(target, orientation, unit)
+        bpy.context.view_layer.update()
+
+    def set_pose(marks):
+        hips, heading, lean, hand_l, hand_r, foot_l, foot_r = marks
+        for bone in pose_bones:
+            bone.rotation_mode = "QUATERNION"
+            bone.rotation_quaternion = Quaternion()
+            bone.location = (0, 0, 0)
+            bone.scale = unit
+        yaw = Quaternion((0, 0, 1), math.radians(heading))
+        pose_bones["pelvis"].matrix = Matrix.LocRotScale(actor_point(hips), yaw @ rest["pelvis"], unit)
+        spine = rest["spine_01"]
+        pose_bones["spine_01"].rotation_quaternion = spine.inverted() @ Quaternion((1, 0, 0), lean) @ spine
+        bpy.context.view_layer.update()
+        for side, sign in SIDES:
+            left = sign > 0
+            solve_limb(f"thigh_{side}", f"calf_{side}", f"foot_{side}",
+                       actor_point(foot_l if left else foot_r), yaw @ Vector((sign*.22, -1, .02)), yaw)
+            solve_limb(f"upperarm_{side}", f"lowerarm_{side}", f"hand_{side}",
+                       actor_point(hand_l if left else hand_r), yaw @ Vector((sign*.68, .31, -.70)), yaw)
+            for finger in ("index", "middle", "ring", "pinky"):
+                for segment, angle in (("02", .39), ("03", .24)):
+                    pose_bones[f"{finger}_{segment}_{side}"].rotation_quaternion = Quaternion((1, 0, 0), angle)
+
+    def lerp_mark(a, b, alpha):
+        if isinstance(a, tuple):
+            return tuple(x + (y-x)*alpha for x, y in zip(a, b))
+        return a + (b-a)*alpha
+
+    def entry_pose(frame):
+        for before, after in zip(ENTRY_MARKS, ENTRY_MARKS[1:]):
+            if frame <= after[0]:
+                alpha = (frame-before[0])/(after[0]-before[0])
+                # Keep movement in motion across the marks and ease both ends.
+                if before[0] == 0:
+                    alpha *= 2*alpha - alpha*alpha
+                if after[0] == 48:
+                    alpha = alpha + alpha*alpha*(1-alpha)
+                return [lerp_mark(a,b,alpha) for a,b in zip(before[1:],after[1:])]
+        return ENTRY_MARKS[-1][1:]
+
+    def wheel_pose(frame):
+        hips, heading, lean, _, _, foot_l, foot_r = ENTRY_MARKS[-1][1:]
+        roll = ((frame / 24) * 2 - 1) * .693
+        return (hips, heading, lean, wheel_grip(roll,1), wheel_grip(roll,-1), foot_l, foot_r)
+
+    for name, length, pose_at in (("Board", 48, entry_pose), ("Steer", 24, wheel_pose)):
+        action = bpy.data.actions.new(name)
+        rig.animation_data.action = action
+        for frame in range(length + 1):
+            scene.frame_set(frame)
+            set_pose(pose_at(frame))
+            for bone in pose_bones:
+                bone.keyframe_insert(data_path="rotation_quaternion", frame=frame, group=bone.name)
+                bone.keyframe_insert(data_path="location", frame=frame, group=bone.name)
+        track = rig.animation_data.nla_tracks.new()
+        track.name = name
+        track.strips.new(name, 0, action)
+        rig.animation_data.action = None
+    scene.frame_set(0)
+
+
+def build(asset_path, output, female=False, driver=False):
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
     addon_utils.enable(MODULE, default_set=True)
@@ -210,7 +339,7 @@ def build(asset_path, output, female):
     objects = service("objectservice", "ObjectService")
 
     state = targets.get_default_macro_info_dict()
-    state.update(gender=0.0 if female else 1.0, age=0.41 if female else 0.48)
+    state.update(gender=0.0 if female else 1.0, age=0.41 if female else 0.65 if driver else 0.48)
     body = humans.create_human(macro_detail_dict=state)
     skin_name = "young_caucasian_female.mhmat" if female else "young_african_male.mhmat"
     skin = assets.find_asset_absolute_path(skin_name, asset_subdir="skins")
@@ -218,16 +347,19 @@ def build(asset_path, output, female):
         raise RuntimeError(f"Missing skin {skin_name}")
     humans.set_character_skin(skin, body, skin_type="GAMEENGINE")
     humans.add_builtin_rig(body, "game_engine")
+    outfit = "female_elegantsuit01.mhclo" if female else "toigo_male_double-breasted_suit.mhclo"
+    if driver:
+        outfit = "toigo_male_suit_tie_and_jacket.mhclo"
     pieces = [
         ("eyes", "low-poly.mhclo", "Eyes"),
         ("eyebrows", "eyebrow001.mhclo", "Eyebrows"),
         ("eyelashes", "eyelashes01.mhclo", "Eyelashes"),
         ("hair", "short01.mhclo", "Hair"),
         ("clothes", "shoes01.mhclo", "Clothes"),
-        ("clothes", "female_elegantsuit01.mhclo" if female else "toigo_male_double-breasted_suit.mhclo", "Clothes"),
+        ("clothes", outfit, "Clothes"),
     ]
     if not female:
-        pieces.append(("clothes", "fedora01.mhclo", "Clothes"))
+        pieces.append(("clothes", "fedora_cocked.mhclo" if driver else "fedora01.mhclo", "Clothes"))
     for directory, filename, kind in pieces:
         attach_asset(humans, assets, body, directory, filename, kind)
 
@@ -271,6 +403,8 @@ def build(asset_path, output, female):
             if node.type == "NORMAL_MAP":
                 node.inputs["Strength"].default_value *= 0.29
     bake_walk(rig, meshes)
+    if driver:
+        bake_driver(rig)
 
     bpy.ops.object.select_all(action="DESELECT")
     for obj in export_objects:
@@ -287,7 +421,9 @@ def build(asset_path, output, female):
 
 if __name__ == "__main__":
     arguments = sys.argv[sys.argv.index("--") + 1:]
-    asset_root, out_dir = (Path(value).resolve() for value in arguments)
+    asset_root, out_dir = (Path(value).resolve() for value in arguments[:2])
     out_dir.mkdir(parents=True, exist_ok=True)
-    build(asset_root, out_dir / "bank-clerk.glb", female=False)
-    build(asset_root, out_dir / "shopkeeper.glb", female=True)
+    if "--driver-only" not in arguments:
+        build(asset_root, out_dir / "bank-clerk.glb")
+        build(asset_root, out_dir / "shopkeeper.glb", female=True)
+    build(asset_root, out_dir / "detective.glb", driver=True)

@@ -20,9 +20,11 @@
  */
 import { readVehicleInput } from '../engine/vehicle-input.mjs';
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
-import { EYE_HEIGHT } from '../engine/controls.js';
+import { EYE_HEIGHT, PLAYER_RADIUS } from '../engine/controls.js';
 import { buildPeriodSedan, updateSedanWheels } from '../engine/period-sedan.js';
-import { carFootprintBlocked, clearCameraFraction } from '../engine/vehicle-motion.mjs';
+import { carFootprintBlocked, clearCameraFraction, carWorldPoint, driverApproach, DRIVER_MARK, HALF_WIDTH, hitsMovingObstacle, setCarBounds } from '../engine/vehicle-motion.mjs';
+import { createDriverPerformer } from '../engine/driver-performer.js';
+import { ROAD_HEIGHT } from '../engine/street-layout.js';
 
 // --- Arcade physics tuning ---------------------------------------------
 const MAX_SPEED = 22;        // ~80 km/h
@@ -37,6 +39,9 @@ const DRIFT_LAG = 5.5;       // higher = velocity snaps to heading faster (less 
 const CHASE_DIST = 5.7;
 const CHASE_HEIGHT = 2.48;
 const EXIT_OFFSET = 1.8;
+const DRIVER_EXIT_X = HALF_WIDTH + PLAYER_RADIUS + .105;
+const APPROACH_SPEED = 2.0;
+const BOARD_SECONDS = 1.62;
 
 // --- Boarding tuning ------------------------------------------------------
 const CAR_PROMPT_RADIUS = 2.5;
@@ -82,22 +87,26 @@ export function startDriving(ctx) {
   const { THREE, scene, getDayPhase, camera, plan, streetcars, environment } = ctx;
   const controls = ctx.controls || { setEnabled() {}, getColliderBoxes() { return EMPTY_BOXES; } };
   const bounds = plan.bounds;
+  const player = createDriverPerformer(scene);
 
   // --- Build parked sedans ------------------------------------------------
   const cars = SEDAN_SPECS.map((spec) => {
     const built = buildPeriodSedan(spec.color, environment, {whitewall:spec.whitewall});
     built.group.name = spec.name;
-    built.group.position.set(spec.x, 0, spec.z);
+    built.group.position.set(spec.x, ROAD_HEIGHT, spec.z);
     const heading = THREE.MathUtils.degToRad(spec.yawDeg);
     built.group.rotation.y = heading;
     scene.add(built.group);
     return {
       ...built,
       name: spec.name,
-      x: spec.x, z: spec.z, heading,
+      x: spec.x, z: spec.z, heading, collider:{},
       speed: 0, vx: 0, vz: 0, wheelAngle: 0, steeringAngle: 0, braking: false,
     };
   });
+
+  const parkedVehicles = cars.map(car=>setCarBounds(car.collider,car.x,car.z,car.heading,car));
+  const removeParkedVehicles = controls.addMovingColliders?.(parkedVehicles);
 
   // --- Boarding prompt (self-contained; no narrative module exists yet) --
   let promptEl = null;
@@ -148,6 +157,9 @@ export function startDriving(ctx) {
   // --- State ----------------------------------------------------------
   let isDriving = false;
   let activeCar = null;
+  let access = null;
+  let exitRequested = false;
+  let blockedDoorSeconds = 0;
   let isRiding = false;
   let ridingCar = null;
   let pendingCar = null;
@@ -159,6 +171,8 @@ export function startDriving(ctx) {
   const vehicleInput = { throttle: 0, steer: 0 };
   const chaseTarget = new THREE.Vector3();
   const chasePosition = new THREE.Vector3();
+  const accessView = new THREE.Vector3(), accessTarget = new THREE.Vector3();
+  const exitView = new THREE.Vector3(), exitTarget = new THREE.Vector3();
   let chaseReady = false;
   function onKeyDown(e) {
     if (controls.isInputBlocked?.()) return;
@@ -179,37 +193,159 @@ export function startDriving(ctx) {
 
   // --- Enter/exit car ---------------------------------------------------
   function enterCar(car) {
+    const obstacles = controls.getColliderBoxes().concat(controls.getMovingColliderBoxes?.(car) ?? EMPTY_BOXES);
+    const path = driverApproach(obstacles,car.x,car.z,car.heading,camera.position.x,camera.position.z);
+    if (!path) {
+      blockedDoorSeconds = 1.6;
+      return;
+    }
     activeCar = car;
     car.speed = 0; car.vx = 0; car.vz = 0;
     controls.setEnabled(false);
-    isDriving = true; lastSpeedShown = NaN;
     chaseReady = false;
+    startVehicleAccess(true,path);
     hidePrompt();
   }
-  function exitCar() {
-    const car = activeCar;
-    const sideX = Math.cos(car.heading), sideZ = -Math.sin(car.heading);
-    const forwardX = Math.sin(car.heading), forwardZ = Math.cos(car.heading);
-    const boxes = controls.getColliderBoxes();
-    const exits = [
-      [sideX * EXIT_OFFSET, sideZ * EXIT_OFFSET], [-sideX * EXIT_OFFSET, -sideZ * EXIT_OFFSET],
-      [-forwardX * 2.75, -forwardZ * 2.75], [forwardX * 2.75, forwardZ * 2.75],
-    ];
-    let exitX = car.x, exitZ = car.z;
-    for (const [dx, dz] of exits) {
-      const x = car.x + dx, z = car.z + dz;
-      if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ
-          || boxHit(boxes, x, z, 0.36)) continue;
-      exitX = x;
-      exitZ = z;
-      break;
+
+  function startVehicleAccess(entering,path = []) {
+    access = {
+      entering,path,index:0,time:0,cameraTime:0,
+      x:camera.position.x,z:camera.position.z,
+      from:camera.position.clone(),orientation:camera.quaternion.clone(),
+    };
+    if (!entering) {
+      const car = activeCar;
+      const [x,z] = carWorldPoint(car.x,car.z,car.heading,DRIVER_EXIT_X,DRIVER_MARK.z);
+      access.x = x; access.z = z;
     }
-    camera.position.set(exitX, EYE_HEIGHT, exitZ);
-    camera.rotation.set(0, car.heading + Math.PI, 0);
+  }
+
+  function safeExitPoint(car) {
+    const boxes = controls.getColliderBoxes();
+    const vehicles = controls.getMovingColliderBoxes?.(car) ?? EMPTY_BOXES;
+    for (const [lx,lz] of [[DRIVER_EXIT_X,DRIVER_MARK.z],[EXIT_OFFSET,0],[-EXIT_OFFSET,0],[0,-2.75],[0,2.75]]) {
+      const [x,z] = carWorldPoint(car.x,car.z,car.heading,lx,lz);
+      if (x >= bounds.minX && x <= bounds.maxX && z >= bounds.minZ && z <= bounds.maxZ
+          && !boxHit(boxes,x,z,PLAYER_RADIUS)
+          && !vehicles.some(box=>hitsMovingObstacle(box,x,z,PLAYER_RADIUS))) return [x,z];
+    }
+    return null;
+  }
+
+  function finishExit(x,z) {
+    const car = activeCar;
+    car.driverDoor.rotation.y = 0;
+    player.hide();
+    camera.position.set(x,EYE_HEIGHT,z);
+    camera.rotation.set(0,car.heading + Math.PI,0,'YXZ');
     car.speed = 0; car.vx = 0; car.vz = 0; car.braking = false;
     controls.setEnabled(true);
     isDriving = false;
-    activeCar = null; hideSpeedometer();
+    activeCar = null;
+    access = null;
+    exitRequested = false;
+    hideSpeedometer();
+  }
+
+  function leaveWhenStopped() {
+    if (Math.abs(activeCar.speed) + Math.hypot(activeCar.vx,activeCar.vz) > .40) return;
+    const car = activeCar;
+    const exit = safeExitPoint(car);
+    if (!exit) {
+      exitRequested = false;
+      blockedDoorSeconds = 1.6;
+      return;
+    }
+    const [x,z] = exit;
+    const [driverX,driverZ] = carWorldPoint(car.x,car.z,car.heading,DRIVER_EXIT_X,DRIVER_MARK.z);
+    if (Math.hypot(x-driverX,z-driverZ) > .08) {
+      finishExit(x,z);
+      return;
+    }
+    car.speed = 0; car.vx = 0; car.vz = 0;
+    hideSpeedometer();
+    startVehicleAccess(false);
+    exitRequested = false;
+  }
+
+  function exitCar() {
+    if (access || !isDriving) return;
+    exitRequested = true;
+    leaveWhenStopped();
+  }
+
+  function advanceApproach(dt) {
+    const plan = access;
+    let remaining = dt * APPROACH_SPEED;
+    const fromX = plan.x, fromZ = plan.z;
+    while (remaining > 0 && plan.index < plan.path.length) {
+      const [x,z] = plan.path[plan.index];
+      const dx = x-plan.x, dz = z-plan.z;
+      const distance = Math.hypot(dx,dz);
+      if (distance <= remaining) {
+        plan.x = x; plan.z = z; plan.index++;
+        remaining -= distance;
+      } else {
+        plan.x += dx*remaining/distance;
+        plan.z += dz*remaining/distance;
+        remaining = 0;
+      }
+    }
+    if (plan.index === plan.path.length) return false;
+    player.approach(plan.x,plan.z,Math.atan2(plan.x-fromX,plan.z-fromZ),APPROACH_SPEED,dt);
+    return true;
+  }
+
+  function positionAccessCamera(car,t) {
+    const shotSide = 3.62, shotRear = -3.05;
+    const [x,z] = carWorldPoint(car.x,car.z,car.heading,shotSide,shotRear);
+    const [tx,tz] = carWorldPoint(car.x,car.z,car.heading,.7,-.31);
+    accessView.set(x,2.13,z);
+    accessTarget.set(tx,1.06,tz);
+    if (access.entering) {
+      const chase = THREE.MathUtils.smoothstep(t,.66,1);
+      setChaseView(car);
+      accessView.lerp(chasePosition,chase);
+      accessTarget.lerp(chaseTarget,chase);
+    } else {
+      const firstPerson = THREE.MathUtils.smoothstep(t,.57,1);
+      exitView.set(access.x,EYE_HEIGHT,access.z);
+      exitTarget.set(access.x + Math.sin(car.heading)*3,EYE_HEIGHT,access.z + Math.cos(car.heading)*3);
+      accessView.lerp(exitView,firstPerson);
+      accessTarget.lerp(exitTarget,firstPerson);
+    }
+    const clear = clearCameraFraction(controls.getColliderBoxes(),car.x,car.z,accessView.x,accessView.z);
+    accessView.x = THREE.MathUtils.lerp(car.x,accessView.x,clear);
+    accessView.z = THREE.MathUtils.lerp(car.z,accessView.z,clear);
+    const reveal = THREE.MathUtils.smoothstep(access.cameraTime,0,.44);
+    camera.position.copy(access.from).lerp(accessView,reveal);
+    camera.lookAt(accessTarget);
+    camera.quaternion.slerp(access.orientation,1-reveal);
+  }
+
+  function updateVehicleAccess(dt) {
+    const car = activeCar;
+    access.cameraTime += dt;
+    if (access.entering && advanceApproach(dt)) {
+      positionAccessCamera(car,0);
+      return;
+    }
+    access.time += dt;
+    const t = Math.min(1,access.time/BOARD_SECONDS);
+    const phase = access.entering ? t : 1-t;
+    const open = THREE.MathUtils.smoothstep(phase,.10,.33) * (1-THREE.MathUtils.smoothstep(phase,.64,.96));
+    if (car.driverDoor.rotation.y < -.085 && open < .079) playDoorLatch();
+    car.driverDoor.rotation.y = -1.07 * open;
+    player.board(car,phase);
+    positionAccessCamera(car,t);
+    if (t < 1) return;
+    if (access.entering) {
+      isDriving = true;
+      access = null;
+      player.drive(car);
+    } else {
+      finishExit(access.x,access.z);
+    }
   }
 
   // --- Board/step-off streetcar ------------------------------------------
@@ -263,7 +399,7 @@ export function startDriving(ctx) {
     noiseGain.connect(bus);
     noiseSrc.start();
 
-    engine = { ac, bus, square, noiseFilter };
+    engine = { ac, bus, square, noiseFilter, doorNoise:makeNoiseBuffer(ac,.18,rng) };
   }
   onReady(initAudio);
 
@@ -283,6 +419,23 @@ export function startDriving(ctx) {
     o.connect(filt); filt.connect(g); g.connect(dest);
     o.start(t); o.stop(t + dur + 0.05);
   }
+  function playDoorLatch() {
+    const audio = getAudio();
+    if (!audio || !engine) return;
+    const {ac, doorNoise} = engine;
+    const source = ac.createBufferSource();
+    source.buffer = doorNoise;
+    const filter = ac.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 860;
+    const volume = ac.createGain();
+    const now = ac.currentTime;
+    volume.gain.setValueAtTime(.22,now);
+    volume.gain.exponentialRampToValueAtTime(.001,now + .17);
+    source.connect(filter).connect(volume).connect(audio.master);
+    source.start();
+  }
+
   function playHorn() {
     const audio = getAudio();
     if (!audio) return;
@@ -295,12 +448,17 @@ export function startDriving(ctx) {
   // --- Physics --------------------------------------------------------
   function updateDrivingPhysics(dt) {
     const car = activeCar;
-    const { throttle, steer } = readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput);
+    const input = readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput);
+    const throttle = exitRequested ? 0 : input.throttle;
+    const steer = exitRequested ? 0 : input.steer;
 
     const startX = car.x, startZ = car.z;
     const boxes = controls.getColliderBoxes();
-    car.braking = throttle < -0.05 && car.speed > 0.35;
-    if (throttle > 0) {
+    const vehicles = controls.getMovingColliderBoxes?.(car) ?? EMPTY_BOXES;
+    car.braking = exitRequested || (throttle < -0.05 && car.speed > 0.35);
+    if (exitRequested) {
+      car.speed = Math.sign(car.speed) * Math.max(0,Math.abs(car.speed)-BRAKE_DECEL*dt);
+    } else if (throttle > 0) {
       car.speed += ACCEL * throttle * dt;
     } else if (throttle < 0) {
       car.speed += (car.speed > 0.05 ? -BRAKE_DECEL : -REVERSE_ACCEL) * Math.abs(throttle) * dt;
@@ -316,7 +474,7 @@ export function startDriving(ctx) {
       const turnRate = MAX_STEER_RATE - (MAX_STEER_RATE - MIN_STEER_RATE) * speedFrac;
       const dirSign = car.speed >= 0 ? 1 : -1;
       const heading = car.heading + steer * turnRate * dt * dirSign;
-      if (!carFootprintBlocked(boxes, car.x, car.z, heading)) car.heading = heading;
+      if (!carFootprintBlocked(boxes,car.x,car.z,heading) && !carFootprintBlocked(vehicles,car.x,car.z,heading)) car.heading = heading;
     }
 
     const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
@@ -328,30 +486,35 @@ export function startDriving(ctx) {
     let collided = false;
     const nx = car.x + car.vx * dt;
     const nz = car.z + car.vz * dt;
-    if (!carFootprintBlocked(boxes, nx, car.z, car.heading)) {
+    if (!carFootprintBlocked(boxes,nx,car.z,car.heading) && !carFootprintBlocked(vehicles,nx,car.z,car.heading)) {
       car.x = clamp(nx, bounds.minX, bounds.maxX);
     } else {
       collided = true; car.vx = 0; car.speed *= 0.25;
     }
-    if (!carFootprintBlocked(boxes, car.x, nz, car.heading)) {
+    if (!carFootprintBlocked(boxes,car.x,nz,car.heading) && !carFootprintBlocked(vehicles,car.x,nz,car.heading)) {
       car.z = clamp(nz, bounds.minZ, bounds.maxZ);
     } else {
       collided = true; car.vz = 0; car.speed *= 0.25;
     }
 
     if (collided && impactSpeed >= 6 && impactCooldown <= 0) { impactSequence++; impactCooldown = 1; }
-    car.group.position.set(car.x, 0, car.z);
+    car.group.position.set(car.x, ROAD_HEIGHT, car.z);
     car.group.rotation.y = car.heading;
+    setCarBounds(car.collider,car.x,car.z,car.heading,car);
     const travelled = (car.x - startX) * fx + (car.z - startZ) * fz;
     updateSedanWheels(car, travelled, steer, dt);
   }
 
-  function positionChaseCamera(dt) {
-    const car = activeCar;
+  function setChaseView(car) {
     const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
     const distance = CHASE_DIST + Math.min(1.1, Math.abs(car.speed) * 0.05);
     chasePosition.set(car.x - fx * distance, CHASE_HEIGHT, car.z - fz * distance);
     chaseTarget.set(car.x + fx * 2.4, 1.12, car.z + fz * 2.4);
+  }
+
+  function positionChaseCamera(dt) {
+    const car = activeCar;
+    setChaseView(car);
     if (!chaseReady) camera.position.copy(chasePosition);
     else camera.position.lerp(chasePosition, 1 - Math.exp(-dt * 9));
     chaseReady = true;
@@ -366,7 +529,7 @@ export function startDriving(ctx) {
     if (!engine) return;
     const car = activeCar;
     const speedFrac = car ? Math.min(1, Math.abs(car.speed) / MAX_SPEED) : 0;
-    const throttling = isDriving ? Math.max(0, readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput).throttle) : 0;
+    const throttling = isDriving && !access && !exitRequested ? Math.max(0, readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput).throttle) : 0;
     const targetGain = isDriving ? 0.045 + speedFrac * 0.1 + throttling * 0.05 : 0.0;
     const targetFreq = 38 + speedFrac * 65;
     engine.bus.gain.setTargetAtTime(targetGain, engine.ac.currentTime, 0.15);
@@ -412,9 +575,14 @@ export function startDriving(ctx) {
   }
 
   const parkCandidate = { distance: 0, priority: 100, label: 'PARK · LEAVE CAR', activate: exitCar };
+  const accessCandidate = { distance:0, priority:100, label:'' };
   const disembarkCandidate = { distance: 0, priority: 100, label: 'STEP OFF STREETCAR', activate: exitTram };
   const boardingCandidates = new WeakMap();
   const unregisterInteraction = ctx.interactions.register(() => {
+    if (blockedDoorSeconds > 0 || access || exitRequested) {
+      accessCandidate.label = blockedDoorSeconds > 0 ? 'DOOR BLOCKED' : access?.entering ? 'GETTING IN' : 'PARKING';
+      return accessCandidate;
+    }
     if (isDriving) return parkCandidate;
     if (isRiding) return disembarkCandidate;
     updateProximityPrompt();
@@ -439,6 +607,7 @@ export function startDriving(ctx) {
         return;
       }
       impactCooldown = Math.max(0, impactCooldown - dt);
+      blockedDoorSeconds = Math.max(0,blockedDoorSeconds-dt);
       const night = isNight(getDayPhase());
       for (let i = 0; i < cars.length; i++) {
         const c = cars[i];
@@ -454,11 +623,15 @@ export function startDriving(ctx) {
 
       updateEngineAudio();
 
-      if (isDriving) {
+      if (access) {
+        updateVehicleAccess(dt);
+      } else if (isDriving) {
         updateDrivingPhysics(dt);
         positionChaseCamera(dt);
+        player.drive(activeCar);
         showSpeedometer(activeCar);
         showPrompt('Press E to park');
+        if (exitRequested) leaveWhenStopped();
       } else if (isRiding) {
         updateRidingCamera();
         showPrompt('Press E to step off');
@@ -471,11 +644,18 @@ export function startDriving(ctx) {
       out.x = activeCar ? activeCar.x : camera.position.x;
       out.z = activeCar ? activeCar.z : camera.position.z;
       out.speed = activeCar ? activeCar.speed : 0;
+      out.heading = activeCar?.heading ?? 0;
+      out.y = activeCar ? 0 : camera.position.y;
+      out.mounted = !!activeCar;
       out.impactSequence = impactSequence;
       return out;
     },
-    park() { if (isDriving) exitCar(); else if (isRiding) exitTram(); },
+    park() {
+      if (activeCar) finishExit(...(safeExitPoint(activeCar) ?? [activeCar.x,activeCar.z]));
+      else if (isRiding) exitTram();
+    },
     dispose() {
+      removeParkedVehicles?.();
       unregisterInteraction();
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);

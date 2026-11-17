@@ -4,6 +4,21 @@ import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
 const MODELS = ['bank-clerk', 'shopkeeper'];
 const STRIDE_SPEED = 1.10;
 
+export function prepareCharacter(asset) {
+  asset.traverse(object => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = true;
+    const material = object.material;
+    if (/hair|eyebrow|eyelash|short01/i.test(material.name) && material.transparent) {
+      material.alphaTest = 0.44;
+      material.transparent = false;
+      material.depthWrite = true;
+      material.needsUpdate = true;
+    }
+  });
+}
+
 export function in20thStreetBlock(x, z) {
   return Math.abs(x) < 24 && z > 6 && z < 58;
 }
@@ -23,18 +38,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
       const idle = animations.find(clip => clip.name === 'Idle');
       const walk = animations.find(clip => clip.name === 'Walk');
       if (!idle || !walk) throw new Error('Idle and Walk clips are required');
-      asset.traverse(object => {
-        if (!object.isMesh) return;
-        object.castShadow = true;
-        object.receiveShadow = true;
-        const material = object.material;
-        if (/hair|eyebrow|eyelash|short01/i.test(material.name) && material.transparent) {
-          material.alphaTest = 0.44;
-          material.transparent = false;
-          material.depthWrite = true;
-          material.needsUpdate = true;
-        }
-      });
+      prepareCharacter(asset);
       models.set(name, {asset, idle, walk, slots:[]});
     }).catch(error => console.warn('[magic-city] Character mesh ' + name + ' is unavailable:', error.message));
   }

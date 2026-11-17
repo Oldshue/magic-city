@@ -16,6 +16,6 @@ export function createInteractions() {
       }
       return chosen;
     },
-    activate() { const next = this.candidate(); if (!next) return false; next.activate(); return true; },
+    activate() { const next = this.candidate(); if (!next?.activate) return false; next.activate(); return true; },
   };
 }

@@ -270,10 +270,11 @@ export async function build(ctx) {
     // beside the center doors (Voice fragment 10, verbatim).
     const plaquePed = block(2.4, 1.2, 1.1, M.limestone);
     plaquePed.position.set(-9, 0.55, 29);
-    root.add(plaquePed);
+    st.add(plaquePed);
     const plaque = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.4, 0.12), M.bronze);
+    plaque.name = 'Terminal Plaza dedication';
     plaque.position.set(-9, 1.85, 29);
-    root.add(plaque);
+    st.add(plaque);
     registerInteractive(plaque, {
       title: 'Bronze Dedication Plaque, Terminal Plaza',
       body: '"Other cities were built where rivers ran. Ours was built where the earth itself kept a forge burning — and by God, we lit it ourselves."\n\n— Mayor Aloysius P. Crandall, ribbon-cutting at the Belt Loop, 1926',
@@ -382,8 +383,9 @@ export async function build(ctx) {
     // Readable: framed first-page of the Ledger at the porte-cochere
     // (newsboy cry, Voice fragment 8, verbatim).
     const frame = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.8, 0.1), M.bronze);
+    frame.name = 'Tutwiler framed newspaper';
     frame.position.set(6.5, 2.2, 15.35);
-    root.add(frame);
+    ht.add(frame);
     registerInteractive(frame, {
       title: 'Framed Extra — The Birmingham Ledger',
       body: '"EXTRA! BARONS TAKE THE SOUTHERN PENNANT — CROWDS PACK RICKWOOD FIELD! LEDGER, TWO CENTS!"\n\nThe October 1928 extra, framed behind glass by the doorman who sold it.',

@@ -19,7 +19,6 @@ import { startPolice } from './police.js';
 
 export function startSystems(ctx) {
   const streetcars = safeStart(startStreetcars, ctx, 'streetcars');
-  const traffic = safeStart(startTraffic, ctx, 'traffic');
 
   const steelLife = safeStart(startSteelLife, ctx, 'steelLife');
   const ambience = safeStart(startAmbience, ctx, 'ambience');
@@ -27,6 +26,7 @@ export function startSystems(ctx) {
   // driving.js coordinates streetcar boarding through streetcars.getCars() rather than
   // reaching into streetcars.js internals — ctx is only extended, never mutated upstream.
   const driving = safeStart((c) => startDriving({ ...c, streetcars }), ctx, 'driving');
+  const traffic = safeStart((c) => startTraffic({ ...c, driving }), ctx, 'traffic');
   const police = driving ? safeStart((c) => startPolice({ ...c, driving }), ctx, 'police') : null;
   const pedestrians = safeStart(startPedestrians, ctx, 'pedestrians');
   const weather = safeStart(startWeather, ctx, 'weather');
@@ -37,12 +37,12 @@ export function startSystems(ctx) {
   return {
     update(dt, elapsed) {
       if (streetcars) streetcars.update(dt, elapsed);
-      if (traffic) traffic.update(dt, elapsed);
 
       if (steelLife) steelLife.update(dt, elapsed, ctx.camera);
       if (ambience) ambience.update(dt, elapsed, ambienceExtra);
       if (jazz) jazz.update(dt, elapsed);
       if (driving) driving.update(dt, elapsed);
+      if (traffic) traffic.update(dt, elapsed);
       if (police) police.update(dt, elapsed);
       if (pedestrians) pedestrians.update(dt, elapsed);
       if (weather) weather.update(dt, elapsed);

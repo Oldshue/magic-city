@@ -27,11 +27,12 @@
  */
 import * as THREE from '../../vendor/three.module.min.js';
 import { PointerLockControls } from '../../vendor/PointerLockControls.js';
+import { hitsMovingObstacle } from './vehicle-motion.mjs';
 
 export const EYE_HEIGHT = 1.7;
 const WALK = 6.5; // m/s — brisk city stride; Shift sprints
 const SPRINT = 16.8; // m/s — a real dash for covering blocks
-const PLAYER_RADIUS = 0.45; // body radius for collision padding
+export const PLAYER_RADIUS = 0.45; // body radius for collision padding
 const BOB_FREQ = 1.7; // bob cycles per second at walk speed
 const BOB_AMP = 0.05; // meters of head-bob at full walk speed
 const LOOK_SENSITIVITY = 0.0025; // radians/px — mouse drag-to-look fallback
@@ -151,6 +152,20 @@ export function createControls(camera, domElement, bounds) {
   // Unpadded {minX,maxX,minZ,maxZ} boxes, same registration order as `colliders` — exposed via
   // getColliderBoxes() so other systems (e.g. driving.js) can apply their own padding.
   const rawBoxes = [];
+  const movingSources = new Set(), movingBoxes = [];
+  function addMovingColliders(boxes) {
+    movingSources.add(boxes);
+    return () => movingSources.delete(boxes);
+  }
+  function getMovingColliderBoxes(exclude) {
+    movingBoxes.length = 0;
+    for (const source of movingSources) {
+      for (const box of source) {
+        if (!exclude || box.owner !== exclude) movingBoxes.push(box);
+      }
+    }
+    return movingBoxes;
+  }
 
   let bobPhase = 0;
 
@@ -158,6 +173,9 @@ export function createControls(camera, domElement, bounds) {
   function hitsBox(x, z) {
     for (let i = 0; i < colliders.length; i += 4) {
       if (x > colliders[i] && x < colliders[i + 1] && z > colliders[i + 2] && z < colliders[i + 3]) return true;
+    }
+    for (const box of getMovingColliderBoxes()) {
+      if (hitsMovingObstacle(box,x,z,PLAYER_RADIUS)) return true;
     }
     return false;
   }
@@ -231,7 +249,7 @@ export function createControls(camera, domElement, bounds) {
    * @returns {Array<{minX:number,maxX:number,minZ:number,maxZ:number}>} */
   function getColliderBoxes() { return rawBoxes; }
 
-  return { controls, requestPointerLock, update, setSpawn, addColliders, setEnabled, setInputBlocked, isInputBlocked, getColliderBoxes, setVirtualMove, getVirtualMove,
+  return { controls, requestPointerLock, update, setSpawn, addColliders, addMovingColliders, getMovingColliderBoxes, setEnabled, setInputBlocked, isInputBlocked, getColliderBoxes, setVirtualMove, getVirtualMove,
     dispose() {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
