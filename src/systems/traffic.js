@@ -339,8 +339,11 @@ export function startTraffic(ctx) {
     reserveJunction(junction,instances,blocker,approachingPedestrians);
     for (const car of instances) {
       const crossing = junctionGap(junction,car);
-      let playerRoom = blockerGap(car,blocker);
-      for (const person of approachingPedestrians) playerRoom=Math.min(playerRoom,blockerGap(car,person));
+      const clearingJunction = junction?.blocked && junction.owner === car && crossing === Infinity;
+      let playerRoom = blockerGap(car, blocker, clearingJunction);
+      for (const person of approachingPedestrians) {
+        playerRoom = Math.min(playerRoom, blockerGap(car, person, clearingJunction));
+      }
       const leadRoom = car.leader
         ? wrapDistance((car.leader.dist-car.dist)*car.dir,car.route.total)-HALF_LENGTH*2
         : Infinity;

@@ -27,7 +27,7 @@
  */
 import * as THREE from '../../vendor/three.module.min.js';
 import { PointerLockControls } from '../../vendor/PointerLockControls.js';
-import { hitsMovingObstacle } from './vehicle-motion.mjs';
+import { hitsMovingObstacle, slideAlongCar } from './vehicle-motion.mjs';
 
 export const EYE_HEIGHT = 1.7;
 const WALK = 6.5; // m/s — brisk city stride; Shift sprints
@@ -169,15 +169,19 @@ export function createControls(camera, domElement, bounds) {
 
   let bobPhase = 0;
 
+  function movingObstacleAt(x, z) {
+    for (const box of getMovingColliderBoxes()) {
+      if (hitsMovingObstacle(box, x, z, PLAYER_RADIUS)) return box;
+    }
+    return null;
+  }
+
   /** True if point (x,z), padded by the player radius, falls inside any collider box. */
   function hitsBox(x, z) {
     for (let i = 0; i < colliders.length; i += 4) {
       if (x > colliders[i] && x < colliders[i + 1] && z > colliders[i + 2] && z < colliders[i + 3]) return true;
     }
-    for (const box of getMovingColliderBoxes()) {
-      if (hitsMovingObstacle(box,x,z,PLAYER_RADIUS)) return true;
-    }
-    return false;
+    return movingObstacleAt(x, z) !== null;
   }
 
   /** Per-frame movement update. No-op while disabled (see setEnabled).
@@ -216,13 +220,27 @@ export function createControls(camera, domElement, bounds) {
       dz = dz / len * speed * dt;
 
       // Axis-separated AABB rejection: try X, then Z, so we slide along walls.
-      const px = camera.position.x + dx;
+      const { x, z } = camera.position;
+      const px = x + dx;
       if (!hitsBox(px, camera.position.z)) {
         camera.position.x = THREE.MathUtils.clamp(px, bounds.minX, bounds.maxX);
       }
-      const pz = camera.position.z + dz;
+      const pz = z + dz;
       if (!hitsBox(camera.position.x, pz)) {
         camera.position.z = THREE.MathUtils.clamp(pz, bounds.minZ, bounds.maxZ);
+      }
+      if (camera.position.x === x && camera.position.z === z) {
+        // Axis separation can pin the player at a rounded bumper corner.
+        const obstacle = movingObstacleAt(px, pz);
+        const slide = obstacle?.heading !== undefined ? slideAlongCar(obstacle, x, z, dx, dz) : null;
+        if (slide) {
+          const nextX = THREE.MathUtils.clamp(x + slide[0], bounds.minX, bounds.maxX);
+          const nextZ = THREE.MathUtils.clamp(z + slide[1], bounds.minZ, bounds.maxZ);
+          if (!hitsBox(nextX, nextZ)) {
+            camera.position.x = nextX;
+            camera.position.z = nextZ;
+          }
+        }
       }
     }
 

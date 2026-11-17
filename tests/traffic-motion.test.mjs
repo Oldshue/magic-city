@@ -96,3 +96,12 @@ test('kiosk customers hold their crossing while perpendicular traffic can procee
   assert.ok(Number.isFinite(junctionGap(junction,approaching)));
   assert.equal(junctionGap(junction,across),Infinity);
 });
+
+
+test('a committed sedan clears a crosswalk only when a waiting walker is outside its lane', () => {
+  const car = {x:-16.34, z:4.4, heading:Math.PI / 2};
+  const walker = {x:-13.8, z:5.98, y:1.7};
+  assert.equal(blockerGap(car, walker), 0);
+  assert.equal(blockerGap(car, walker, true), Infinity);
+  assert.equal(blockerGap(car, {...walker, z:5.9}, true), 0);
+});

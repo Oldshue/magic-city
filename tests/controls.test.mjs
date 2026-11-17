@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PerspectiveCamera } from '../vendor/three.module.min.js';
-import { createControls } from '../src/engine/controls.js';
+import { createControls, PLAYER_RADIUS } from '../src/engine/controls.js';
+import { hitsMovingObstacle, setCarBounds } from '../src/engine/vehicle-motion.mjs';
 test('named modal blockers suppress actual movement and pointer look without releasing vehicle camera ownership',()=>{
   const previous=globalThis.document;
   const documentEvents=new EventTarget(); globalThis.document=documentEvents;
@@ -39,3 +40,35 @@ test('named modal blockers suppress actual movement and pointer look without rel
     document.querySelector('canvas').click(); assert.equal(requests,1);
   } finally {input.dispose();dom.window.close();if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
  });
+
+
+test('holding forward rounds a solid sedan bumper at the west crosswalk', () => {
+  const previous = globalThis.document;
+  const events = new EventTarget();
+  globalThis.document = events;
+  const canvas = new EventTarget();
+  canvas.getRootNode = () => events;
+  const camera = new PerspectiveCamera();
+  const input = createControls(camera, canvas, {minX:-100, maxX:100, minZ:-100, maxZ:100});
+  const car = setCarBounds({}, -16.34, 4.4, Math.PI / 2, 'sedan');
+  input.addMovingColliders([car]);
+  try {
+    input.setSpawn([-13.8, 5.94], 0);
+    events.dispatchEvent(Object.assign(new Event('keydown'), {code:'KeyW'}));
+    for (let frame = 0; frame < 16; frame++) {
+      input.update(1/60);
+      assert.equal(hitsMovingObstacle(car, camera.position.x, camera.position.z, PLAYER_RADIUS), false);
+    }
+    assert.ok(camera.position.x > -13.65);
+    assert.ok(camera.position.z < 4.9, 'forward movement can go around the nose');
+
+    input.setSpawn([-15.4, 6.05], 0);
+    for (let frame = 0; frame < 16; frame++) input.update(1/60);
+    assert.ok(Math.abs(camera.position.x + 15.4) < 1e-6);
+    assert.ok(camera.position.z >= 5.97, 'the broad side remains solid');
+  } finally {
+    input.dispose();
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});

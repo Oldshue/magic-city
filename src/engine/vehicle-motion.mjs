@@ -124,6 +124,23 @@ export function hitsMovingObstacle(box,x,z,radius) {
 }
 
 
+
+/** Project a blocked walking step onto the tangent at the car's closest face. */
+export function slideAlongCar(box, x, z, dx, dz) {
+  const sine = Math.sin(box.heading), cosine = Math.cos(box.heading);
+  const localX = (x - box.x) * cosine - (z - box.z) * sine;
+  const localZ = (x - box.x) * sine + (z - box.z) * cosine;
+  const offsetX = localX - Math.max(-HALF_WIDTH, Math.min(HALF_WIDTH, localX));
+  const offsetZ = localZ - Math.max(-HALF_LENGTH, Math.min(HALF_LENGTH, localZ));
+  const lengthSquared = offsetX * offsetX + offsetZ * offsetZ;
+  if (lengthSquared < 1e-8) return null;
+  const nx = offsetX * cosine + offsetZ * sine;
+  const nz = -offsetX * sine + offsetZ * cosine;
+  const approach = (dx * nx + dz * nz) / lengthSquared;
+  if (approach >= 0) return null;
+  return [dx - approach * nx, dz - approach * nz];
+}
+
 export const TYRE_RADIUS = 0.385;
 export const HALF_TRACK = 0.89;
 export const FRONT_AXLE_Z = 1.46;

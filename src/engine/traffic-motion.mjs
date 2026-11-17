@@ -18,7 +18,7 @@ export function lanePosition(x, z, heading, offset) {
 }
 
 /** Distance to a pedestrian or car in the lane ahead, measured bumper to bumper. */
-export function blockerGap(car, blocker) {
+export function blockerGap(car, blocker, clearingJunction = false) {
   if (!blocker || blocker.riding || (!blocker.mounted && blocker.y > 2.6)) return Infinity;
   const dx = blocker.x-car.x, dz=blocker.z-car.z;
   const sx=Math.sin(car.heading), cx=Math.cos(car.heading);
@@ -32,7 +32,10 @@ export function blockerGap(car, blocker) {
     width=HALF_WIDTH*cos + HALF_LENGTH*sin;
     depth=HALF_LENGTH*cos + HALF_WIDTH*sin;
   }
-  if (across >= HALF_WIDTH + width + .20) return Infinity;
+  // A car already inside the junction can clear it when the walker is
+  // outside its swept lane. Other traffic retains the approach margin.
+  const margin = clearingJunction && !blocker.mounted ? 0 : .20;
+  if (across >= HALF_WIDTH + width + margin) return Infinity;
   return Math.max(0,along - HALF_LENGTH - depth - YIELD_MARGIN);
 }
 
