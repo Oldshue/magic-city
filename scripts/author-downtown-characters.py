@@ -532,6 +532,28 @@ def bake_counter(rig):
     scene.frame_set(0)
 
 
+def add_counter_face(body, female):
+    """Keep lip shapes and eyelids on the fitted head as exportable morph targets."""
+    targets = service("targetservice", "TargetService")
+    faces = service("faceservice", "FaceService")
+    root = Path(importlib.import_module(MODULE).__file__).parent / "data/targets/expression/units"
+    units = root / ("caucasian" if female else "african")
+    for name, unit in {
+        "eyeBlinkLeft": "eye-left-closure",
+        "eyeBlinkRight": "eye-right-closure",
+        "jawOpen": "mouth-open",
+        "mouthClose": "mouth-compression",
+        "mouthPucker": "mouth-pursing",
+        "mouthStretchLeft": "mouth-part-later",
+        "mouthSmileLeft": "mouth-corner-puller",
+        "browOuterUpLeft": "eyebrows-left-extern-up",
+        "browOuterUpRight": "eyebrows-right-extern-up",
+    }.items():
+        targets.load_target(body, units / (unit + ".target.gz"), name=name)
+    # Transfer the eyelid and brow shape changes to the lash and brow cards.
+    faces.interpolate_targets(body)
+
+
 def build(asset_path, output, female=False, driver=False, staff=None, worker=False):
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
@@ -584,13 +606,17 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
     bpy.context.view_layer.update()
     rig = exports.create_character_copy(body, name_suffix="_street")
     export_body = objects.find_object_of_type_amongst_nearest_relatives(rig, "Basemesh")
+    if staff:
+        bpy.context.view_layer.objects.active = export_body
+        # The expression targets use the original vertex IDs.
+        if export_body.data.shape_keys:
+            bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
+        add_counter_face(export_body, female)
     exports.bake_modifiers_remove_helpers(
         export_body, bake_masks=True, bake_subdiv=False, remove_helpers=True, also_proxy=True
     )
-    # The macro targets are baked at their fitted weights so the scalp and
-    # clothing agree with the geometry the game actually loads.
-    bpy.context.view_layer.objects.active = export_body
-    if export_body.data.shape_keys:
+    if not staff and export_body.data.shape_keys:
+        bpy.context.view_layer.objects.active = export_body
         bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
     if (female and not staff) or worker:
         felt_hat(rig, export_body, flat=worker)

@@ -1,3 +1,4 @@
+import { createCounterVoices } from './counter-voices.mjs';
 import { createPersistentStorage } from '../gameplay/persistence.mjs';
 import { createShopState, SHOP_MENUS } from '../gameplay/shop-state.mjs';
 import { getAudio, makeNoiseBuffer, makeRng } from '../systems/audioBus.js';
@@ -59,6 +60,8 @@ export async function initCounterService(ctx,root) {
   const receipt = ui.querySelector('#mc-counter-receipt');
   const scratch = new ctx.THREE.Vector3(), focus = new ctx.THREE.Vector3(), aim = new ctx.THREE.Quaternion();
   const rng = makeRng(32099);
+  const voices = createCounterVoices();
+  const defaultFov = ctx.camera.fov;
   let open, cameraTime = 0, toastTime = 0, audioNoise;
 
   function sound(phase,kind) {
@@ -85,6 +88,7 @@ export async function initCounterService(ctx,root) {
   function close() {
     if (!open) return;
     open = null;
+    voices.stop();
     dialog.hidden = true;
     root.classList.remove('mc-counter-open');
     choices.replaceChildren();
@@ -130,13 +134,15 @@ export async function initCounterService(ctx,root) {
     location.textContent=counter.name;
     cash.textContent=cost(state.cash())+' in pocket';
     speaker.textContent=menu.person;
-    line.textContent=message || (phase==='ready' ? menu.ready : phase==='serving' ? menu.ordered
-      : state.visited(kind) ? menu.familiar : menu.greeting);
+    const dialogue=message || (phase==='ready' ? 'ready' : phase==='serving' ? 'ordered'
+      : state.visited(kind) ? 'familiar' : 'greeting');
+    line.textContent=menu[dialogue];
+    voices.play(counter,dialogue);
     choices.replaceChildren();
     if (phase==='ready') action('Take '+menu.item.toLowerCase()+' · '+cost(menu.price),()=>consume(counter));
     if (!phase) {
       action('Order '+menu.item.toLowerCase()+' · '+cost(menu.price),()=>serve(counter),state.available()<menu.price);
-      action(menu.question,()=>{perform(counter,'Speak',56/30);draw(counter,menu.reply);});
+      action(menu.question,()=>{perform(counter,'Speak',56/30);draw(counter,'reply');});
     }
     action('Leave the counter',close);
     (choices.querySelector('button:not(:disabled)') || dialog).focus();
@@ -210,6 +216,13 @@ export async function initCounterService(ctx,root) {
   }
 
   return {update(dt) {
+    voices.update(dt);
+    const targetFov = open ? defaultFov - 10 : defaultFov;
+    if (ctx.camera.fov !== targetFov) {
+      ctx.camera.fov += (targetFov - ctx.camera.fov) * (1 - Math.exp(-dt * 10));
+      if (Math.abs(ctx.camera.fov - targetFov) < .02) ctx.camera.fov = targetFov;
+      ctx.camera.updateProjectionMatrix();
+    }
     toastTime=Math.max(0,toastTime-dt);
     if (toastTime===0) receipt.hidden=true;
     if (open && cameraTime<.39) {
@@ -221,6 +234,12 @@ export async function initCounterService(ctx,root) {
       ctx.camera.quaternion.slerp(aim,Math.exp(-dt*10));
     }
     for (const counter of counters) {
+      const [x, z] = counter.actor.position;
+      const player = ctx.camera.position;
+      if (!counter.voicesPreloaded && Math.abs(player.y) < 8
+          && (player.x-x)**2 + (player.z-z)**2 < 18**2) {
+        counter.voicesPreloaded = voices.preload(counter.kind);
+      }
       counter.actor.attending=open===counter;
       const pose=counter.performance;
       if (!pose) continue;

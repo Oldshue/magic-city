@@ -211,8 +211,9 @@ export function startJazz(ctx) {
       const duck = Math.max(0, 1 - furnaceD / 260);
       const doorMuffle = Math.max(0, 1 - doorD / 18);
 
-      const targetGain = Math.max(0.15, 0.8 + swell * 0.3 - duck * 0.35);
-      g.jazzBus.gain.setTargetAtTime(targetGain, g.ac.currentTime, 1.2);
+      const atCounter = ctx.shopCounters?.some(counter => counter.actor.attending);
+      const targetGain = Math.max(0.15, 0.8 + swell * 0.3 - duck * 0.35) * (atCounter ? .42 : 1);
+      g.jazzBus.gain.setTargetAtTime(targetGain, g.ac.currentTime, atCounter ? .17 : 1.2);
 
       const doorCutoff = 18000 - doorMuffle * 16500;
       g.doorLP.frequency.setTargetAtTime(Math.max(1200, doorCutoff), g.ac.currentTime, 0.4);

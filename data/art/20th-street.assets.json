@@ -11,7 +11,7 @@
     "licenseSource": "https://polyhaven.com/license"
   },
   "downtown-characters": {
-    "description": "Game-rigged characters with locally authored caps, apron, spectacles, idle, walk, boarding, steering, greeting and service animations",
+    "description": "Game-rigged characters with locally authored caps, apron, spectacles, idle, walk, boarding, steering, greeting and service animations, and fitted MPFB expression targets for the two shopkeepers",
     "files": [
       "bank-clerk.glb",
       "shopkeeper.glb",
@@ -24,11 +24,20 @@
     "script": "scripts/author-downtown-characters.py",
     "sources": [
       "https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html",
-      "https://static.makehumancommunity.org/assets/assetpacks/suits01.html"
+      "https://static.makehumancommunity.org/assets/assetpacks/suits01.html",
+      "https://github.com/makehumancommunity/mpfb2/blob/master/LICENSE.md"
     ],
     "clothingCredit": "Margaret Toigo and the MakeHuman Community",
     "upstreamAssetLicense": "CC0-1.0",
     "licenseSource": "https://static.makehumancommunity.org/about/license.html"
+  },
+  "counter-voices": {
+    "description": "Original shop dialogue synthesized locally from the game's lines, with phoneme timings for the character rigs",
+    "files": ["counter-voices/*.mp3", "counter-voices/lip-timings.json"],
+    "script": "scripts/author-counter-voices.py",
+    "model": "Kokoro-82M v1.0",
+    "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+    "modelLicense": "Apache-2.0"
   },
   "marble-counter": {
     "description": "Marble color, normal and roughness photographed by Rob Tuytel",

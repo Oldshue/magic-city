@@ -1,5 +1,6 @@
 import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
+import { findCounterFace, updateCounterFace } from './counter-face.js';
 
 const MODELS = ['bank-clerk','shopkeeper','street-worker','pharmacist','crown-proprietor'];
 const TINTS = [0xb09774,0x977655,0x919592,0x9d714f,0x767a64,0xa77878,0x737f9e,0x817451];
@@ -85,7 +86,8 @@ export function createStreetCharacters({THREE, scene, camera}) {
       instance.traverse(mesh=>{
         if (mesh.isMesh && /suit|fedora|felt/i.test(mesh.material.name)) wardrobe.push([mesh,mesh.material]);
       });
-      slot = {instance,mixer,clips,wardrobe,head:instance.getObjectByName('head'),hand:instance.getObjectByName('hand_r')};
+      slot = {instance,mixer,clips,wardrobe,face:findCounterFace(instance),
+        head:instance.getObjectByName('head'),hand:instance.getObjectByName('hand_r')};
       model.slots.push(slot);
     }
     slot.mixer.stopAllAction();
@@ -128,6 +130,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
       slot.instance.scale.setScalar(person.scale);
       slot.instance.visible=true;
       slot.mixer.update(dt);
+      if (slot.face) updateCounterFace(slot.face,person.actor,dt);
       if (slot.head && (person.actor?.attending || (person.walkingBlock && dx*dx+dz*dz<17))) {
         const angle=THREE.MathUtils.euclideanModulo(Math.atan2(dx,dz)-facing+Math.PI,Math.PI*2)-Math.PI;
         slot.head.rotateY(THREE.MathUtils.clamp(angle*.65,-.53,.53));

@@ -66,7 +66,8 @@ function makeAODecalTexture(size = 64) {
 async function boot() {
   const { renderer, scene, camera } = createRenderer();
   const vignette = createVignette(renderer);
-  const environment = createStreetReflection(renderer);
+  const streetReflection = createStreetReflection(renderer);
+  const environment = streetReflection?.environment ?? null;
   const plan = await fetch('data/city-plan.json').then((r) => r.json());
 
   // Renderer is passed through so sky.js can sweep toneMappingExposure per
@@ -225,7 +226,7 @@ async function boot() {
   // hand off camera control (driving, streetcar riding) call controls.setEnabled(false/true)
   // and read controls.getColliderBoxes() for their own collision checks.
   const ctx = {
-    THREE, scene, camera, renderer, plan, environment,
+    THREE, scene, camera, renderer, plan, environment, streetReflection,
     materials, deco, registerInteractive, controls, streetSegments,
     getDayPhase: sky.getDayPhase,
     interactives, characters: [], shopCounters: [], interactions: createInteractions(),
@@ -380,6 +381,7 @@ async function boot() {
     // Gentle vignette: one extra fullscreen-quad draw call, multiplied over
     // the frame just rendered above (see renderer.js's createVignette).
     vignette.render();
+    streetReflection?.update(scene, camera.position, phase, dt);
   }
   frame();
 }

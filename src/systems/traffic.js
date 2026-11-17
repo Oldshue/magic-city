@@ -6,11 +6,15 @@ import { ROAD_HEIGHT } from '../engine/street-layout.js';
 import { advanceTraffic, blockerGap, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore, wrapDistance } from '../engine/traffic-motion.mjs';
 
 export function startTraffic(ctx) {
-  const { THREE, scene, plan, getDayPhase } = ctx;
+  const { THREE, scene, plan, getDayPhase, streetReflection } = ctx;
   const avenues = (plan.streets || []).filter((s) => s.class === 'avenue');
   const has20thStreet = avenues.some(street => street.name === '20th Street North');
   if (has20thStreet) {
     const parked = buildPeriodSedan(0x2b4540, ctx.environment, {powered:false});
+    if (streetReflection) {
+      streetReflection.exclude(parked.group);
+      for (const material of parked.reflective) streetReflection.reflect(material);
+    }
     parked.group.name = 'Parked green sedan';
     parked.group.position.set(9.3, ROAD_HEIGHT, 40);
     parked.group.rotation.y = Math.PI;
@@ -160,6 +164,7 @@ export function startTraffic(ctx) {
 
   const detailedTraffic = new THREE.Group();
   detailedTraffic.name = 'Detailed downtown traffic';
+  streetReflection?.exclude(detailedTraffic);
   scene.add(detailedTraffic);
   const detailedPools = lacquer.map(()=>[]);
   const colliders = [];
@@ -168,6 +173,9 @@ export function startTraffic(ctx) {
 
   function makeDetail(color) {
     const sedan = buildPeriodSedan(lacquer[color],ctx.environment,{powered:false});
+    if (streetReflection) {
+      for (const material of sedan.reflective) streetReflection.reflect(material);
+    }
     sedan.group.name = 'Passing sedan';
     const motoristColor = [0xb6a185,0x8f8680,0x766353][color];
     createDriverPerformer(sedan.group,{motoristColor}).drive(sedan);

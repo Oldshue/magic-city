@@ -254,6 +254,7 @@ function orientedBox(x, z, side, [u0,u1,v0,v1]) {
 
 export async function add20thStreetStores(ctx, parent) {
   const M = makeShopMaterials(await loadShopSurfaces(ctx.environment),ctx.environment);
+  ctx.streetReflection?.reflect(M.glass);
   const footprintBoxes = [];
   for (const spec of STORES) {
     const landmark = ctx.plan.landmarks.find(building => building.id === spec.landmark);

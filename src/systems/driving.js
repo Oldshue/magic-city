@@ -84,7 +84,7 @@ const SEDAN_SPECS = [
  *   systems/index.js from its own startStreetcars() result).
  */
 export function startDriving(ctx) {
-  const { THREE, scene, getDayPhase, camera, plan, streetcars, environment } = ctx;
+  const { THREE, scene, getDayPhase, camera, plan, streetcars, environment, streetReflection } = ctx;
   const controls = ctx.controls || { setEnabled() {}, getColliderBoxes() { return EMPTY_BOXES; } };
   const bounds = plan.bounds;
   const player = createDriverPerformer(scene);
@@ -92,6 +92,10 @@ export function startDriving(ctx) {
   // --- Build parked sedans ------------------------------------------------
   const cars = SEDAN_SPECS.map((spec) => {
     const built = buildPeriodSedan(spec.color, environment, {whitewall:spec.whitewall});
+    if (streetReflection) {
+      streetReflection.exclude(built.group);
+      for (const material of built.reflective) streetReflection.reflect(material);
+    }
     built.group.name = spec.name;
     built.group.position.set(spec.x, ROAD_HEIGHT, spec.z);
     const heading = THREE.MathUtils.degToRad(spec.yawDeg);
