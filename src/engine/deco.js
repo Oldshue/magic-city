@@ -114,7 +114,7 @@ if (!materials.glassNight.userData.mcInstancedEmissivePatched) {
 // ---------------------------------------------------------------------
 export { windowGrid } from './deco-windows.js';
 export { canvasSign, decoDoorway } from './deco-signage.js';
-export { streetlamp, setLampsNight, initLampPool, updateLampPool } from './deco-lamp.js';
+export { streetlamp, setLampsNight, initLampPool, updateLampPool, lampGlobeMaterial, registerLampPosition } from './deco-lamp.js';
 export { rooftopClutter } from './deco-rooftop.js';
 export { storefrontBand } from './deco-storefront.js';
 export { tree } from './deco-tree.js';

@@ -87,6 +87,20 @@ try {
   if(storage.available){previousSave=storage.value;await page.evaluate(key=>localStorage.removeItem(key),key);await page.reload();await page.waitForFunction(()=>!!document.__qaWorld);}
   else assert.equal(process.env.MC_QA_ANONYMOUS,'1','Isolated-frame acceptance uses a disposable anonymous context');
   await step('Fresh title and intro boot',takeCase);
+  await step('Terminal Quarter roof caps sit on their buildings',async()=>{
+    const positions=await page.evaluate(()=>{
+      const {scene,camera}=document.__qaWorld;
+      const quarter=scene.getObjectByName('district-terminal-quarter');
+      const roofs=[];
+      const position=camera.position.clone();
+      quarter.traverse(mesh=>{
+        if(mesh.name==='terminal-roof-cap') roofs.push(mesh.getWorldPosition(position).x);
+      });
+      return roofs;
+    });
+    assert.ok(positions.some(x=>x < -600), 'western warehouse caps are present');
+    assert.ok(positions.every(x=>x < -160), 'roof caps keep the 20th Street intersection clear');
+  });
   await step('Journal blocks movement and map input',async()=>{
     await page.keyboard.press('j');
     const before=await page.evaluate(()=>document.__qaWorld.camera.position.toArray());

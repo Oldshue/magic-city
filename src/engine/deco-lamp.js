@@ -1,41 +1,16 @@
-/**
- * deco-lamp.js - the period streetlamp and its PointLight + ground-glow
- * pool.
- * streetlamp() builds a period acorn/bishop-crook fixture: fluted
- * dark-green post, curved bishop-crook arm, bronze crown collar, glass
- * acorn globe - and registers itself in the shared lampRecords pool
- * ({group, globe}) that initLampPool/updateLampPool consume.
- *
- * M3b (Lighting Engineer II - night/dusk street visibility): the
- * point-light pool is now 12 lights (was 8), reassigned each frame to the
- * 12 standards nearest the camera (distance ~22m, decay 2, intensity
- * ramped by night glow) so the street itself reads as lit, not just the
- * globes. Every registered lamp (not just the pooled 12) also gets a soft
- * additive ground-glow disc baked into ONE shared InstancedMesh (radial
- * canvas texture, warm, additive, depthWrite off) built once in
- * initLampPool() after every district has registered its lamps, so the
- * whole city's lamp pools fade in together at zero extra draw-call cost
- * beyond that single instanced mesh. Per-lamp discs are no longer built
- * inside each lamp's own group in streetlamp() - one InstancedMesh
- * replaces what used to be one Mesh per lamp.
- */
+/** Period cast-iron streetlights and a shared pool of nearby light sources. */
 import * as THREE from '../../vendor/three.module.min.js';
 import { materials } from './materials.js';
-import { glowDiscTexture } from './deco-shared.js';
 
+const lampPositions = [];
 const lampGlobes = [];
-const lampRecords = []; // {group, globe} - registered lamps, consumed by initLampPool/updateLampPool
+export const lampGlobeMaterial = new THREE.MeshBasicMaterial({ color: 0x777773 });
+const globeDay = new THREE.Color(0x777773);
+const globeNight = new THREE.Color(0xffd9a0);
 
 const postGreen = new THREE.MeshStandardMaterial({ color: 0x1e2f22, roughness: 0.45, metalness: 0.55 });
 
-/**
- * streetlamp - period pole lamp with warm globe; globe auto-dims by day.
- * Registers the lamp for the point-light + ground-glow pool (see
- * initLampPool/updateLampPool below) - the pavement glow disc itself is
- * NOT built here; it rides in the single shared InstancedMesh built by
- * initLampPool() once every lamp in the city has been registered.
- * @returns {THREE.Group} base at y=0, ~5m tall
- */
+/** Period acorn lamp. The returned group has its base at ground level. */
 export function streetlamp() {
   const g = new THREE.Group();
 
@@ -72,140 +47,79 @@ export function streetlamp() {
   g.add(crown);
 
   // Glass acorn globe (elongated sphere, flattened base).
-  const globeMat = new THREE.MeshBasicMaterial({ color: 0x777777 });
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), globeMat);
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), lampGlobeMaterial);
   globe.scale.set(1, 1.25, 1);
   globe.position.set(0.82, 5.16, 0);
   lampGlobes.push(globe);
   g.add(globe);
 
-  lampRecords.push({ group: g, globe });
   return g;
 }
 
-/**
- * setLampsNight - toggle all registered lamp globes for night mode. The
- * pavement glow-pool discs (one shared InstancedMesh, see initLampPool)
- * are faded every frame by updateLampPool() instead, since they share one
- * mesh rather than being addressable as per-lamp materials.
- * @param {number} nightFactor 0 (day) .. 1 (night)
- */
 export function setLampsNight(nightFactor) {
-  const lit = nightFactor > 0.35;
-  for (const globe of lampGlobes) {
-    globe.material.color.setHex(lit ? 0xffd9a0 : 0x555550);
-  }
+  lampGlobeMaterial.color.copy(globeDay).lerp(globeNight, nightFactor);
 }
 
-const LAMP_POOL_SIZE = 12; // <=12 real point lights, per the M3b budget
-const LAMP_LIGHT_DISTANCE = 32;
-const LAMP_LIGHT_DECAY = 2;
-const LAMP_LIGHT_PEAK = 240;
+const LAMP_POOL_SIZE = 12;
+const LIGHT_RANGE = 36;
+const LIGHT_INTENSITY = 380;
+const nearest = new Array(LAMP_POOL_SIZE);
+const nearestDistances = new Float64Array(LAMP_POOL_SIZE);
 let lampPool = null;
-let discMesh = null;
-const _poolWorldPos = new THREE.Vector3();
-const _poolDistScratch = new Float64Array(LAMP_POOL_SIZE);
-const _poolNearest = new Array(LAMP_POOL_SIZE).fill(null);
-const _discMatrix = new THREE.Matrix4();
-const _discQuatI = new THREE.Quaternion();
-const _discScale = new THREE.Vector3(1, 1, 1);
-const _discOffset = new THREE.Vector3();
-const _discWorldPos = new THREE.Vector3();
 
-/**
- * initLampPool - create the recycled pool of streetlamp PointLights (12,
- * reassigned each frame to the nearest standards) and the single shared
- * ground-glow InstancedMesh covering EVERY registered lamp. Call once,
- * after every district has built and registered its lamps via
- * streetlamp() (main.js does this right after the district loop). Safe
- * to call multiple times (no-op after first).
- * @param {THREE.Scene} scene
- * @returns {THREE.PointLight[]}
- */
+/** Register a stationary light from a batch of streetlamp globes. */
+export function registerLampPosition(x, y, z) {
+  lampPositions.push(new THREE.Vector3(x, y, z));
+}
+
+/** Cache the mounted bulbs after all district transforms are in place. */
 export function initLampPool(scene) {
   if (lampPool) return lampPool;
+  for (const globe of lampGlobes) {
+    lampPositions.push(globe.getWorldPosition(new THREE.Vector3()));
+  }
   lampPool = [];
   for (let i = 0; i < LAMP_POOL_SIZE; i++) {
-    const light = new THREE.PointLight(0xffb870, 0, LAMP_LIGHT_DISTANCE, LAMP_LIGHT_DECAY);
+    const light = new THREE.PointLight(0xffba76, 0, LIGHT_RANGE, 2);
     light.visible = false;
-    light.castShadow = false;
     scene.add(light);
     lampPool.push(light);
   }
-
-  // One shared additive ground-glow disc per registered lamp, all in a
-  // single InstancedMesh (one draw call regardless of lamp count). Built
-  // once here - after every district has registered its lamps - using
-  // each lamp's world matrix so it sits correctly under the globe even
-  // for lamps nested inside a rotated/offset district group.
-  if (lampRecords.length) {
-    const discGeo = new THREE.CircleGeometry(9, 20);
-    discGeo.rotateX(-Math.PI / 2);
-    const discMat = new THREE.MeshBasicMaterial({
-      map: glowDiscTexture(), transparent: true, opacity: 0, depthWrite: false,
-      blending: THREE.AdditiveBlending, color: 0xffb870, toneMapped: false,
-    });
-    discMesh = new THREE.InstancedMesh(discGeo, discMat, lampRecords.length);
-    discMesh.userData.noShadow = true;
-    for (let i = 0; i < lampRecords.length; i++) {
-      const rec = lampRecords[i];
-      rec.group.updateWorldMatrix(true, false);
-      _discOffset.set(0.82, 0.03, 0);
-      _discWorldPos.copy(_discOffset).applyMatrix4(rec.group.matrixWorld);
-      _discMatrix.compose(_discWorldPos, _discQuatI, _discScale);
-      discMesh.setMatrixAt(i, _discMatrix);
-    }
-    discMesh.instanceMatrix.needsUpdate = true;
-    scene.add(discMesh);
-  }
-
   return lampPool;
 }
 
-/**
- * updateLampPool - reassign the recycled PointLight pool (12 lights) to
- * the streetlamps nearest cameraPosition, scaled by nightFactor (0 = all
- * lights off), and fade the shared ground-glow disc InstancedMesh in with
- * the same factor. Call once per frame after initLampPool(scene) has run.
- * @param {{x:number,z:number}} cameraPosition
- * @param {number} nightFactor 0 (day) .. 1 (night)
- */
+/** Light nearby surfaces from the bulbs themselves. */
 export function updateLampPool(cameraPosition, nightFactor) {
-  if (discMesh) {
-    discMesh.material.opacity = nightFactor > 0.3 ? 0.55 * Math.min(1, (nightFactor - 0.3) / 0.4) : 0;
-  }
   if (!lampPool || !cameraPosition) return;
-  if (nightFactor <= 0.05 || lampRecords.length === 0) {
-    for (const l of lampPool) l.visible = false;
+  if (nightFactor <= 0.05 || lampPositions.length === 0) {
+    for (const light of lampPool) light.visible = false;
     return;
   }
-  for (let i = 0; i < LAMP_POOL_SIZE; i++) { _poolDistScratch[i] = Infinity; _poolNearest[i] = null; }
-  for (let i = 0; i < lampRecords.length; i++) {
-    const rec = lampRecords[i];
-    rec.group.getWorldPosition(_poolWorldPos);
-    const dx = _poolWorldPos.x - cameraPosition.x;
-    const dz = _poolWorldPos.z - cameraPosition.z;
-    const d2 = dx * dx + dz * dz;
-    if (d2 < _poolDistScratch[LAMP_POOL_SIZE - 1]) {
-      let idx = LAMP_POOL_SIZE - 1;
-      _poolDistScratch[idx] = d2;
-      _poolNearest[idx] = { x: _poolWorldPos.x, z: _poolWorldPos.z };
-      while (idx > 0 && _poolDistScratch[idx] < _poolDistScratch[idx - 1]) {
-        const dTmp = _poolDistScratch[idx]; _poolDistScratch[idx] = _poolDistScratch[idx - 1]; _poolDistScratch[idx - 1] = dTmp;
-        const nTmp = _poolNearest[idx]; _poolNearest[idx] = _poolNearest[idx - 1]; _poolNearest[idx - 1] = nTmp;
-        idx--;
-      }
+
+  nearest.fill(null);
+  nearestDistances.fill(Infinity);
+  for (const position of lampPositions) {
+    const dx = position.x - cameraPosition.x;
+    const dz = position.z - cameraPosition.z;
+    const distance = dx * dx + dz * dz;
+    let slot = LAMP_POOL_SIZE - 1;
+    if (distance >= nearestDistances[slot]) continue;
+    while (slot > 0 && distance < nearestDistances[slot - 1]) {
+      nearest[slot] = nearest[slot - 1];
+      nearestDistances[slot] = nearestDistances[slot - 1];
+      slot--;
     }
+    nearest[slot] = position;
+    nearestDistances[slot] = distance;
   }
+
   for (let i = 0; i < LAMP_POOL_SIZE; i++) {
     const light = lampPool[i];
-    const pos = _poolNearest[i];
-    if (pos) {
-      light.visible = true;
-      light.position.set(pos.x, 4.3, pos.z);
-      light.intensity = LAMP_LIGHT_PEAK * nightFactor;
-    } else {
-      light.visible = false;
+    const source = nearest[i];
+    light.visible = Boolean(source);
+    if (source) {
+      light.position.copy(source);
+      light.intensity = LIGHT_INTENSITY * nightFactor;
     }
   }
 }

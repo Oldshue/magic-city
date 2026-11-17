@@ -22,16 +22,16 @@
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 
 const TRACKS = [
-  { file: '../../data/music/gulf-coast-blues-1923.mp3', mood: 'night' },
-  { file: '../../data/music/my-man-blues-1925.mp3', mood: 'night' },
-  { file: '../../data/music/down-hearted-blues-1923.mp3', mood: 'night' },
-  { file: '../../data/music/deep-sea-blues-1924.mp3', mood: 'night' },
-  { file: '../../data/music/of-all-the-wrongs-1924.mp3', mood: 'night' },
-  { file: '../../data/music/meanest-kind-o-blues-1924.mp3', mood: 'day' },
-  { file: '../../data/music/tears-1923.mp3', mood: 'day' },
-  { file: '../../data/music/copenhagen-1924.mp3', mood: 'day' },
-  { file: '../../data/music/oh-baby-1924.mp3', mood: 'day' },
-  { file: '../../data/music/charleston-crazy-1923.mp3', mood: 'day' },
+  { file: './data/music/gulf-coast-blues-1923.mp3', mood: 'night' },
+  { file: './data/music/my-man-blues-1925.mp3', mood: 'night' },
+  { file: './data/music/down-hearted-blues-1923.mp3', mood: 'night' },
+  { file: './data/music/deep-sea-blues-1924.mp3', mood: 'night' },
+  { file: './data/music/of-all-the-wrongs-1924.mp3', mood: 'night' },
+  { file: './data/music/meanest-kind-o-blues-1924.mp3', mood: 'day' },
+  { file: './data/music/tears-1923.mp3', mood: 'day' },
+  { file: './data/music/copenhagen-1924.mp3', mood: 'day' },
+  { file: './data/music/oh-baby-1924.mp3', mood: 'day' },
+  { file: './data/music/charleston-crazy-1923.mp3', mood: 'day' },
 ];
 const GAP_SECONDS = 3.2; // needle lifts, crackle breathes, next side drops
 
@@ -103,23 +103,31 @@ export function startJazz(ctx) {
 
   // ---- Record library: lazy fetch + decode, one shot each ----------------
   const buffers = new Map(); // file -> AudioBuffer | 'loading' | 'failed'
+  let availableTracks = TRACKS;
   function loadTrack(file) {
     if (buffers.has(file)) return;
     buffers.set(file, 'loading');
     fetch(file)
-      .then((r) => r.arrayBuffer())
+      .then((response) => {
+        if (!response.ok) throw new Error('Record request failed: ' + response.status);
+        return response.arrayBuffer();
+      })
       .then((ab) => g.ac.decodeAudioData(ab))
       .then((buf) => buffers.set(file, buf))
-      .catch(() => buffers.set(file, 'failed'));
+      .catch(() => {
+        buffers.set(file, 'failed');
+        availableTracks = availableTracks.filter(track => track.file !== file);
+      });
   }
 
   function pickNext() {
     const phase = getDayPhase();
     const night = phase < 0.24 || phase > 0.78;
     const mood = night ? 'night' : 'day';
-    const pool = TRACKS.filter((t) => t.mood === mood && t.file !== lastFile);
-    const all = pool.length ? pool : TRACKS.filter((t) => t.file !== lastFile);
-    return all[Math.floor(rng() * all.length)] || TRACKS[0];
+    const alternatives = availableTracks.filter(track => track.file !== lastFile);
+    const preferred = alternatives.filter(track => track.mood === mood);
+    const pool = preferred.length ? preferred : alternatives;
+    return pool[Math.floor(rng() * pool.length)] ?? availableTracks[0];
   }
 
   let current = null;      // { source, file, endsAt }
@@ -145,7 +153,7 @@ export function startJazz(ctx) {
 
   function tick() {
     const now = g.ac.currentTime;
-    if (!pending && (!current || now > nextAt - 12)) {
+    if (!pending && availableTracks.length && (!current || now > nextAt - 12)) {
       // Choose the next side a few bars early so decode is done in time.
       pending = pickNext();
       loadTrack(pending.file);
@@ -156,8 +164,7 @@ export function startJazz(ctx) {
       if (buf && buf !== 'loading' && buf !== 'failed') {
         dropNeedle(pending, buf);
       } else if (buf === 'failed') {
-        buffers.delete(pending.file);
-        pending = null; // try a different side next tick
+        pending = null; // pick another record without retrying the failed file
       }
     }
     if (!playing) {

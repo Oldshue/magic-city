@@ -25,6 +25,7 @@ function block(w, d, h, mat) {
 /** Flat roof cap / parison cornice on a block. */
 function cap(w, d, y, mat = materials.terracotta) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.5, d + 0.6), mat);
+  m.name = 'terminal-roof-cap';
   m.position.y = y;
   return m;
 }
@@ -504,7 +505,7 @@ export async function build(ctx) {
     const host = block(30, 18, 18, M.brick);
     host.position.set(-620, 9, -90);
     root.add(host);
-    root.add(cap(30, 18, 18.2));
+    host.add(cap(30, 18, 9.2));
     const ad = paintedAd([
       'MADE WHERE IT\'S MINED!',
       'One ton of TC steel crosses our yard in ninety minutes —',
@@ -548,7 +549,7 @@ export async function build(ctx) {
     const b = block(w, d, h, mat);
     b.position.set(x, h / 2, z);
     root.add(b);
-    root.add(cap(w, d, h + 0.25));
+    b.add(cap(w, d, h / 2 + 0.25));
     if (i % 3 === 1 && st >= 4) {
       const wg = windowGrid({ rows: st, cols: Math.max(3, Math.floor(w / 5)),
         spacingX: w / Math.max(3, Math.floor(w / 5)), spacingY: 3.4,

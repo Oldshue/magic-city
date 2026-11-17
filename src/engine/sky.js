@@ -1,64 +1,4 @@
-/**
- * sky.js — 6-minute day-night cycle for Magic City 1929.
- *
- * createSky(scene, fog, renderer) -> { update(dt, elapsed, cameraPosition), getDayPhase(), getNightGlow() }.
- * getDayPhase(): [0,1); 0 = midnight, 0.25 = dawn, 0.5 = noon, 0.75 = dusk.
- * getNightGlow(): [0,1) — the same window/lamp glow ramp update() drives
- * into materials.js each frame (0 = broad daylight, 1 = full night); main.js
- * additively uses this to drive deco.js's streetlamp point-light pool.
- * Cycle completes every 6 real minutes (360s). Animates sun + hemisphere
- * lights (with real day/night contrast), gradient sky-dome colors, fog
- * color/draw distance per keyframes, the sun's shadow-casting frustum, the
- * glassNight window emissive ramp (materials.js setGlassNightGlow), and
- * atmosphere: a sun disc that tracks the light direction, a moon + stars at
- * night, and a few layers of slow drifting cloud haze.
- *
- * FIX (Graphics Finisher pass): the draft's noon keyframe paired a bright
- * sun (2.5) with only 0.40 hemisphere fill and a renderer exposure of 1.05
- * tuned for the *original* lower-intensity keyframes — once combined with
- * materials.js's world-mapped bump overcorrection (see materials.js fix
- * notes) even a bright sun read as charcoal on walls whose perturbed
- * normals pointed away from it. With that shading bug fixed, the sun/hemi
- * balance here is kept but the whole midday band (0.40-0.60) is nudged
- * slightly brighter and warmer so sunlit limestone/brick reads clearly
- * bright-side vs. shade-side even before ACES tone mapping rolls off
- * highlights.
- *
- * M3 (Lighting Engineer) pass — this file now also:
- * - Accepts the WebGLRenderer as an optional third constructor argument
- *   and sweeps `renderer.toneMappingExposure` every frame from the
- *   EXPOSURE keyframes below (paired 1:1 with KEYS' phase breakpoints):
- *   bright at noon, warm/low at dusk & dawn, cool/dim at night. ACES
- *   filmic tone mapping + sRGB output are configured once in renderer.js;
- *   exposure is the one knob that needs to live with the day-phase state.
- * - Shrinks the sun's shadow frustum to a genuinely tight, camera-
- *   following box (300m span at 2048 map resolution — texels ~14.6cm,
- *   small enough that facades don't acne, tight enough that shadows stay
- *   crisp) and turns the sun's `castShadow` off whenever its intensity is
- *   effectively zero (night), so the one shadow-casting light in the
- *   scene never pays its cost when it contributes no visible light.
- * - Adds a low, warm `furnaceFill` DirectionalLight from the south
- *   (+Z, per the coordinate contract) that ramps in at night with the
- *   same glow factor as windows/lamps — Birmingham's furnace district
- *   sits south of downtown, and this washes building south faces with
- *   the orange horizon glow the world bible describes, independent of
- *   the sun/moon arc. It never casts a shadow (kept cost bounded to the
- *   single sun shadow-caster).
- *
- * M3b (Lighting Engineer II — night/dusk street visibility) pass:
- * - EXPOSURE's night/dusk/dawn floor is raised (see EXPOSURE below):
- *   ACES tone mapping combined with the old 0.55 night floor was
- *   crushing everything below the horizon to black even though the
- *   hemisphere light's night intensity (0.34, already >= the 0.22 spec
- *   floor) was contributing real light — the light was there but the
- *   exposure sweep was throwing it away before it reached the screen.
- * - Adds a faint bluish `moon` DirectionalLight positioned opposite the
- *   sun across the sky (same arc math, negated), ramped in with the same
- *   night-glow factor as windows/lamps/furnace (~0.25 at full night, 0 by
- *   day). Never casts a shadow. Gives night silhouettes a second, cooler
- *   light direction so building masses read with real form instead of
- *   flat silhouette-black even where lamp pools don't reach.
- */
+/** Day/night lighting, sky, weather and camera-relative sun shadows. */
 import * as THREE from '../../vendor/three.module.min.js';
 import { setGlassNightGlow } from './materials.js';
 
@@ -80,7 +20,7 @@ const SHADOW_SPAN = 300;
 const SHADOW_MAP_SIZE = 2048;
 const SHADOW_TEXEL = SHADOW_SPAN / SHADOW_MAP_SIZE;
 const SUN_DIST = 380;
-const SKY_R = 2400; // radius for celestial billboards / stars, inside the 2600 dome
+const SKY_R = 2400; // Radius for the moon and stars, inside the sky dome.
 
 // --- Additive weather hook (src/systems/weather.js) --------------------
 let _weatherDim = 0;
@@ -102,18 +42,16 @@ export function setWeatherDim(factor) {
 // ambient so lit windows and lamp pools read by contrast. Midday band
 // nudged brighter/warmer than the first draft so sunlit masonry reads
 // clearly once the bump-shading overcorrection (materials.js) is fixed.
-// Night hemi (0.34) and dusk/dawn hemi (0.44) already meet the M3b floor
-// (>=0.22 at night); the M3b fix that actually mattered is EXPOSURE below.
 const KEYS = [
-  [0.00, 0x0d1226, 0x201c2c, 0.0, 0.75, 60, 620], // midnight — the electric city keeps a floor of glow
+  [0.00, 0x0d1226, 0x201c2c, 0.0, 0.33, 60, 620], // midnight — the electric city keeps a floor of glow
   [0.20, 0x1c2238, 0x3a2c34, 0.05, 0.26, 35, 700],
-  [0.27, 0xd98a52, 0xf2c48a, 1.15, 0.44, 45, 1100], // dawn — long warm light
+  [0.27, 0x4b6687, 0xce9877, 1.15, 0.44, 45, 1100], // dawn — long warm light
   [0.40, 0x8fb6da, 0xdce6ec, 2.6, 0.68, 70, 2200],
   [0.50, 0x6fa3d2, 0xe6ecf0, 2.9, 0.66, 90, 2600], // noon — crisp sun over a luminous southern sky bounce
   [0.60, 0x8fb6da, 0xdce6ec, 2.6, 0.68, 70, 2200], // afternoon holds the same bright fill
-  [0.73, 0xd96a3a, 0xf2a05c, 1.15, 0.44, 45, 1100], // dusk
+  [0.73, 0x465b7e, 0xcd896f, 1.15, 0.44, 45, 1100], // dusk
   [0.80, 0x1c2238, 0x3d2f38, 0.05, 0.26, 35, 700],
-  [1.00, 0x0d1226, 0x201c2c, 0.0, 0.75, 60, 620],
+  [1.00, 0x0d1226, 0x201c2c, 0.0, 0.33, 60, 620],
 ];
 
 // Exposure keyframes paired 1:1 with KEYS' phase breakpoints above. ACES
@@ -121,11 +59,6 @@ const KEYS = [
 // exposure stays fixed, so exposure is swept the same way brightness is:
 // bright at noon, a warm mid-level at dawn/dusk, cool and dim at night.
 //
-// M3b: night indices (0,1,7,8) raised to >=0.85 and dusk/dawn indices
-// (2,6) raised to >=0.95 — the old 0.55/0.62/0.90 floor was throwing away
-// real light the hemisphere/lamp/moon sources were contributing, crushing
-// the street to black below the horizon. Noon (1.15) and the midday band
-// (1.05) are untouched, exactly per spec.
 const EXPOSURE = [1.0, 1.0, 1.05, 1.05, 1.15, 1.05, 1.05, 1.0, 1.0];
 
 // --- Canvas texture helpers for celestial/cloud billboards --------------
@@ -154,27 +87,46 @@ function makeDotTexture(size = 32) {
   ctx.fillRect(0, 0, size, size);
   return new THREE.CanvasTexture(c);
 }
-function makeCloudTexture(size = 256, seed = 7) {
-  let a = seed >>> 0;
-  const rng = () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-  const c = document.createElement('canvas');
-  c.width = size; c.height = size;
-  const ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, size, size);
-  for (let i = 0; i < 22; i++) {
-    const x = rng() * size, y = size * (0.3 + rng() * 0.4);
-    const r = size * (0.12 + rng() * 0.22);
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    const alpha = 0.10 + rng() * 0.16;
-    g.addColorStop(0, 'rgba(255,255,255,' + alpha + ')');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+// A tileable, seeded density field. Generate it once so the dome shader
+// can sample several cloud layers without computing noise per pixel.
+function makeCloudTexture(size = 256) {
+  const pixels = new Uint8Array(size * size);
+  const density = new Float32Array(pixels.length);
+  let seed = 1929;
+  for (let cells = 4, weight = 0.49; cells <= 64; cells *= 2, weight *= 0.55) {
+    const lattice = new Float32Array(cells * cells);
+    for (let i = 0; i < lattice.length; i++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      lattice[i] = seed / 4294967296;
+    }
+    for (let y = 0; y < size; y++) {
+      const row = y * cells / size;
+      const y0 = Math.floor(row);
+      const y1 = (y0 + 1) % cells;
+      const v = row - y0;
+      const ty = v * v * (3 - 2 * v);
+      for (let x = 0; x < size; x++) {
+        const col = x * cells / size;
+        const x0 = Math.floor(col);
+        const x1 = (x0 + 1) % cells;
+        const u = col - x0;
+        const tx = u * u * (3 - 2 * u);
+        const a = THREE.MathUtils.lerp(lattice[y0 * cells + x0], lattice[y0 * cells + x1], tx);
+        const b = THREE.MathUtils.lerp(lattice[y1 * cells + x0], lattice[y1 * cells + x1], tx);
+        density[y * size + x] += weight * THREE.MathUtils.lerp(a, b, ty);
+      }
+    }
   }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;
-  return t;
+  for (let i = 0; i < pixels.length; i++) {
+    pixels[i] = Math.round(255 * Math.min(1, density[i]));
+  }
+  const texture = new THREE.DataTexture(pixels, size, size, THREE.RedFormat);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 /**
@@ -188,8 +140,11 @@ export function createSky(scene, fog, renderer) {
   const uniforms = {
     topColor: { value: new THREE.Color(0x141a30) },
     bottomColor: { value: new THREE.Color(0x2a2438) },
-    offset: { value: 60 },
-    exponent: { value: 0.7 },
+    clouds: { value: makeCloudTexture() },
+    wind: { value: new THREE.Vector2() },
+    sunDirection: { value: new THREE.Vector3() },
+    night: { value: 0 },
+    overcast: { value: 0 },
   };
   const dome = new THREE.Mesh(
     new THREE.SphereGeometry(2600, 24, 12),
@@ -205,14 +160,55 @@ export function createSky(scene, fog, renderer) {
           vWorldPosition = wp.xyz;
           gl_Position = projectionMatrix * viewMatrix * wp;
         }`,
+      toneMapped: false,
       fragmentShader: `
-        uniform vec3 topColor; uniform vec3 bottomColor;
-        uniform float offset; uniform float exponent;
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform sampler2D clouds;
+        uniform vec2 wind;
+        uniform vec3 sunDirection;
+        uniform float night;
+        uniform float overcast;
         varying vec3 vWorldPosition;
+
         void main() {
-          float h = normalize(vWorldPosition).y;
-          float f = max(pow(max(h, 0.0), exponent), 0.0);
-          gl_FragColor = vec4(mix(bottomColor, topColor, f), 1.0);
+          vec3 ray = normalize(vWorldPosition - cameraPosition);
+          float altitude = max(ray.y, 0.0);
+          vec3 color = mix(bottomColor, topColor, pow(altitude, 0.58));
+          float towardSun = max(dot(ray, sunDirection), 0.0);
+          float daylight = (1.0 - night) * smoothstep(-0.04, 0.12, sunDirection.y);
+          float clearLight = daylight * (1.0 - overcast * 0.86);
+          float haze = pow(towardSun, 11.0) * clearLight;
+          vec3 sunlight = mix(vec3(1.0, 0.48, 0.23), vec3(1.0, 0.91, 0.72),
+                              smoothstep(0.05, 0.63, sunDirection.y));
+          color += sunlight * (0.16 * haze + 0.24 * pow(towardSun, 120.0) * clearLight);
+
+          // Intersect both cloud heights along the sight ray. The horizon
+          // fade represents atmospheric extinction and avoids a visible edge.
+          vec2 ground = cameraPosition.xz;
+          float invAltitude = 1.0 / max(altitude, 0.065);
+          vec2 lowUV = (ground + ray.xz * max(240.0, 820.0 - cameraPosition.y) * invAltitude)
+                       / 2900.0 + wind;
+          vec2 highUV = (ground + ray.xz * max(320.0, 1600.0 - cameraPosition.y) * invAltitude)
+                        / 3800.0 + wind.yx + vec2(0.33, 0.81);
+          float low = texture2D(clouds, lowUV).r;
+          float high = texture2D(clouds, highUV).r;
+          float horizonFade = smoothstep(0.045, 0.24, altitude);
+          float lowCover = smoothstep(0.49 - overcast * 0.16, 0.68 - overcast * 0.13, low);
+          float highCover = smoothstep(0.49 - overcast * 0.12, 0.72 - overcast * 0.12, high);
+          float sunwardDensity = texture2D(clouds, lowUV + sunDirection.xz * 0.027).r;
+          float litEdge = clamp(0.45 + (low - sunwardDensity) * 5.5, 0.0, 1.0);
+          vec3 cloudColor = mix(topColor * 0.72, vec3(0.83, 0.86, 0.9),
+                                (1.0 - night) * (0.30 + litEdge * 0.48) * (1.0 - overcast * 0.55));
+          cloudColor += sunlight * haze * litEdge * 0.15;
+
+          float disc = smoothstep(0.999942, 0.999975, towardSun) * clearLight;
+          color = mix(color, sunlight * 1.3, disc);
+          color = mix(color, mix(color, cloudColor, 0.65), highCover * horizonFade * 0.65);
+          color = mix(color, cloudColor, lowCover * horizonFade * 0.88);
+
+          gl_FragColor = vec4(color, 1.0);
+          #include <colorspace_fragment>
         }`,
     })
   );
@@ -263,19 +259,12 @@ export function createSky(scene, fog, renderer) {
   furnaceFill.target.position.set(0, 0, 0);
   scene.add(furnaceFill, furnaceFill.target);
 
-  // --- Sun disc + moon: billboard sprites tracking the light direction ---
-  const sunTex = makeGlowTexture(128, 'rgba(255,244,214,1)', 'rgba(255,180,80,0)');
-  const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: sunTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
-  }));
-  sunSprite.scale.set(340, 340, 1);
-  scene.add(sunSprite);
-
+  // Moon billboard follows the opposite arc from the shader's sun.
   const moonTex = makeGlowTexture(128, 'rgba(226,232,240,1)', 'rgba(170,190,220,0)');
   const moonSprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: moonTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: 0,
   }));
-  moonSprite.scale.set(160, 160, 1);
+  moonSprite.scale.set(60, 60, 1);
   scene.add(moonSprite);
 
   // --- Stars: additive point cloud on the upper dome, fades in at night ---
@@ -297,23 +286,6 @@ export function createSky(scene, fog, renderer) {
   });
   const stars = new THREE.Points(starGeo, starMat);
   scene.add(stars);
-
-  // --- Cloud haze: two slow-drifting translucent layers, texture-scrolled
-  // (no mesh movement needed, so they never need recentering logic) -------
-  const cloudLayers = [];
-  for (let li = 0; li < 2; li++) {
-    const tex = makeCloudTexture(256, 11 + li * 37);
-    tex.repeat.set(3, 3);
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex, transparent: true, depthWrite: false, opacity: li === 0 ? 0.5 : 0.32,
-      side: THREE.DoubleSide, fog: false,
-    });
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), mat);
-    mesh.rotation.x = Math.PI / 2;
-    mesh.position.y = 420 + li * 180;
-    scene.add(mesh);
-    cloudLayers.push({ mesh, tex, speed: 0.004 + li * 0.0025 });
-  }
 
   let elapsed = 0;
   let lastGlow = 0;
@@ -349,7 +321,6 @@ export function createSky(scene, fog, renderer) {
       camZ = Math.round(cameraPosition.z / SHADOW_TEXEL) * SHADOW_TEXEL;
       dome.position.set(cameraPosition.x, 0, cameraPosition.z);
       stars.position.set(cameraPosition.x, 0, cameraPosition.z);
-      for (const cl of cloudLayers) cl.mesh.position.set(cameraPosition.x, cl.mesh.position.y, cameraPosition.z);
     }
 
     // Sun arcs east->west across the southern sky (+Z is south).
@@ -401,25 +372,20 @@ export function createSky(scene, fog, renderer) {
     hemi.color.copy(HEMI_SKY_DAY).lerp(HEMI_SKY_NIGHT, glow);
     hemi.groundColor.copy(HEMI_GROUND_DAY).lerp(HEMI_GROUND_NIGHT, glow);
 
-    furnaceFill.intensity = glow * 0.7 * (1 - _weatherDim * 0.4);
-    // Faint bluish moon fill ramps with the same night-glow factor as
-    // windows/lamps/furnace - ~0.6 at full night, 0 by day.
-    moon.intensity = glow * 0.6 * (1 - _weatherDim * 0.3);
+    furnaceFill.intensity = glow * 0.21 * (1 - _weatherDim * 0.4);
+    moon.intensity = glow * 0.29 * (1 - _weatherDim * 0.3);
 
     const dlen = Math.hypot(dirX, dirY, dirZ) || 1;
     const ndx = dirX / dlen, ndy = dirY / dlen, ndz = dirZ / dlen;
-    sunSprite.position.set(camX + ndx * SKY_R, Math.max(ndy, 0.03) * SKY_R + 60, camZ + ndz * SKY_R);
-    sunSprite.material.opacity = THREE.MathUtils.clamp(elev * 3.2, 0, 1) * (1 - _weatherDim * 0.6);
+    uniforms.sunDirection.value.set(ndx, ndy, ndz);
+    uniforms.night.value = glow;
+    uniforms.overcast.value = _weatherDim;
+    const wind = uniforms.wind.value;
+    wind.set((wind.x + dt * 0.0031) % 1, (wind.y + dt * 0.0012) % 1);
     moonSprite.position.set(camX - ndx * SKY_R, Math.max(-ndy, 0.05) * SKY_R + 60, camZ - ndz * SKY_R);
     moonSprite.material.opacity = THREE.MathUtils.clamp(-elev * 3.2, 0, 1) * (1 - _weatherDim * 0.5);
 
     starMat.opacity = glow * 0.85 * (1 - _weatherDim * 0.7);
-
-    for (const cl of cloudLayers) {
-      cl.tex.offset.x = (cl.tex.offset.x + dt * cl.speed) % 1;
-      cl.tex.offset.y = (cl.tex.offset.y + dt * cl.speed * 0.4) % 1;
-      cl.mesh.material.opacity = (cl.mesh === cloudLayers[0].mesh ? 0.5 : 0.32) * (1 - _weatherDim * 0.3) * (0.35 + 0.65 * Math.max(0.15, 1 - glow * 0.5));
-    }
 
     return phase;
   }
