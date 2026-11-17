@@ -215,7 +215,7 @@ export function createStreetContact(scene, radius, halfTread = 0) {
   const reach = radius + halfTread;
   const tread = halfTread ? [-halfTread, 0, halfTread] : [0];
   const radiusSquared = radius * radius;
-  return (x, z, yaw) => {
+  return (x, z, yaw = 0) => {
     const fx = Math.sin(yaw), fz = Math.cos(yaw);
     let height = 0;
     for (const surface of surfaces) {

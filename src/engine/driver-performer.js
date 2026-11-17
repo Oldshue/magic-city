@@ -2,13 +2,14 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 import { prepareCharacter } from './street-characters.js';
 import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
+import { createDriverContacts } from './driver-contact.js';
 
 const SCALE = .94;
 const WALK_SPEED = 1.10;
 let driverSource;
 
 function loadDriver() {
-  driverSource ??= new GLTFLoader().loadAsync('./data/art/detective.glb').then(source=>{
+  driverSource ??= new GLTFLoader().loadAsync('./data/art/detective.glb?v=boarding').then(source=>{
     prepareCharacter(source.scene);
     return source;
   });
@@ -23,7 +24,8 @@ export function createDriverPerformer(scene,{motoristColor}={}) {
   group.visible = false;
   scene.add(group);
   const actions = new Map();
-  let mixer, active, waiting;
+  let mixer, active, waiting, contacts;
+  const arrival = new THREE.Vector3();
   loadDriver().then(({scene:source,animations})=>{
     const asset = clone(source);
     if (motoristColor !== undefined) {
@@ -39,20 +41,28 @@ export function createDriverPerformer(scene,{motoristColor}={}) {
     }
     group.add(asset);
     mixer = new THREE.AnimationMixer(asset);
-    for (const name of ['Walk','Board','Steer']) {
+    for (const name of ['Idle','Walk','Board','Disembark','DisembarkPassenger','Steer']) {
       const clip = animations.find(item=>item.name === name);
       if (!clip) throw new Error('Missing ' + name + ' animation');
       actions.set(name,mixer.clipAction(clip));
+    }
+    if (motoristColor === undefined) {
+      const idle = actions.get('Idle');
+      idle.play();
+      mixer.update(0);
+      contacts = createDriverContacts(asset, group);
+      idle.stop();
     }
     if (waiting) play(waiting.name,waiting.pose,0);
     waiting = null;
   }).catch(error=>console.warn('[magic-city] The detective mesh is unavailable:', error.message));
 
   function play(name, pose, dt) {
+    contacts?.restore();
     const next = actions.get(name);
     if (!next) {
       waiting = {name,pose};
-      return;
+      return false;
     }
     if (active !== next) {
       active?.stop();
@@ -62,6 +72,8 @@ export function createDriverPerformer(scene,{motoristColor}={}) {
     next.paused = pose !== null;
     if (pose !== null) next.time = next.getClip().duration * Math.min(0.999999,pose);
     mixer.update(dt);
+    group.userData.motion = name;
+    return true;
   }
 
   function mount(car) {
@@ -72,18 +84,24 @@ export function createDriverPerformer(scene,{motoristColor}={}) {
   }
 
   return {
-    approach(x,z,heading,speed,dt) {
+    approach(x, z, heading, speed, dt, heightAt) {
       if (group.parent !== scene) scene.add(group);
-      group.position.set(x,0,z);
+      group.position.set(x, heightAt(x, z), z);
       group.rotation.y = heading;
       group.visible = true;
       const walk = actions.get('Walk');
-      if (walk) walk.timeScale = speed / (SCALE*WALK_SPEED);
-      play('Walk',null,dt);
+      if (walk) walk.timeScale = speed / (SCALE * WALK_SPEED);
+      if (play(speed > 0.02 ? 'Walk' : 'Idle', null, dt)) contacts?.groundWalk(heightAt);
     },
-    board(car,phase) {
+    access(car, motion, phase, heightAt) {
+      const align = contacts && motion.clip === 'Board' && group.visible && group.parent !== car.chassis;
+      if (align) contacts.hipPosition(arrival);
       mount(car);
-      play('Board',phase,0);
+      if (!play(motion.clip, phase, 0)) return;
+      if (align) contacts.alignFrom(arrival);
+      const frame = phase * motion.frames - motion.slide;
+      group.userData.accessFrame = frame;
+      contacts?.access(car, motion, frame, heightAt);
     },
     drive(car) {
       mount(car);
@@ -92,6 +110,7 @@ export function createDriverPerformer(scene,{motoristColor}={}) {
     },
     hide() {
       group.visible = false;
+      contacts?.restore();
       waiting = null;
       active?.stop();
       active = null;

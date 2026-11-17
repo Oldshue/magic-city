@@ -11,7 +11,7 @@
     "licenseSource": "https://polyhaven.com/license"
   },
   "downtown-characters": {
-    "description": "Game-rigged characters with locally authored caps, apron, spectacles, idle, walk, boarding, steering, greeting and service animations, and fitted MPFB expression targets for the two shopkeepers",
+    "description": "Game-rigged characters with locally authored caps, apron, spectacles, idle, walk, boarding and disembarking from either door, steering, greeting and service animations, and fitted MPFB expression targets for the two shopkeepers",
     "files": [
       "bank-clerk.glb",
       "shopkeeper.glb",

@@ -304,12 +304,20 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
   batch(steeringWheel,[rim],roofMaterial);
   batch(steeringWheel,spokes,metal);
   trim.push(bar([0.35,1.23,0.145], [0.35,1.04,0.46], 0.017));
-  const frontDoors = [];
+  const accessDoors = {};
 
   for (const side of [-1, 1]) {
     const x = side;
     dark.push(fender(x * 0.90, FRONT_AXLE_Z), fender(x * 0.90, REAR_AXLE_Z));
     dark.push(box(x * 0.93, 0.425, -0.08, 0.35, 0.07, 2.33));
+    const step = new THREE.Object3D();
+    step.name = (side > 0 ? 'Driver' : 'Passenger') + ' running board';
+    step.position.set(x * 0.99, 0.464, 0.02);
+    chassis.add(step);
+    for (let rib = 0; rib < 7; rib++) {
+      dark.push(box(x * (0.80 + rib * 0.036), 0.461, -0.075, 0.012, 0.007, 2.21));
+    }
+    trim.push(bar([x * 1.103, .442, -1.23], [x * 1.103, .442, 1.07], .009, 8));
     pane(glass,body,[[x*.835,1.09,-.695],[x*.77,1.09,-1.90],
       [x*.64,1.67,-1.80],[x*.71,1.68,-.660]]);
     trim.push(bar([x*.841,1.057,-.689],[x*.81,1.057,-1.92],.011));
@@ -319,7 +327,17 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
     door.name = side > 0 ? 'Driver door' : 'Passenger door';
     door.position.set(x*.752,1.077,.345);
     chassis.add(door);
-    frontDoors.push(door);
+    function doorAnchor(label, anchorX, y, z) {
+      const anchor = new THREE.Object3D();
+      anchor.name = (side > 0 ? 'Driver ' : 'Passenger ') + label;
+      anchor.position.set(x * anchorX - door.position.x, y - door.position.y, z - door.position.z);
+      door.add(anchor);
+      return anchor;
+    }
+    const outside = doorAnchor('outside handle', 0.85, 0.976, -0.471);
+    const innerPull = doorAnchor('inside pull', 0.748, 1.038, -0.142);
+    const edge = doorAnchor('door edge', 0.831, 0.79, -0.654);
+    accessDoors[side] = { door, outside, inside: innerPull, edge, step };
     const skin = [], frame = [], glazing = [], fittings = [];
     const outer = [[x*.773,.584,.342],[x*.831,.574,-.654],
       [x*.841,1.08,-.654],[x*.755,1.088,.342]];
@@ -334,8 +352,15 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
     pane(glazing,frame,[[x*.751,1.10,.339],[x*.833,1.09,-.652],
       [x*.71,1.68,-.621],[x*.615,1.66,.075]]);
     fittings.push(bar([x*.841,1.061,-.656],[x*.755,1.061,.342],.011),
-      bar([x*.85,.976,-.553],[x*.85,.976,-.389],.013),
-      bar([x*.78,.978,-.517],[x*.78,.978,-.402],.015),
+      bar([x*.85,.976,-.553],[x*.85,.976,-.389],.013, 10),
+      bar([x*.81,.976,-.545],[x*.85,.976,-.545],.018, 9),
+      bar([x*.80,.976,-.400],[x*.85,.976,-.400],.018, 9),
+      bar([x*.759,.978,-.517],[x*.759,.978,-.402],.015, 9),
+      bar([x*.799,.978,-.506],[x*.759,.978,-.506],.012, 8),
+      bar([x*.790,.978,-.413],[x*.759,.978,-.413],.012, 8),
+      bar([x*.795,1.038,-.226],[x*.748,1.038,-.200],.012, 8),
+      bar([x*.748,1.038,-.200],[x*.748,1.038,-.084],.014, 10),
+      bar([x*.748,1.038,-.084],[x*.788,1.038,-.061],.012, 8),
       bar([x*.769,.834,-.433],[x*.769,.821,-.161],.018));
     const doorPosition = door.position;
     const relative = pieces => pieces.map(piece=>piece.translate(-doorPosition.x,-doorPosition.y,-doorPosition.z));
@@ -401,7 +426,7 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
   }
   return {
     group, chassis, axles, wheels, ride: createSedanRide(), steeringAngle: 0,
-    driverDoor: frontDoors[1], steeringWheel, headlightMat, stopLightMat, spotLights,
+    driverDoor: accessDoors[1].door, accessDoors, steeringWheel, headlightMat, stopLightMat, spotLights,
     reflective: [paint, enamel, metal, glassMaterial],
   };
 }

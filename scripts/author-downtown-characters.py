@@ -221,18 +221,76 @@ def wheel_grip(roll, side):
     )
 
 
-# Hips, heading, chest pitch, reaching hand, free hand, and both ankle
-# marks. The outside foot stays on the running board while the other
-# clears the sill. The final pose matches the driving cycle at zero lock.
+# Hips, heading, chest pitch, wrists, and ankles in the sedan's frame.
+# Positions repeat during the weight-bearing portions of each step.
+SEATED = ((.35,.942,-.24), 0, .09, wheel_grip(0, 1), wheel_grip(0, -1), (.495,.695,.35), (.20,.695,.38))
 ENTRY_MARKS = [
-    (0, (1.54,.86,-.18), -72, .02, (1.57,.78,-.36), (1.43,.77,.06), (1.65,.101,-.21), (1.43,.101,.02)),
-    (8, (1.49,.86,-.16), -72, .15, (1.65,.78,-.31), (.898,.981,-.498), (1.65,.101,-.21), (1.43,.101,.02)),
-    (15, (1.49,.89,-.17), -59, .22, (1.56,.94,-.48), (1.34,1.057,-.46), (1.67,.101,-.23), (1.14,.33,.017)),
-    (23, (1.09,1.045,-.21), -36, .35, (1.49,1.04,-.42), (.90,1.17,.09), (1.02,.52,-.28), (.62,.56,.13)),
-    (31, (.72,.98,-.22), -15, .41, (1.18,1.052,-.50), (.67,1.26,.12), (.94,.55,-.26), (.25,.62,.38)),
-    (39, (.39,.926,-.24), -7, .18, (1.05,1.014,-.40), (.254,1.262,.08), (.51,.65,.22), (.19,.625,.36)),
-    (48, (.35,.942,-.24), 0, .09, wheel_grip(0, 1), wheel_grip(0, -1), (.495,.625,.35), (.20,.625,.38)),
+    (0, (1.54,.837,-.18), -75, .05, (1.64,.762,-.27), (1.41,.768,.05), (1.67,.101,-.27), (1.43,.101,.02)),
+    (7, (1.45,.831,-.20), -75, .30, (1.58,.88,-.30), (.89,.987,-.45), (1.67,.101,-.27), (1.43,.101,.02)),
+    (14, (1.43,.833,-.22), -73, .25, (1.46,.942,-.35), (1.32,.987,-.29), (1.67,.101,-.27), (1.43,.101,.02)),
+    (20, (1.36,.869,-.19), -68, .34, (1.43,1.013,-.26), (1.55,.991,.022), (1.67,.101,-.27), (1.185,.42,.015)),
+    (25, (1.24,1.005,-.23), -61, .44, (1.33,1.071,-.05), (1.52,.985,.061), (1.52,.236,-.32), (1.005,.561,.021)),
+    (31, (1.00,1.061,-.24), -46, .64, (1.249,1.038,.173), (.862,1.20,.072), (.768,.701,-.04), (1.005,.561,.021)),
+    (36, (.775,1.00,-.255), -27, .62, (1.217,1.038,.178), (.47,1.265,.085), (.495,.695,.35), (1.005,.561,.021)),
+    (43, (.53,.948,-.251), -12, .29, (1.022,1.038,-.061), (.209,1.266,.083), (.495,.695,.35), (.36,.714,.30)),
+    (49, (.37,.944,-.242), -3, .15, (.779,1.038,-.137), wheel_grip(0, -1), (.495,.695,.35), (.20,.695,.38)),
+    (54, *SEATED),
 ]
+
+# Disembarking opens from inside, transfers weight down the running board,
+# then turns to the street while the outside hand pushes the door shut.
+EXIT_MARKS = [
+    (0, *SEATED),
+    (7, (.37,.948,-.25), 4, .17, (.765,1.03,-.137), (.247,1.24,.12), (.504,.695,.35), (.20,.695,.38)),
+    (14, (.49,.970,-.275), 23, .35, (1.01,1.038,-.065), (.455,1.225,.16), (.679,.725,.30), (.23,.695,.39)),
+    (21, (.69,1.02,-.28), 49, .56, (1.231,1.038,.169), (.67,1.256,.11), (.974,.636,.05), (.34,.695,.30)),
+    (25, (.93,1.016,-.205), 56, .50, (1.231,1.038,.169), (.799,1.234,.087), (1.006,.561,-.103), (.43,.698,.26)),
+    (31, (1.16,.993,-.198), 50, .36, (1.231,1.038,.169), (1.08,1.204,.07), (1.006,.561,-.103), (1.345,.39,.062)),
+    (38, (1.465,.850,-.15), 37, .16, (1.593,.953,-.35), (1.512,.980,.054), (1.235,.476,-.272), (1.68,.101,.045)),
+    (45, (1.50,.834,-.165), 16, .13, (1.774,.783,-.192), (1.271,.988,-.278), (1.60,.101,-.330), (1.68,.101,.045)),
+    (53, (1.444,.815,-.17), 7, .28, (1.758,.810,-.197), (.878,.987,-.451), (1.60,.101,-.330), (1.68,.101,.045)),
+    (58, (1.675,.828,-.18), 0, .03, (1.814,.784,-.188), (1.54,.791,-.12), (1.60,.101,-.330), (1.68,.101,.045)),
+]
+
+
+def opposite_side(pose):
+    hips, heading, lean, hand_l, hand_r, foot_l, foot_r = pose
+
+    def mirror(mark):
+        return (-mark[0], mark[1], mark[2])
+
+    return mirror(hips), -heading, lean, mirror(hand_r), mirror(hand_l), mirror(foot_r), mirror(foot_l)
+
+
+PASSENGER_SLIDE_FRAMES = 16
+PASSENGER_EXIT_MARKS = [
+    (0, *SEATED),
+    (7, (.16,.972,-.26), -5, .28, (.42,.973,-.31), (-.18,1.041,-.03), (.37,.704,.35), (-.10,.711,.36)),
+    *[(frame + PASSENGER_SLIDE_FRAMES, *opposite_side(pose)) for frame, *pose in EXIT_MARKS],
+]
+
+
+def sample_marks(marks, frame):
+    """Continuous, limited tangents keep held contact marks stationary."""
+    index = next((i for i in range(len(marks)-1) if frame <= marks[i+1][0]), len(marks)-2)
+    a, b = marks[index:index+2]
+    left = marks[index-1] if index else a
+    right = marks[index+2] if index+2 < len(marks) else b
+    span = b[0]-a[0]
+    t = min(1, max(0, (frame-a[0])/span))
+
+    def tangent(p, q):
+        return 2*p*q/(p+q) if p*q > 0 else 0
+
+    def interpolate(prev, start, end, after):
+        if isinstance(start, tuple):
+            return tuple(interpolate(*values) for values in zip(prev, start, end, after))
+        chord = (end-start)/span
+        enter = tangent((start-prev)/(a[0]-left[0]), chord) if left is not a else 0
+        leave = tangent(chord, (after-end)/(right[0]-b[0])) if right is not b else 0
+        return (1+2*t)*(1-t)**2*start + t*(1-t)**2*span*enter + t**2*(3-2*t)*end + t**2*(t-1)*span*leave
+
+    return [interpolate(*values) for values in zip(left[1:], a[1:], b[1:], right[1:])]
 
 
 def limb_solver(rig):
@@ -300,29 +358,18 @@ def bake_driver(rig):
                 for segment, angle in (("02", .39), ("03", .24)):
                     pose_bones[f"{finger}_{segment}_{side}"].rotation_quaternion = Quaternion((1, 0, 0), angle)
 
-    def lerp_mark(a, b, alpha):
-        if isinstance(a, tuple):
-            return tuple(x + (y-x)*alpha for x, y in zip(a, b))
-        return a + (b-a)*alpha
-
-    def entry_pose(frame):
-        for before, after in zip(ENTRY_MARKS, ENTRY_MARKS[1:]):
-            if frame <= after[0]:
-                alpha = (frame-before[0])/(after[0]-before[0])
-                # Keep movement in motion across the marks and ease both ends.
-                if before[0] == 0:
-                    alpha *= 2*alpha - alpha*alpha
-                if after[0] == 48:
-                    alpha = alpha + alpha*alpha*(1-alpha)
-                return [lerp_mark(a,b,alpha) for a,b in zip(before[1:],after[1:])]
-        return ENTRY_MARKS[-1][1:]
-
     def wheel_pose(frame):
-        hips, heading, lean, _, _, foot_l, foot_r = ENTRY_MARKS[-1][1:]
+        hips, heading, lean, _, _, foot_l, foot_r = SEATED
         roll = ((frame / 24) * 2 - 1) * .693
         return (hips, heading, lean, wheel_grip(roll,1), wheel_grip(roll,-1), foot_l, foot_r)
 
-    for name, length, pose_at in (("Board", 48, entry_pose), ("Steer", 24, wheel_pose)):
+    motion = (
+        ("Board", ENTRY_MARKS),
+        ("Disembark", EXIT_MARKS),
+        ("DisembarkPassenger", PASSENGER_EXIT_MARKS),
+    )
+    clips = [(name, marks[-1][0], lambda frame, marks=marks: sample_marks(marks, frame)) for name, marks in motion]
+    for name, length, pose_at in [*clips, ("Steer", 24, wheel_pose)]:
         action = bpy.data.actions.new(name)
         rig.animation_data.action = action
         for frame in range(length + 1):
