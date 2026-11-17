@@ -1,6 +1,6 @@
 """Build the Magic City street characters with Blender and MPFB 2.0.18.
 
-Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY [--driver-only | --counters-only | --ledger-only | --tailor-only].
+Run Blender with this script, then -- ASSET_PACK_DIRECTORY OUTPUT_DIRECTORY [--driver-only | --counters-only | --ledger-only | --tailor-only | --shoppers-only].
 The MPFB extension must be installed in Blender's user_default repository.
 """
 import importlib
@@ -81,7 +81,7 @@ def felt_hat(rig, body, flat=False):
     return hat
 
 
-def bake_walk(rig, meshes):
+def bake_walk(rig, meshes, browse=False):
     scene = bpy.context.scene
     scene.render.fps = FPS
     rest = {bone.name: bone.bone.matrix_local.copy() for bone in rig.pose.bones}
@@ -130,8 +130,12 @@ def bake_walk(rig, meshes):
         return Vector((x, y, ankle + lift)), pitch
 
     rig.animation_data_create()
-    for name, length in (("Idle", 72), ("Walk", WALK_FRAMES)):
+    clips = [("Idle", 72), ("Walk", WALK_FRAMES)]
+    if browse:
+        clips.append(("Browse", 104))
+    for name, length in clips:
         walking = name == "Walk"
+        inspecting = name == "Browse"
         action = bpy.data.actions.new(name)
         rig.animation_data.action = action
         for frame in range(length + 1):
@@ -141,6 +145,8 @@ def bake_walk(rig, meshes):
                 bone.rotation_quaternion = Quaternion()
                 bone.location = (0, 0, 0)
             phase = (frame / length) % 1
+            interest = math.sin(math.pi * phase)**1.6 if inspecting else 0
+            label = interest * math.exp(-((phase - .61) / .16)**2)
             targets = {
                 side: foot_target((phase + (0 if side == "l" else 0.5)) % 1, side, sign, walking)
                 for side, sign in SIDES
@@ -183,13 +189,17 @@ def bake_walk(rig, meshes):
                 rotation = Quaternion((1, 0, 0), pitch) @ orientations[foot_name]
                 rig.pose.bones[foot_name].matrix = Matrix.LocRotScale(foot, rotation, Vector((1, 1, 1)))
                 swing = sign * math.cos(math.tau * phase) * 0.19 if walking else 0
-                rotate(f"upperarm_{side}", Quaternion((1, 0, 0), swing) @ relaxed_arms[side])
-                rotate(f"lowerarm_{side}", Quaternion((1, 0, 0), 0.16))
+                sleeve = interest * (.14 if sign > 0 else .052)
+                rotate(f"upperarm_{side}", Quaternion((1, 0, 0), swing + sleeve) @ relaxed_arms[side])
+                rotate(f"lowerarm_{side}", Quaternion((1, 0, 0), .16 + sleeve * 1.7))
                 for finger in ("index", "middle", "ring", "pinky"):
                     for segment, angle in (("02", 0.17), ("03", 0.12)):
                         rig.pose.bones[f"{finger}_{segment}_{side}"].rotation_quaternion = Quaternion((1, 0, 0), angle)
-            rotate("spine_02", Quaternion((1, 0, 0), 0.007 * math.sin(math.tau * phase)))
-            rotate("head", Quaternion((0, 0, 1), 0.017 * math.sin(math.tau * phase)))
+            breathe = .007 * math.sin(math.tau * phase)
+            rotate("spine_02", Quaternion((1, 0, 0), breathe + .103 * interest))
+            turn = .017 * math.sin(math.tau * phase) + .082 * math.sin(math.tau * phase) * interest
+            tilt = .137 * label - .074 * interest
+            rotate("head", Quaternion((0, 0, 1), turn) @ Quaternion((1,0,0), tilt))
             for bone in rig.pose.bones:
                 bone.keyframe_insert(data_path="rotation_quaternion", frame=frame, group=bone.name)
                 bone.keyframe_insert(data_path="location", frame=frame, group=bone.name)
@@ -779,7 +789,7 @@ def build(asset_path, output, female=False, driver=False, staff=None, worker=Fal
                         material.node_tree.links.remove(link)
             if node.type == "NORMAL_MAP":
                 node.inputs["Strength"].default_value *= 0.29
-    bake_walk(rig, meshes)
+    bake_walk(rig, meshes, browse=not any((staff, driver, worker)))
     if driver:
         bake_driver(rig)
     if staff:
@@ -802,7 +812,10 @@ if __name__ == "__main__":
     arguments = sys.argv[sys.argv.index("--") + 1:]
     asset_root, out_dir = (Path(value).resolve() for value in arguments[:2])
     out_dir.mkdir(parents=True, exist_ok=True)
-    if "--tailor-only" in arguments:
+    if "--shoppers-only" in arguments:
+        build(asset_root, out_dir / "bank-clerk.glb")
+        build(asset_root, out_dir / "shopkeeper.glb", female=True)
+    elif "--tailor-only" in arguments:
         build(asset_root, out_dir / "walker-tailor.glb", staff="tailor")
     elif "--ledger-only" in arguments:
         build(asset_root, out_dir / "ledger-vendor.glb", staff="ledger")

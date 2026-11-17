@@ -166,6 +166,7 @@ function booth(put,box,M,x,collisions) {
     box(M.paper,x+offset,.956,z-.161,.096,.011,.064);
   }
   collisions.push([x-.78,x+.78,-2.78,-.70]);
+  return [x,.97,z];
 }
 
 /** Dress each counter and supply the actual object used for its service animation. */
@@ -185,6 +186,7 @@ export function buildCounterFixture(spec,shop,put,box,M,collisions) {
   if (pharmacy) apothecaryShelves(put,box,M);
   else crownBackWall(put,box,M);
   fountain(put,box,M,pharmacy);
+  let displayTarget;
   if (pharmacy) {
     for (const x of [-3.95,3.85]) {
       box(M.walnut,x,.40,-.64,1.38,.79,.52);
@@ -193,11 +195,12 @@ export function buildCounterFixture(spec,shop,put,box,M,collisions) {
       collisions.push([x-.70,x+.70,-.94,-.34]);
     }
   } else {
-    for (const x of [-3.39,3.39]) booth(put,box,M,x,collisions);
+    displayTarget = booth(put,box,M,-3.39,collisions);
+    booth(put,box,M,3.39,collisions);
   }
   const drink=cup(spec.kind,M);
   drink.group.position.set(...cupHome);
   drink.stream.position.set(...pourPosition);
   shop.add(drink.group,drink.stream);
-  return {...drink,stock:cupHome,edge:guestEdge,spout:pourPosition};
+  return {...drink,stock:cupHome,edge:guestEdge,spout:pourPosition,displayTarget};
 }

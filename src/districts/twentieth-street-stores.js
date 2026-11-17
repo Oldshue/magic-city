@@ -288,7 +288,14 @@ export async function add20thStreetStores(ctx, parent, surfaces) {
         yawDeg:side*90, scale:0.97, groundY:SIDEWALK_HEIGHT,
       };
       ctx.characters.push(actor);
-      if (service) ctx.shopCounters.push({kind:spec.kind,name:spec.name,shop,actor,service});
+      if (service) {
+        const target = service.displayTarget;
+        const window = target ? {
+          point:shop.localToWorld(new THREE.Vector3(target[0],0,1.36)),
+          target:shop.localToWorld(new THREE.Vector3(...target)),
+        } : null;
+        ctx.shopCounters.push({kind:spec.kind,name:spec.name,shop,actor,service,window});
+      }
     }
   }
 

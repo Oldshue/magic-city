@@ -200,6 +200,7 @@ export function buildWalkerFixture(ctx, shop, put, box, M, furniture, garments) 
     box(M.wood,x-.017,y+.002,-2.847+i*.015,i%5===0 ? .019 : .010,.001,.003);
   }
 
+  let displayTarget;
   for (const side of [-1,1]) {
     const x = side*3.71;
     box(M.walnut,x,1.56,-4.53,3.92,3.03,.19);
@@ -233,11 +234,13 @@ export function buildWalkerFixture(ctx, shop, put, box, M, furniture, garments) 
     for (let stripe=0;stripe<3;stripe++) {
       box(felt,window-.79+stripe*.79,1.68,-1.612,.743,1.99,.039);
     }
+    const formX = window-side*.13, formZ = -1.097;
+    if (side>0) displayTarget = [formX,1.82,formZ];
     const style = side<0 ? 'Navy serge' : 'Tobacco herringbone';
     const form = garments?.getObjectByName(style.replaceAll(' ', '_')) ?? garments?.getObjectByName(style);
     if (form) {
       form.name = style;
-      form.position.set(window - side*.13,.629,-1.097);
+      form.position.set(formX,.629,formZ);
       form.rotation.y = -side*.14;
       form.scale.setScalar(.96);
       shop.add(form);
@@ -272,7 +275,7 @@ export function buildWalkerFixture(ctx, shop, put, box, M, furniture, garments) 
   folded.group.visible = false;
   shop.add(folded.group);
   return {
-    ...folded, stock:STOCK, edge:EDGE,
+    ...folded, stock:STOCK, edge:EDGE, displayTarget,
     select(id) { folded.fabric.material = silk[id]; },
   };
 }

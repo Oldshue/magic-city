@@ -13,6 +13,7 @@
  */
 import { inRoad, SIDEWALK_HEIGHT } from '../engine/street-layout.js';
 import { createStreetCharacters, in20thStreetBlock, inHeaviestCorner } from '../engine/street-characters.js';
+import { createWindowVisit } from './window-visit.mjs';
 
 export function startPedestrians(ctx) {
   const { THREE, scene, plan, getDayPhase } = ctx;
@@ -220,23 +221,34 @@ export function startPedestrians(ctx) {
   }
   // A short circuit keeps both curbs of the first block populated in play.
   // These walkers use the same animation, route and fallback as the rest of the crowd.
+  const blockWalkers = [];
   if (highDetail) {
     const blockLength = 31;
     const blockRoute = {
       pts:[new THREE.Vector3(0,0,17),new THREE.Vector3(0,0,17 + blockLength)],
       segLens:[blockLength], total:blockLength, width:22,
     };
-    for (const [side,dist,dir,scale,speed,model,paletteIdx,windowAt] of [
-      [-1, 14, -1, 1.04, 1.24, 'street-worker',1,-1],
-      [-1, 24,  1, 0.96, 1.01, 'shopkeeper',5,14],
-      [ 1, 20,  1, 0.95, 1.08, 'shopkeeper',4,15],
-      [ 1, 27, -1, 1.01, 1.18, 'bank-clerk',6,-1],
+    for (const [id,side,dist,dir,scale,speed,model,paletteIdx,shop,linger] of [
+      ['west-street-worker',-1,14,-1,1.04,1.24,'street-worker',1],
+      ['crown-window-shopper',-1,25,-1,.99,1.01,'bank-clerk',5,'lunch',2.76],
+      ['walker-window-shopper',1,13,-1,.95,1.08,'shopkeeper',4,'tailor',3.42],
+      ['east-street-clerk',1,27,-1,1.01,1.18,'bank-clerk',6],
     ]) {
-      people.push({
-        route:blockRoute, side, dist, dir, scale, speed, walkingBlock:true, model, windowAt, paletteIdx,
-        windowPause:0, passedWindow:false, sidestep:0, bob:rand()*Math.PI*2, hatStyle:model === 'shopkeeper' ? 1 : 0,
-        hatDark:true, standing:false, prop:false,
-      });
+      const laneX=side*(blockRoute.width/2+2);
+      const window=ctx.shopCounters?.find(counter=>counter.kind===shop)?.window;
+      const person={
+        id,route:blockRoute,side,dist,dir,scale,speed,walkingBlock:true,model,paletteIdx,
+        visit:window && createWindowVisit(window,laneX,speed,linger),
+        sidestep:0,bob:rand()*Math.PI*2,hatStyle:model==='shopkeeper' ? 1 : 0,
+        hatDark:true,standing:false,prop:false,x:laneX,z:blockRoute.pts[0].z+dist,
+      };
+      person.blocked=(x,z,radius)=>{
+        const eye=ctx.camera.position;
+        return (eye.y<2.38 && Math.hypot(eye.x-x,eye.z-z)<radius)
+          || blockWalkers.some(other=>other!==person && other.side===side && Math.hypot(other.x-x,other.z-z)<radius);
+      };
+      blockWalkers.push(person);
+      people.push(person);
     }
   }
   const COUNT = Math.max(1, people.length);
@@ -357,42 +369,53 @@ export function startPedestrians(ctx) {
           heading = valid && Number.isFinite(declared.yawDeg) ? declared.yawDeg * Math.PI / 180 : p.facing;
         } else {
           const previous = p.dist;
-          if (p.windowPause > 0) p.windowPause=Math.max(0,p.windowPause-dt);
-          else p.dist += p.speed*p.dir*dt;
-          if (p.walkingBlock) {
-            if (!p.passedWindow && p.windowAt>=0 && (previous-p.windowAt)*(p.dist-p.windowAt)<=0) {
-              p.windowPause=1.9;p.passedWindow=true;
-            }
-            if (p.dist<0 || p.dist>p.route.total) {
-              p.dist=THREE.MathUtils.clamp(p.dist,0,p.route.total);
-              p.dir*=-1;p.passedWindow=false;
+          const startZ = p.route.pts[0].z;
+          if (!p.visit?.pose.phase) {
+            p.dist += p.speed*p.dir*dt;
+            if (p.walkingBlock) {
+              if (p.dir<0 && Math.abs(p.sidestep)<.13) p.visit?.enter(startZ+previous,startZ+p.dist,p.blocked);
+              if (p.dist<0 || p.dist>p.route.total) {
+                p.dist=THREE.MathUtils.clamp(p.dist,0,p.route.total);
+                p.dir*=-1;
+              }
             }
           }
-          sample(p.route, p.dist, !p.walkingBlock);
-          heading = Math.atan2(segDir.x * p.dir, segDir.z * p.dir);
-          const edge = p.route.width / 2 + 2.0;
-          const curbSide = p.side * (p.walkingBlock ? 1 : p.dir);
-          ox = pos.x + segDir.z * edge * curbSide;
-          oz = pos.z - segDir.x * edge * curbSide;
+          const visit = p.visit?.pose.phase && p.visit.step(dt,p.blocked);
+          if (visit) {
+            ox=visit.point.x;
+            oz=visit.point.z;
+            p.dist=oz-startZ;
+            heading=visit.heading;
+          } else {
+            sample(p.route, p.dist, !p.walkingBlock);
+            heading = Math.atan2(segDir.x * p.dir, segDir.z * p.dir);
+            const edge = p.route.width / 2 + 2.0;
+            const curbSide = p.side * (p.walkingBlock ? 1 : p.dir);
+            ox = pos.x + segDir.z * edge * curbSide;
+            oz = pos.z - segDir.x * edge * curbSide;
+          }
           if (p.walkingBlock) {
-            const eye=ctx.camera.position;
-            const distance=(eye.z-oz)*p.dir;
-            const beside=eye.x-ox;
-            const clear=eye.y<2.3 && distance>-.95 && distance<2.9 && Math.abs(beside)<1.17;
-            const aside=clear ? (beside>=0 ? -.89 : .89) : 0;
-            p.sidestep=THREE.MathUtils.damp(p.sidestep,aside,clear?7:3.8,dt);
-            ox+=p.sidestep;
-            if (p.windowPause>.28) heading=p.side*Math.PI/2;
+            if (!visit) {
+              const eye=ctx.camera.position;
+              const distance=(eye.z-oz)*p.dir;
+              const beside=eye.x-ox;
+              const clear=eye.y<2.3 && distance>-.95 && distance<2.9 && Math.abs(beside)<1.17;
+              const aside=clear ? (beside>=0 ? -.89 : .89) : 0;
+              p.sidestep=THREE.MathUtils.damp(p.sidestep,aside,clear?7:3.8,dt);
+              ox+=p.sidestep;
+            }
             p.facing ??= heading;
             const turn = THREE.MathUtils.euclideanModulo(heading - p.facing + Math.PI, Math.PI*2) - Math.PI;
-            p.facing += turn * (1 - Math.exp(-dt * 8));
+            p.facing += turn * (1 - Math.exp(-dt * 9));
             heading = p.facing;
+            p.strideSpeed=dt>0 ? Math.hypot(ox-p.x,oz-p.z)/dt : p.speed;
+            p.x=ox;p.z=oz;
           }
         }
         const nx = Math.cos(heading);
         const nz = -Math.sin(heading);
         const fwdX = Math.sin(heading), fwdZ = Math.cos(heading);
-        const moving = ((!p.standing && !(p.windowPause>0)) || p.actor?.moving===true) ? 1 : 0;
+        const moving = ((!p.standing && (p.strideSpeed ?? p.speed)>.045) || p.actor?.moving===true) ? 1 : 0;
         const stride = moving ? 5.2 : 1.2;
         const walkPhase = elapsed * stride + p.bob;
         const bobY = 0.02 * Math.sin(walkPhase * 2) * moving + (!moving ? 0.008 * Math.sin(walkPhase) : 0);
