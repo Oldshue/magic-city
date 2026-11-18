@@ -10,6 +10,7 @@
 import { startStreetcars } from './streetcars.js';
 import { startTraffic } from './traffic.js';
 import { startPedestrians } from './pedestrians.js';
+import { startCrownPatrons } from './crown-patrons.js';
 import { startSteelLife } from './steelLife.js';
 import { startAmbience } from './ambience.js';
 import { startJazz } from './jazz.js';
@@ -28,6 +29,7 @@ export function startSystems(ctx) {
   const driving = safeStart((c) => startDriving({ ...c, streetcars }), ctx, 'driving');
   const traffic = safeStart((c) => startTraffic({ ...c, driving }), ctx, 'traffic');
   const police = driving ? safeStart((c) => startPolice({ ...c, driving }), ctx, 'police') : null;
+  const crownPatrons = safeStart(startCrownPatrons,ctx,'Crown patrons');
   const pedestrians = safeStart((c) => startPedestrians({ ...c, traffic }), ctx, 'pedestrians');
   const weather = safeStart(startWeather, ctx, 'weather');
 
@@ -45,6 +47,7 @@ export function startSystems(ctx) {
       if (traffic) traffic.update(dt, elapsed);
       if (police) police.update(dt, elapsed);
       ctx.counterService?.update(dt);
+      crownPatrons?.update(dt);
       for (const stand of ctx.newsstands ?? []) stand.update(dt,traffic);
       if (weather) weather.update(dt, elapsed);
       if (pedestrians) pedestrians.update(dt, elapsed, weather?.rainfall ?? 0);

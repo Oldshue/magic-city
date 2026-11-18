@@ -148,17 +148,66 @@ function fountain(put,box,M,pharmacy) {
   }
 }
 
-function booth(put,box,M,x,collisions) {
+function rounded(width,height,depth,radius) {
+  const geometry=new THREE.BoxGeometry(width,height,depth,8,6,7);
+  const vertices=geometry.attributes.position, normals=geometry.attributes.normal;
+  const inner=new THREE.Vector3(width*.5-radius,height*.5-radius,depth*.5-radius);
+  const point=new THREE.Vector3(), nearest=new THREE.Vector3(), normal=new THREE.Vector3();
+  const clamp=THREE.MathUtils.clamp;
+  for (let i=0;i<vertices.count;i++) {
+    point.fromBufferAttribute(vertices,i);
+    nearest.set(clamp(point.x,-inner.x,inner.x),clamp(point.y,-inner.y,inner.y),clamp(point.z,-inner.z,inner.z));
+    normal.subVectors(point,nearest).normalize();
+    point.copy(nearest).addScaledVector(normal,radius);
+    vertices.setXYZ(i,point.x,point.y,point.z);
+    normals.setXYZ(i,normal.x,normal.y,normal.z);
+  }
+  return geometry;
+}
+
+function boothLeather(environment) {
+  const canvas=document.createElement('canvas');
+  canvas.width=128;canvas.height=128;
+  const ink=canvas.getContext('2d');
+  const field=ink.createImageData(128,128);
+  let seed=1929;
+  for (let i=0;i<field.data.length;i+=4) {
+    seed=(Math.imul(1664525,seed)+1013904223)>>>0;
+    const grain=118+(seed>>>26);
+    field.data[i]=field.data[i+1]=field.data[i+2]=grain;
+    field.data[i+3]=255;
+  }
+  ink.putImageData(field,0,0);
+  const bump=new THREE.CanvasTexture(canvas);
+  bump.wrapS=bump.wrapT=THREE.RepeatWrapping;
+  bump.repeat.set(3.8,1.8);
+  bump.anisotropy=4;
+  return new THREE.MeshPhysicalMaterial({
+    color:0x742d26,roughness:.56,clearcoat:.30,clearcoatRoughness:.48,
+    bumpMap:bump,bumpScale:.009,envMap:environment,envMapIntensity:.27,
+  });
+}
+
+function booth(put,box,M,x,collisions,leather) {
   for (const [z,dir] of [[-2.46,1],[-1.06,-1]]) {
     box(M.walnut,x,.267,z,1.51,.51,.39);
-    box(M.oxblood,x,.519,z,1.48,.142,.38);
-    box(M.oxblood,x,.91,z-dir*.215,1.51,.75,.143);
+    put(M.walnut,rounded(1.52,.11,.445,.032).translate(x,.102,z));
+    put(leather,rounded(1.48,.142,.395,.049).translate(x,.519,z));
+    put(M.oxblood,bar([
+      [x-.715,.528,z+dir*.147],[x-.66,.516,z+dir*.193],[x-.26,.515,z+dir*.198],
+      [x+.26,.515,z+dir*.198],[x+.66,.516,z+dir*.193],[x+.715,.528,z+dir*.147],
+    ],.009));
+    put(M.walnut,rounded(1.51,.775,.135,.035).translate(x,.907,z-dir*.214));
     for(let tuft=0;tuft<6;tuft++){
-      box(M.oxblood,x-.61+tuft*.245,.915,z-dir*.139,.192,.712,.026);
+      const tx=x-.616+tuft*.247;
+      put(leather,rounded(.239,.715,.104,.044).translate(tx,.913,z-dir*.140));
+      put(M.oxblood,new THREE.SphereGeometry(.013,10,8)
+        .scale(1,1,.42).translate(tx,1.05,z-dir*.085));
     }
   }
   const z=-1.76;
-  box(M.walnut,x,.90,z,1.26,.082,.48);
+  put(M.walnut,rounded(1.26,.082,.48,.026).translate(x,.90,z));
+  put(M.brass,rounded(1.229,.013,.475,.006).translate(x,.878,z));
   put(M.brass,turned([[0,0],[.19,0],[.19,.04],[.078,.06],[.03,.81],[0,.81]],20).translate(x,0,z));
   for (const offset of [-.39,.37]) {
     put(M.linen,turned([[0,0],[.092,0],[.12,.019],[.12,.032],[.083,.038],[.068,.018],[0,.018]],20)
@@ -166,7 +215,13 @@ function booth(put,box,M,x,collisions) {
     box(M.paper,x+offset,.956,z-.161,.096,.011,.064);
   }
   collisions.push([x-.78,x+.78,-2.78,-.70]);
-  return [x,.97,z];
+  const side=Math.sign(x), towardTable=-side;
+  const seatZ=towardTable>0 ? -2.46 : -1.06;
+  const place=x-side*.39;
+  return {
+    display:[x,.97,z], seat:[place,.590,seatZ], yaw:towardTable>0 ? 0 : Math.PI,
+    aisle:[x-side*1.12,0,seatZ+towardTable*.34], cup:[place,.966,z],
+  };
 }
 
 /** Dress each counter and supply the actual object used for its service animation. */
@@ -186,14 +241,21 @@ export function buildCounterFixture(spec,shop,put,box,M,collisions) {
   if (pharmacy) apothecaryShelves(put,box,M);
   else crownBackWall(put,box,M);
   fountain(put,box,M,pharmacy);
-  let displayTarget;
-  if (!pharmacy) {
-    displayTarget = booth(put,box,M,-3.39,collisions);
-    booth(put,box,M,3.39,collisions);
-  }
+  const leather=pharmacy ? null : boothLeather(M.glass.envMap);
+  const booths=leather ? [-3.39,3.39].map(x=>booth(put,box,M,x,collisions,leather)) : [];
   const drink=cup(spec.kind,M);
   drink.group.position.set(...cupHome);
   drink.stream.position.set(...pourPosition);
   shop.add(drink.group,drink.stream);
-  return {...drink,stock:cupHome,edge:guestEdge,spout:pourPosition,displayTarget};
+  function patronCup(name) {
+    const group=drink.group.clone();
+    group.name=name;
+    shop.add(group);
+    return {
+      group, filled:group.getObjectByName('Drink fill'), stream:drink.stream,
+      stock:cupHome, edge:[-.55,COUNTER_TOP,-2.155], spout:pourPosition,
+    };
+  }
+  return {...drink,stock:cupHome,edge:guestEdge,spout:pourPosition,displayTarget:booths[0]?.display,
+    booths,patronCup};
 }

@@ -65,9 +65,14 @@ export async function initCounterService(ctx,root) {
   const defaultFov = ctx.camera.fov;
   let open, cameraTime = 0, toastTime = 0, audioNoise;
 
-  function sound(phase,kind) {
+  function sound(phase,counter) {
     const audio=getAudio();
     if (!audio) return;
+    const {kind,actor}=counter;
+    const {x,y,z}=ctx.camera.position;
+    const radius=Math.hypot(x-actor.position[0],y-(actor.groundY+1.1),z-actor.position[1]);
+    const near=1-ctx.THREE.MathUtils.smoothstep(radius,2.4,10.5);
+    if (near<.001) return;
     const {ctx:ac,master}=audio;
     audioNoise ??= makeNoiseBuffer(ac,1.12,rng);
     const tap = phase==='set down', silk = phase==='silk';
@@ -80,7 +85,7 @@ export async function initCounterService(ctx,root) {
     const envelope = ac.createGain();
     const now=ac.currentTime, duration=silk ? .27 : tap ? .14 : .58;
     envelope.gain.setValueAtTime(.001,now);
-    envelope.gain.linearRampToValueAtTime(silk ? .061 : tap ? .115 : .148,now+.039);
+    envelope.gain.linearRampToValueAtTime((silk ? .061 : tap ? .115 : .148)*near,now+.039);
     envelope.gain.exponentialRampToValueAtTime(.001,now+duration);
     source.connect(tone).connect(envelope).connect(master);
     source.start(now,0,duration);
@@ -127,17 +132,19 @@ export async function initCounterService(ctx,root) {
     const kind=counter.kind, item=itemName(kind);
     if (!state.collect(kind)) return;
     counter.service.group.visible=false;
-    if (counter.service.stream) counter.service.stream.visible=false;
-    counter.actor.carries=null;
+    if (!counter.guest) {
+      if (counter.service.stream) counter.service.stream.visible=false;
+      counter.actor.carries=null;
+    }
     counter.actor.fabricContact=null;
     save();
     showReceipt(item+' · '+cost(SHOP_MENUS[kind].price)+' spent · '+cost(state.cash())+' left');
-    sound(kind==='tailor' ? 'silk' : 'set down',kind);
+    sound(kind==='tailor' ? 'silk' : 'set down',counter);
     close();
   }
 
   function serve(counter,choice) {
-    if (!state.order(counter.kind,choice)) return;
+    if (counter.guest || !state.order(counter.kind,choice)) return;
     const service=counter.service;
     service.group.position.set(...service.stock);
     service.group.visible=true;
@@ -176,11 +183,16 @@ export async function initCounterService(ctx,root) {
     speaker.textContent=menu.person;
     const dialogue=message || (phase==='ready' ? 'ready' : phase==='serving' ? 'ordered'
       : state.visited(kind) ? 'familiar' : 'greeting');
-    line.textContent=menu[dialogue];
-    voices.play(counter,dialogue);
     choices.replaceChildren();
+    if (counter.guest && !phase) {
+      line.textContent='I’ll be right with you. Let me hand this coffee over.';
+      action('Order '+menu.item.toLowerCase()+' · '+cost(menu.price),()=>serve(counter),true);
+    } else {
+      line.textContent=menu[dialogue];
+      voices.play(counter,dialogue);
+    }
     if (phase==='ready') action('Take '+itemName(kind).toLowerCase()+' · '+cost(menu.price),()=>consume(counter));
-    if (!phase) {
+    if (!phase && !counter.guest) {
       if (kind==='tailor') showSilks(counter,menu.price);
       else action('Order '+menu.item.toLowerCase()+' · '+cost(menu.price),()=>serve(counter),state.available()<menu.price);
       action(menu.question,()=>{perform(counter,'Speak',56/30);draw(counter,'reply');});
@@ -201,7 +213,7 @@ export async function initCounterService(ctx,root) {
     ctx.controls.setInputBlocked(OWNER,true);
     ctx.interactions.block(OWNER,true);
     try {ctx.controls.controls.unlock();} catch (_) { /* Pointer lock is optional. */ }
-    if (!state.status(counter.kind)) perform(counter,'Greet',34/30);
+    if (!counter.guest && !state.status(counter.kind)) perform(counter,'Greet',34/30);
     draw(counter);
   }
 
@@ -235,16 +247,16 @@ export async function initCounterService(ctx,root) {
     }
   },true);
 
-  function moveDrink(counter,pose,previous) {
-    const {group,stock,edge,filled,stream,spout}=counter.service;
+  function moveDrink(counter,pose,previous,drink) {
+    const {group,stock,edge,filled,stream,spout}=drink;
     const phase=pose.phase, ox=stock[0], oz=stock[2];
-    if (previous<POURS_AT && phase>=POURS_AT) sound('pour',counter.kind);
-    if (previous<CARRY_UNTIL && phase>=CARRY_UNTIL) sound('set down',counter.kind);
+    if (previous<POURS_AT && phase>=POURS_AT) sound('pour',counter);
+    if (previous<CARRY_UNTIL && phase>=CARRY_UNTIL) sound('set down',counter);
     const carry=ease((phase-CARRY_AT)/(1-CARRY_AT));
     group.position.set(ox+(edge[0]-ox)*carry,stock[1]+.135*Math.sin(Math.PI*carry),oz+(edge[2]-oz)*carry);
     if (phase>=CARRY_UNTIL) {
       const slide=ease((phase-CARRY_UNTIL)/(1-CARRY_UNTIL));
-      group.position.set(-.18,edge[1],(-2.456)+(edge[2]+2.456)*slide);
+      group.position.set(ox+(edge[0]-ox)*slide,edge[1],-2.456+(edge[2]+2.456)*slide);
     }
     counter.actor.carries=phase>=CARRY_AT && phase<CARRY_UNTIL ? group : null;
     filled.scale.y=Math.max(.02,ease((phase-POURS_AT)/(POURS_UNTIL-POURS_AT)));
@@ -263,10 +275,39 @@ export async function initCounterService(ctx,root) {
     setFold(ease((frame-13)/23));
     group.position.set(stock[0],stock[1],stock[2]+(edge[2]-stock[2])*slide);
     counter.actor.fabricContact=frame>=13 && frame<36 ? counter.service : null;
-    if (previous<16/68 && frame>=16) sound('silk',counter.kind);
+    if (previous<16/68 && frame>=16) sound('silk',counter);
   }
 
-  return {update(dt) {
+  function canServePatron(counter) {
+    return open!==counter && !counter.guest && !counter.performance && state.status(counter.kind)!=='serving';
+  }
+
+  function servePatron(counter,drink) {
+    if (!canServePatron(counter)) return false;
+    counter.guest={drink,ready:false};
+    drink.group.position.set(...drink.stock);
+    drink.group.rotation.set(0,0,0);
+    drink.filled.scale.y=.02;
+    drink.group.visible=true;
+    perform(counter,'Serve',SERVE);
+    return true;
+  }
+
+  function patronReady(counter,drink) {
+    return counter.guest?.drink===drink && counter.guest.ready;
+  }
+
+  function finishPatron(counter,drink) {
+    if (!patronReady(counter,drink)) return false;
+    counter.guest=null;
+    if (open===counter) {
+      perform(counter,'Greet',34/30);
+      draw(counter);
+    }
+    return true;
+  }
+
+  return {canServePatron,servePatron,patronReady,finishPatron,update(dt) {
     voices.update(dt);
     const targetFov = open ? defaultFov - 10 : defaultFov;
     if (ctx.camera.fov !== targetFov) {
@@ -291,16 +332,17 @@ export async function initCounterService(ctx,root) {
           && (player.x-x)**2 + (player.z-z)**2 < 18**2) {
         counter.voicesPreloaded = voices.preload(counter.kind);
       }
-      counter.actor.attending=open===counter;
+      counter.actor.attending=open===counter && !counter.guest;
       const pose=counter.performance;
       if (!pose) continue;
       const previous=pose.phase;
       pose.time+=dt;pose.phase=Math.min(1,pose.time/pose.duration);
-      if (pose.clip==='Serve') moveDrink(counter,pose,previous);
+      if (pose.clip==='Serve') moveDrink(counter,pose,previous,counter.guest?.drink ?? counter.service);
       if (pose.clip==='FoldSquare') moveSilk(counter,pose,previous);
       if (pose.phase===1) {
         counter.performance=null;counter.actor.performance=null;
-        if ((pose.clip==='Serve' || pose.clip==='FoldSquare') && state.served(counter.kind) && open===counter) draw(counter);
+        if (pose.clip==='Serve' && counter.guest) counter.guest.ready=true;
+        else if ((pose.clip==='Serve' || pose.clip==='FoldSquare') && state.served(counter.kind) && open===counter) draw(counter);
       }
     }
   }};

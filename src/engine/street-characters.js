@@ -3,6 +3,7 @@ import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
 import { findCounterFace, updateCounterFace } from './counter-face.js';
 import { createWalkFootContacts } from './walk-foot-contacts.js';
 import { createUmbrellas } from './rain-umbrella.js';
+import { createCrownGuestPose } from './crown-guest-pose.js';
 
 const MODELS = ['bank-clerk','shopkeeper','street-worker','pharmacist','crown-proprietor','ledger-vendor','walker-tailor'];
 const TINTS = [0xb09774,0x977655,0x919592,0x9d714f,0x767a64,0xa77878,0x737f9e,0x817451];
@@ -82,6 +83,7 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
   let mountUmbrella;
 
   function restoreAdditivePose(slot) {
+    slot.diner?.restore();
     slot.umbrella?.restore();
     if (slot.headAdjusted) slot.head.quaternion.copy(slot.headRotation);
     if (slot.torsoAdjusted) slot.torso.quaternion.copy(slot.torsoRotation);
@@ -137,6 +139,7 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
       const cue = person.actor?.performance;
       const visit = person.visit?.pose;
       const weather = person.shelter?.pose;
+      const dining = person.actor?.dining;
       const browsing = visit?.inspection;
       const controlled = cue ? slot.clips.get(cue.clip)
         : browsing!=null ? slot.clips.get('Browse') : null;
@@ -162,7 +165,7 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
       slot.instance.scale.setScalar(person.scale);
       slot.instance.visible=true;
       slot.mixer.update(dt);
-      if (person.streetHeight) {
+      if (person.streetHeight || dining) {
         const gait = action===walk ? walk.time/walk.getClip().duration : null;
         if (gait!=null) {
           slot.feet ??= createWalkFootContacts(slot.instance);
@@ -171,10 +174,10 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
         } else {
           slot.feet?.clear();
         }
-        slot.instance.userData.activity = weather?.phase ?? visit?.phase ?? person.journey?.pose.activity
-          ?? (person.crossingRequest.active ? (person.crossingRequest.committed ? 'crossing' : 'waiting to cross') : 'walking');
-        slot.instance.userData.crosswalk = person.journey?.pose.crosswalk
-          ?? (person.crossingRequest.active ? person.crossingRequest.crosswalk : null);
+        const request=person.crossingRequest;
+        slot.instance.userData.activity = person.actor?.activity ?? weather?.phase ?? visit?.phase ?? person.journey?.pose.activity
+          ?? (request?.active ? (request.committed ? 'crossing' : 'waiting to cross') : 'walking');
+        slot.instance.userData.crosswalk = person.journey?.pose.crosswalk ?? (request?.active ? request.crosswalk : null);
         slot.instance.userData.motion = action.getClip().name;
         slot.instance.userData.gait = gait;
       }
@@ -239,6 +242,12 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
         held.position.copy(hand);
         held.position.y=Math.max(held.userData.restHeight,hand.y-(held.userData.gripOffset ?? .067));
       }
+      if (dining) {
+        slot.diner ??= createCrownGuestPose(slot.instance);
+        slot.diner?.apply(dining);
+      }
+      slot.instance.userData.seated=dining?.seat ?? 0;
+      slot.instance.userData.sip=dining?.mode==='at the table' ? dining.amount : 0;
       slot.frame=frame;
       return true;
     },

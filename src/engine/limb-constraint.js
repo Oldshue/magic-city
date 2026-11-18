@@ -30,7 +30,7 @@ function aim(bone, start, current, target) {
 }
 
 /** Reach a world-space contact with two bone rotations, preserving bone length. */
-export function constrainLimb(upper, lower, endpoint, target, orientation) {
+export function constrainLimb(upper, lower, endpoint, target, orientation, pole) {
   upper.getWorldPosition(origin);
   lower.getWorldPosition(joint);
   endpoint.getWorldPosition(tip);
@@ -40,7 +40,9 @@ export function constrainLimb(upper, lower, endpoint, target, orientation) {
   if (distance < 1e-6 || firstLength < 1e-6 || secondLength < 1e-6) return;
 
   reach.multiplyScalar(1 / distance);
-  bend.subVectors(joint, origin).addScaledVector(reach, -bend.dot(reach));
+  if (pole) bend.copy(pole);
+  else bend.subVectors(joint, origin);
+  bend.addScaledVector(reach, -bend.dot(reach));
   if (bend.lengthSq() < 1e-8) {
     bend.set(Math.abs(reach.y) > 0.9 ? 1 : 0, Math.abs(reach.y) > 0.9 ? 0 : 1, 0);
     bend.addScaledVector(reach, -bend.dot(reach));
