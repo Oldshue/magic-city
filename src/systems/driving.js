@@ -4,9 +4,8 @@ import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 import { EYE_HEIGHT, PLAYER_RADIUS } from '../engine/controls.js';
 import { applySedanRide, buildPeriodSedan, updateSedanWheels } from '../engine/period-sedan.js';
 import {
-  carFootprintBlocked, clearCameraFraction, carWorldPoint, driverApproach, DRIVER_MARK,
-  HALF_WIDTH, hitsMovingObstacle, setCarBounds, TYRE_RADIUS, MAX_SPEED, REAR_AXLE_Z,
-  frontWheelAngle, sedanYawRate, stepSedanControls, stepSedanRide,
+  carFootprintBlocked, clearCameraFraction, carWorldPoint, driverApproach, FORD_TUDOR,
+  hitsMovingObstacle, LARGE_SEDAN, setCarBounds, sedanYawRate, stepSedanControls, stepSedanRide,
 } from '../engine/vehicle-motion.mjs';
 import {
   crossingBodyBlocked, pedestrianBrakeRoom, pedestrianTravelFraction, speedAtPedestrian,
@@ -21,7 +20,6 @@ const CHASE_DIST = 5.7;
 const CHASE_HEIGHT = 2.48;
 const CABIN_NEAR = .31;
 const EXIT_OFFSET = 1.8;
-const DRIVER_EXIT_X = HALF_WIDTH + PLAYER_RADIUS + .105;
 const APPROACH_SPEED = 2.0;
 const ANIMATION_FPS = 30;
 const VEHICLE_SOUNDS = {
@@ -61,7 +59,8 @@ function boxHit(boxes, x, z, radius) {
 const SEDAN_SPECS = [
   { x: 25, z: 11.5, yawDeg: 90, color: 0xdccb9e, name: 'the cream Lincoln', whitewall: true },       // 1st Ave N, near Jefferson Trust
   { x: -9.3, z: 42, yawDeg: 180, color: 0x4a1420, name: 'the oxblood Packard', whitewall: true },   // 20th St N, south of the Corner
-  { x: 65, z: -11.5, yawDeg: -90, color: 0x141414, name: 'a black Ford' },          // 1st Ave N, near Empire Building
+  { x: 9.3, z: 40, yawDeg: 180, color: 0x324939, name: 'the green Ford Tudor', configuration: FORD_TUDOR },
+  { x: 65, z: -11.5, yawDeg: -90, color: 0x222628, name: 'a black Ford', configuration: FORD_TUDOR },          // 1st Ave N, near Empire Building
   { x: -140, z: 11.5, yawDeg: 90, color: 0x101010, name: 'a black Dodge' },         // 1st Ave N, near TCI Building
   { x: -330, z: -150.5, yawDeg: 90, color: 0x151515, name: 'a black Buick' },       // 2nd Ave N, near Hotel Tutwiler
   { x: -420, z: -269.5, yawDeg: -90, color: 0x0e0e0e, name: 'a black Chevrolet' },  // 3rd Ave N, near Terminal Station
@@ -77,13 +76,16 @@ export function startDriving(ctx) {
   const controls = ctx.controls || { setEnabled() {}, getColliderBoxes() { return EMPTY_BOXES; } };
   const bounds = plan.bounds;
   const exteriorNear = camera.near;
-  const streetContact = createStreetContact(scene, TYRE_RADIUS, 0.042);
+  const tyreContacts = new Map([
+    [LARGE_SEDAN,createStreetContact(scene,LARGE_SEDAN.tyreRadius,.042)],
+    [FORD_TUDOR,createStreetContact(scene,FORD_TUDOR.tyreRadius,.034)],
+  ]);
   const streetHeight = createStreetContact(scene, 0);
   const player = createDriverPerformer(scene,{wardrobe:ctx.wardrobe});
 
   // --- Build parked sedans ------------------------------------------------
   const cars = SEDAN_SPECS.map((spec) => {
-    const built = buildPeriodSedan(spec.color, environment, {whitewall:spec.whitewall});
+    const built = buildPeriodSedan(spec.color,environment,{whitewall:spec.whitewall, configuration:spec.configuration});
     if (streetReflection) {
       streetReflection.exclude(built.group);
       for (const material of built.reflective) streetReflection.reflect(material);
@@ -95,7 +97,7 @@ export function startDriving(ctx) {
     scene.add(built.group);
     const car = {
       ...built,
-      name: spec.name,
+      name: spec.name, tyreContact: tyreContacts.get(built.configuration),
       x: spec.x, z: spec.z, heading, collider:{},
       speed: 0, vx: 0, vz: 0, braking: false, curbCooldown: 0,
     };
@@ -214,7 +216,8 @@ export function startDriving(ctx) {
   function enterCar(car) {
     const boxes = controls.getColliderBoxes();
     const vehicles = controls.getMovingColliderBoxes?.(car) ?? EMPTY_BOXES;
-    const path = driverApproach(boxes.concat(vehicles), car.x, car.z, car.heading, camera.position.x, camera.position.z);
+    const path = driverApproach(boxes.concat(vehicles),car.x,car.z,car.heading,
+      camera.position.x,camera.position.z,car.configuration);
     if (!path || !doorCanSwing(car, 1, boxes, vehicles)) {
       blockedDoorSeconds = 1.6;
       return;
@@ -259,7 +262,10 @@ export function startDriving(ctx) {
   function safeExitPoint(car) {
     const boxes = controls.getColliderBoxes();
     const vehicles = controls.getMovingColliderBoxes?.(car) ?? EMPTY_BOXES;
-    for (const [lx,lz] of [[DRIVER_EXIT_X,DRIVER_MARK.z],[EXIT_OFFSET,0],[-EXIT_OFFSET,0],[0,-2.75],[0,2.75]]) {
+    const {driverMark,halfWidth,halfLength} = car.configuration;
+    const doorX = halfWidth + PLAYER_RADIUS + .105;
+    const endZ = halfLength + PLAYER_RADIUS;
+    for (const [lx,lz] of [[doorX,driverMark.z],[EXIT_OFFSET,0],[-EXIT_OFFSET,0],[0,-endZ],[0,endZ]]) {
       const [x,z] = carWorldPoint(car.x,car.z,car.heading,lx,lz);
       if (x >= bounds.minX && x <= bounds.maxX && z >= bounds.minZ && z <= bounds.maxZ
           && !boxHit(boxes,x,z,PLAYER_RADIUS)
@@ -294,7 +300,8 @@ export function startDriving(ctx) {
     const boxes = controls.getColliderBoxes();
     const vehicles = controls.getMovingColliderBoxes?.(car) ?? EMPTY_BOXES;
     for (const side of [1, -1]) {
-      const landing = carWorldPoint(car.x, car.z, car.heading, side * DRIVER_EXIT_X, DRIVER_MARK.z);
+      const {driverMark,halfWidth} = car.configuration;
+      const landing = carWorldPoint(car.x,car.z,car.heading,side*(halfWidth+PLAYER_RADIUS+.105),driverMark.z);
       const [x,z] = landing;
       if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ
           || boxHit(boxes, x, z, PLAYER_RADIUS)
@@ -528,7 +535,7 @@ export function startDriving(ctx) {
       const x = car.x + wheel.x * cosine + wheel.z * sine;
       const z = car.z - wheel.x * sine + wheel.z * cosine;
       const yaw = car.heading + wheel.holder.rotation.y;
-      const height = streetContact(x, z, yaw) - ROAD_HEIGHT;
+      const height = car.tyreContact(x,z,yaw) - ROAD_HEIGHT;
       const previous = car.ride.support[i];
       rise += Math.max(0, height - previous);
       curb ||= (height > CURB_MID_HEIGHT) !== (previous > CURB_MID_HEIGHT);
@@ -556,11 +563,12 @@ export function startDriving(ctx) {
     const startX = car.x, startZ = car.z;
     const startSpeed = car.speed;
     const startHeading = car.heading;
+    const config = car.configuration;
     stepSedanControls(car, throttle, steer, exitRequested, dt);
     const direction=Math.sign(car.speed || startSpeed || throttle);
     if (direction) {
-      const room=pedestrianBrakeRoom(pedestrians,car.x,car.z,car.heading,direction,startSpeed);
-      const safeSpeed=speedAtPedestrian(startSpeed,car.speed,room,dt);
+      const room=pedestrianBrakeRoom(pedestrians,car.x,car.z,car.heading,direction,startSpeed,config);
+      const safeSpeed=speedAtPedestrian(startSpeed,car.speed,room,dt,config);
       if (Math.abs(car.speed-safeSpeed)>1e-6) {
         car.speed=safeSpeed;
         car.braking=true;
@@ -568,16 +576,16 @@ export function startDriving(ctx) {
       }
     }
 
-    const heading = car.heading + sedanYawRate(car.speed, car.steeringAngle) * dt;
-    if (!carFootprintBlocked(boxes, car.x, car.z, heading)
-        && !carFootprintBlocked(vehicles, car.x, car.z, heading)
-        && !crossingBodyBlocked(pedestrians,car.x,car.z,heading)) car.heading = heading;
+    const heading = car.heading + sedanYawRate(car.speed,car.steeringAngle,config.wheelbase) * dt;
+    if (!carFootprintBlocked(boxes,car.x,car.z,heading,config)
+        && !carFootprintBlocked(vehicles,car.x,car.z,heading,config)
+        && !crossingBodyBlocked(pedestrians,car.x,car.z,heading,config)) car.heading = heading;
     const yawTravel = car.heading - startHeading;
     const middle = startHeading + yawTravel / 2;
     const fx = Math.sin(middle), fz = Math.cos(middle);
     // The center of the car moves around the rear axle at parking speeds.
     // A short tire lag softens the response on faster bends.
-    const lateral = -REAR_AXLE_Z * yawTravel / dt;
+    const lateral = -config.rearAxleZ * yawTravel / dt;
     const grip = 1 - Math.exp(-15 * dt);
     car.vx += (fx * car.speed + fz * lateral - car.vx) * grip;
     car.vz += (fz * car.speed - fx * lateral - car.vz) * grip;
@@ -585,17 +593,17 @@ export function startDriving(ctx) {
     const impactSpeed = Math.abs(car.speed);
     let collided = false;
     const travelX=car.vx*dt;
-    const clearX=pedestrianTravelFraction(pedestrians,car.x,car.z,car.heading,travelX,0);
+    const clearX=pedestrianTravelFraction(pedestrians,car.x,car.z,car.heading,travelX,0,config);
     const nx=car.x+travelX*clearX;
-    if (!carFootprintBlocked(boxes, nx, car.z, car.heading) && !carFootprintBlocked(vehicles, nx, car.z, car.heading)) {
+    if (!carFootprintBlocked(boxes,nx,car.z,car.heading,config) && !carFootprintBlocked(vehicles,nx,car.z,car.heading,config)) {
       car.x = clamp(nx, bounds.minX, bounds.maxX);
     } else {
       collided = true; car.vx = 0; car.speed *= 0.25;
     }
     const travelZ=car.vz*dt;
-    const clearZ=pedestrianTravelFraction(pedestrians,car.x,car.z,car.heading,0,travelZ);
+    const clearZ=pedestrianTravelFraction(pedestrians,car.x,car.z,car.heading,0,travelZ,config);
     const nz=car.z+travelZ*clearZ;
-    if (!carFootprintBlocked(boxes, car.x, nz, car.heading) && !carFootprintBlocked(vehicles, car.x, nz, car.heading)) {
+    if (!carFootprintBlocked(boxes,car.x,nz,car.heading,config) && !carFootprintBlocked(vehicles,car.x,nz,car.heading,config)) {
       car.z = clamp(nz, bounds.minZ, bounds.maxZ);
     } else {
       collided = true; car.vz = 0; car.speed *= 0.25;
@@ -622,9 +630,11 @@ export function startDriving(ctx) {
     const pedestrians=ctx.crossingVisitors ?? EMPTY_BOXES;
     const speedBefore=Math.abs(car.speed), wasYielding=car.crossingYield;
     car.crossingYield=false;
+    // Screen-right steering turns toward local -X on a +Z-facing car.
+    const steer = exitRequested ? 0 : -input.steer;
     const steps = Math.ceil(dt / PHYSICS_STEP);
     for (let i = 0; i < steps; i++) {
-      stepDriving(car, input.throttle, exitRequested ? 0 : input.steer, dt / steps, boxes, vehicles,pedestrians);
+      stepDriving(car,input.throttle,steer,dt/steps,boxes,vehicles,pedestrians);
     }
     if (car.crossingYield) {
       car.braking=true;
@@ -642,7 +652,7 @@ export function startDriving(ctx) {
 
   function setChaseView(car) {
     const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
-    const distance = CHASE_DIST + Math.min(1.1, Math.abs(car.speed) * 0.05);
+    const distance = CHASE_DIST + car.configuration.halfLength - LARGE_SEDAN.halfLength + Math.min(1.1, Math.abs(car.speed) * 0.05);
     const lift = car.ride.heave.value * 0.85;
     const lookIntoTurn = Math.sin(car.steeringAngle) * Math.min(2.4, Math.abs(car.speed) * 0.3);
     chasePosition.set(car.x - fx * distance, CHASE_HEIGHT + lift, car.z - fz * distance);
@@ -658,9 +668,10 @@ export function startDriving(ctx) {
   function positionCabinCamera(car) {
     // The seated detective fills the space between the seat and the lens.
     setCameraNear(CABIN_NEAR);
-    camera.position.set(.35,1.46,-.33);
+    const [x,y,z] = car.configuration.seatOffset;
+    camera.position.set(.35+x,1.46+y,-.33+z);
     car.chassis.localToWorld(camera.position);
-    cabinAim.set(.35+Math.sin(car.steeringAngle)*.74,.71,5.1);
+    cabinAim.set(.35+x+Math.sin(car.steeringAngle)*.74,.71+y,5.1+z);
     car.chassis.localToWorld(cabinAim);
     camera.lookAt(cabinAim);
   }
@@ -688,10 +699,11 @@ export function startDriving(ctx) {
   function updateEngineAudio() {
     if (!engine) return;
     const car = activeCar;
-    const speedFrac = car ? Math.min(1, Math.abs(car.speed) / MAX_SPEED) : 0;
+    const config = car?.configuration ?? LARGE_SEDAN;
+    const speedFrac = car ? Math.min(1, Math.abs(car.speed) / config.maxSpeed) : 0;
     const throttling = isDriving && !access && !exitRequested ? Math.max(0, readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput).throttle) : 0;
     const targetGain = isDriving ? 0.045 + speedFrac * 0.1 + throttling * 0.05 : 0.0;
-    const targetFreq = 38 + speedFrac * 65;
+    const targetFreq = config.idleNote + speedFrac * config.engineRange;
     engine.bus.gain.setTargetAtTime(targetGain, engine.ac.currentTime, 0.15);
     engine.square.frequency.setTargetAtTime(targetFreq, engine.ac.currentTime, 0.2);
     engine.noiseFilter.frequency.setTargetAtTime(160 + speedFrac * 260, engine.ac.currentTime, 0.2);
@@ -811,6 +823,7 @@ export function startDriving(ctx) {
       out.mounted = !!activeCar;
       out.impactSequence = impactSequence;
       out.yielding = !!activeCar?.crossingYield;
+      out.configuration = activeCar?.configuration;
       return out;
     },
     park() {

@@ -1,4 +1,4 @@
-import { HALF_LENGTH, HALF_WIDTH } from './vehicle-motion.mjs';
+import { HALF_LENGTH, LARGE_SEDAN } from './vehicle-motion.mjs';
 
 const BRAKING = 4.2;
 const ACCELERATION = 2.25;
@@ -45,14 +45,16 @@ export function blockerGap(car, blocker, clearingJunction = false) {
   if (blocker.mounted) {
     const angle=blocker.heading-car.heading;
     const cos=Math.abs(Math.cos(angle)), sin=Math.abs(Math.sin(angle));
-    width=HALF_WIDTH*cos + HALF_LENGTH*sin;
-    depth=HALF_LENGTH*cos + HALF_WIDTH*sin;
+    const {halfWidth,halfLength} = blocker.configuration ?? LARGE_SEDAN;
+    width=halfWidth*cos + halfLength*sin;
+    depth=halfLength*cos + halfWidth*sin;
   }
   // A car already inside the junction can clear it when the walker is
   // outside its swept lane. Other traffic retains the approach margin.
   const margin = clearingJunction && !blocker.mounted ? 0 : .20;
-  if (across >= HALF_WIDTH + width + margin) return Infinity;
-  return Math.max(0,along - HALF_LENGTH - depth - YIELD_MARGIN);
+  const {halfWidth,halfLength} = car.configuration ?? LARGE_SEDAN;
+  if (across >= halfWidth + width + margin) return Infinity;
+  return Math.max(0,along - halfLength - depth - YIELD_MARGIN);
 }
 
 export function speedBefore(gap, leadSpeed = 0) {

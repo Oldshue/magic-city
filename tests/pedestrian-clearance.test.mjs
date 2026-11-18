@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HALF_LENGTH } from '../src/engine/vehicle-motion.mjs';
+import { FORD_TUDOR, HALF_LENGTH } from '../src/engine/vehicle-motion.mjs';
 import {
   crossingBodyBlocked, pedestrianBrakeRoom, pedestrianTravelFraction, speedAtPedestrian,
 } from '../src/engine/pedestrian-clearance.mjs';
@@ -31,4 +31,15 @@ test('sweeping the footprint prevents pass-through and permits moving away from 
   assert.ok(pedestrianTravelFraction([{...walker,z:-5}],0,0,0,0,-12)<1);
   assert.equal(pedestrianTravelFraction([{...walker,z:2.45}],0,0,0,0,-.18),1);
   assert.equal(pedestrianTravelFraction([{...walker,z:2.45}],0,0,0,0,.18),0);
+});
+
+test('pedestrian clearance uses the Tudor bumper and brake profile', () => {
+  const walker = { x:0, z:7, committed:true };
+  const sedanRoom = pedestrianBrakeRoom([walker],0,0,0,1,5);
+  const fordRoom = pedestrianBrakeRoom([walker],0,0,0,1,5,FORD_TUDOR);
+  assert.ok(Math.abs(fordRoom-sedanRoom-(HALF_LENGTH-FORD_TUDOR.halfLength))<1e-9);
+  assert.ok(speedAtPedestrian(5,5.1,1,.025,FORD_TUDOR)>
+    speedAtPedestrian(5,5.1,1,.025));
+  assert.ok(pedestrianTravelFraction([walker],0,0,0,0,9,FORD_TUDOR)>
+    pedestrianTravelFraction([walker],0,0,0,0,9));
 });

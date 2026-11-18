@@ -3,11 +3,11 @@ export const HALF_LENGTH = 2.30;
 const CAMERA_PADDING = .28;
 
 /** Test the sedan footprint against the four separating axes of a building box. */
-export function carFootprintBlocked(boxes, x, z, heading) {
+export function carFootprintBlocked(boxes, x, z, heading, {halfWidth, halfLength} = LARGE_SEDAN) {
   const sx = Math.sin(heading), cx = Math.cos(heading);
   const sin = Math.abs(sx), cos = Math.abs(cx);
-  const reachX = HALF_WIDTH * cos + HALF_LENGTH * sin;
-  const reachZ = HALF_WIDTH * sin + HALF_LENGTH * cos;
+  const reachX = halfWidth * cos + halfLength * sin;
+  const reachZ = halfWidth * sin + halfLength * cos;
   for (const box of boxes) {
     if (x + reachX <= box.minX || x - reachX >= box.maxX
         || z + reachZ <= box.minZ || z - reachZ >= box.maxZ) continue;
@@ -17,8 +17,8 @@ export function carFootprintBlocked(boxes, x, z, heading) {
     const dz = box.minZ + halfZ - z;
     const across = Math.abs(dx * cx - dz * sx);
     const along = Math.abs(dx * sx + dz * cx);
-    if (across < HALF_WIDTH + halfX * cos + halfZ * sin
-        && along < HALF_LENGTH + halfX * sin + halfZ * cos) return true;
+    if (across < halfWidth + halfX * cos + halfZ * sin
+        && along < halfLength + halfX * sin + halfZ * cos) return true;
   }
   return false;
 }
@@ -60,20 +60,23 @@ export function carWorldPoint(x, z, heading, localX, localZ) {
 }
 
 /** Choose a clear path around the nose or tail when the driver door is on the far side. */
-export function driverApproach(boxes, x, z, heading, fromX, fromZ) {
+export function driverApproach(boxes, x, z, heading, fromX, fromZ, {driverMark, halfWidth, halfLength} = LARGE_SEDAN) {
   const sine = Math.sin(heading), cosine = Math.cos(heading);
   const dx = fromX-x, dz = fromZ-z;
   const side = dx*cosine - dz*sine;
   const along = dx*sine + dz*cosine;
-  const door = [DRIVER_MARK.x, DRIVER_MARK.z];
-  const left = side > 0 ? DRIVER_MARK.x : -DRIVER_MARK.x;
-  const candidates = [-2.68, 2.68].map(end =>
-    [[left,end], [DRIVER_MARK.x,end], door]);
-  if (side >= 1.24) candidates.unshift([door]);
-  else if (Math.abs(along) >= 2.56) candidates.unshift([[DRIVER_MARK.x,along],door]);
+  const door = [driverMark.x, driverMark.z];
+  const sideClearance = halfWidth+.12;
+  const endClearance = halfLength+.26;
+  const left = side > 0 ? driverMark.x : -driverMark.x;
+  const around = halfLength+.38;
+  const candidates = [-around, around].map(end =>
+    [[left,end], [driverMark.x,end], door]);
+  if (side >= sideClearance) candidates.unshift([door]);
+  else if (Math.abs(along) >= endClearance) candidates.unshift([[driverMark.x,along],door]);
   let shortest = Infinity, chosen = null;
   for (const path of candidates) {
-    if (side < 1.24 && Math.abs(along) < 2.56) path.unshift([left,along]);
+    if (side < sideClearance && Math.abs(along) < endClearance) path.unshift([left,along]);
     let lastX = fromX, lastZ = fromZ, length = 0;
     const world = path.map(([lx,lz])=>carWorldPoint(x,z,heading,lx,lz));
     for (const [nextX,nextZ] of world) {
@@ -102,13 +105,15 @@ export function driverApproach(boxes, x, z, heading, fromX, fromZ) {
 }
 
 export function setCarBounds(out,x,z,heading,owner) {
+  const {halfWidth, halfLength} = owner?.configuration ?? LARGE_SEDAN;
   const sine = Math.abs(Math.sin(heading)), cosine = Math.abs(Math.cos(heading));
-  const across = HALF_WIDTH*cosine + HALF_LENGTH*sine;
-  const along = HALF_WIDTH*sine + HALF_LENGTH*cosine;
+  const across = halfWidth*cosine + halfLength*sine;
+  const along = halfWidth*sine + halfLength*cosine;
   out.minX = x-across; out.maxX = x+across;
   out.minZ = z-along; out.maxZ = z+along;
   out.owner = owner;
   out.x = x; out.z = z; out.heading = heading;
+  out.halfWidth = halfWidth; out.halfLength = halfLength;
   return out;
 }
 
@@ -118,8 +123,8 @@ export function hitsMovingObstacle(box,x,z,radius) {
       && z > box.minZ-radius && z < box.maxZ+radius;
   }
   const dx=x-box.x, dz=z-box.z, sine=Math.sin(box.heading), cosine=Math.cos(box.heading);
-  const lateral=Math.max(0,Math.abs(dx*cosine-dz*sine)-HALF_WIDTH);
-  const longitudinal=Math.max(0,Math.abs(dx*sine+dz*cosine)-HALF_LENGTH);
+  const lateral=Math.max(0,Math.abs(dx*cosine-dz*sine)-(box.halfWidth ?? HALF_WIDTH));
+  const longitudinal=Math.max(0,Math.abs(dx*sine+dz*cosine)-(box.halfLength ?? HALF_LENGTH));
   return lateral*lateral+longitudinal*longitudinal < radius*radius;
 }
 
@@ -130,8 +135,9 @@ export function slideAlongCar(box, x, z, dx, dz) {
   const sine = Math.sin(box.heading), cosine = Math.cos(box.heading);
   const localX = (x - box.x) * cosine - (z - box.z) * sine;
   const localZ = (x - box.x) * sine + (z - box.z) * cosine;
-  const offsetX = localX - Math.max(-HALF_WIDTH, Math.min(HALF_WIDTH, localX));
-  const offsetZ = localZ - Math.max(-HALF_LENGTH, Math.min(HALF_LENGTH, localZ));
+  const width = box.halfWidth ?? HALF_WIDTH, length = box.halfLength ?? HALF_LENGTH;
+  const offsetX = localX - Math.max(-width, Math.min(width, localX));
+  const offsetZ = localZ - Math.max(-length, Math.min(length, localZ));
   const lengthSquared = offsetX * offsetX + offsetZ * offsetZ;
   if (lengthSquared < 1e-8) return null;
   const nx = offsetX * cosine + offsetZ * sine;
@@ -145,59 +151,85 @@ export const TYRE_RADIUS = 0.385;
 export const HALF_TRACK = 0.89;
 export const FRONT_AXLE_Z = 1.46;
 export const REAR_AXLE_Z = -1.57;
-const WHEELBASE = FRONT_AXLE_Z - REAR_AXLE_Z;
+function sedanConfiguration(properties) {
+  return Object.freeze({...properties, wheelbase:properties.frontAxleZ-properties.rearAxleZ});
+}
+
 export const MAX_SPEED = 22;
-const MAX_REVERSE = 6;
-const STEERING_LOCK = 0.49;
-const CORNER_GRIP = 5.4;
+export const LARGE_SEDAN = sedanConfiguration({
+  halfWidth:HALF_WIDTH, halfLength:HALF_LENGTH, halfTrack:HALF_TRACK, tyreRadius:TYRE_RADIUS,
+  frontAxleZ:FRONT_AXLE_Z, rearAxleZ:REAR_AXLE_Z, driverMark:DRIVER_MARK,
+  seatOffset:[0,0,0], steeringLock:.49, grip:5.4, steeringResponse:10,
+  maxSpeed:MAX_SPEED, reverseLimit:6, acceleration:8.1, powerFade:4.5, reversePower:4.2,
+  serviceBrake:9.8, parkingBrake:11, coastDrag:2.85, crossingBrake:7.4, emergencyBrake:10.4,
+  springDamping:8, springFrequency:Math.sqrt(125-8*8), pitchResponse:.0066, rollResponse:.0125,
+  idleNote:38, engineRange:65,
+});
+
+// The 103.5-inch wheelbase matches Ford's A passenger chassis. The
+// acceleration and brake rates are tuned for the game's continuous controls.
+export const FORD_TUDOR = sedanConfiguration({
+  halfWidth:.89, halfLength:1.99, halfTrack:.707, tyreRadius:.368,
+  frontAxleZ:1.315, rearAxleZ:-1.3139, driverMark:{x:1.315,z:-.16},
+  seatOffset:[-.054,.018,.040], steeringLock:.576, grip:4.9, steeringResponse:11,
+  maxSpeed:18.5, reverseLimit:4.8, acceleration:5.7, powerFade:3, reversePower:3.4,
+  serviceBrake:7.7, parkingBrake:9, coastDrag:3.05, crossingBrake:6.2, emergencyBrake:8.4,
+  springDamping:7.25, springFrequency:7.8, pitchResponse:.009, rollResponse:.0158,
+  idleNote:33, engineRange:56,
+});
 
 export function stepSedanControls(car, throttle, steer, parking, dt) {
+  const config = car.configuration ?? LARGE_SEDAN;
   const speed = car.speed;
   car.braking = parking || throttle * speed < -0.05;
   if (car.braking || !throttle) {
-    const deceleration = parking ? 11 : car.braking ? 9.8 * Math.abs(throttle) : 2.85;
+    const deceleration = parking ? config.parkingBrake
+      : car.braking ? config.serviceBrake * Math.abs(throttle) : config.coastDrag;
     car.speed = Math.sign(speed) * Math.max(0, Math.abs(speed) - deceleration * dt);
   } else {
-    const acceleration = throttle > 0 ? 8.1 - 4.5 * Math.max(0, speed / MAX_SPEED) : 4.2;
-    car.speed = Math.max(-MAX_REVERSE, Math.min(MAX_SPEED, speed + acceleration * throttle * dt));
+    const acceleration = throttle > 0
+      ? config.acceleration - config.powerFade * Math.max(0, speed / config.maxSpeed)
+      : config.reversePower;
+    car.speed = Math.max(-config.reverseLimit, Math.min(config.maxSpeed, speed + acceleration * throttle * dt));
   }
-  const gripAngle = Math.atan2(CORNER_GRIP * WHEELBASE, car.speed * car.speed);
-  const target = steer * Math.min(STEERING_LOCK, gripAngle);
-  car.steeringAngle = target + (car.steeringAngle - target) * Math.exp(-10 * dt);
+  const gripAngle = Math.atan2(config.grip * config.wheelbase, car.speed * car.speed);
+  const target = steer * Math.min(config.steeringLock, gripAngle);
+  car.steeringAngle = target + (car.steeringAngle - target) * Math.exp(-config.steeringResponse * dt);
 }
 
-export function sedanYawRate(speed, steering) {
-  return speed * Math.tan(steering) / WHEELBASE;
+export function sedanYawRate(speed, steering, wheelbase = LARGE_SEDAN.wheelbase) {
+  return speed * Math.tan(steering) / wheelbase;
 }
 
-export function frontWheelAngle(steering, wheelX) {
+export function frontWheelAngle(steering, wheelX, wheelbase = LARGE_SEDAN.wheelbase) {
   const tangent = Math.tan(steering);
-  return Math.atan2(tangent, 1 - tangent * wheelX / WHEELBASE);
+  return Math.atan2(tangent, 1 - tangent * wheelX / wheelbase);
 }
 
-export function createSedanRide() {
+export function createSedanRide(configuration = LARGE_SEDAN) {
   const spring = () => ({ value: 0, velocity: 0 });
-  return { heave: spring(), pitch: spring(), roll: spring(), support: new Float64Array(4), ready: false };
+  return { configuration, heave:spring(), pitch:spring(), roll:spring(), support:new Float64Array(4), ready:false };
 }
 
 // Exact response to a constant target over this step. It stays damped
 // through a long browser frame without giving the chassis a sudden kick.
-function advanceSpring(spring, target, decay, cosine, sineOverFrequency) {
+function advanceSpring(spring, target, decay, damping, stiffness, cosine, sineOverFrequency) {
   const displacement = spring.value - target;
   const velocity = spring.velocity;
-  spring.value = target + decay * (displacement * cosine + (velocity + 8 * displacement) * sineOverFrequency);
-  spring.velocity = decay * (velocity * cosine - (8 * velocity + 125 * displacement) * sineOverFrequency);
+  spring.value = target + decay * (displacement * cosine + (velocity + damping * displacement) * sineOverFrequency);
+  spring.velocity = decay * (velocity * cosine - (damping * velocity + stiffness * displacement) * sineOverFrequency);
 }
 
 export function stepSedanRide(ride, forwardAcceleration, lateralAcceleration, dt) {
+  const config = ride.configuration;
   const [leftFront, leftRear, rightFront, rightRear] = ride.support;
   const front = (leftFront + rightFront) * 0.5;
   const rear = (leftRear + rightRear) * 0.5;
   const heave = (front + rear) * 0.5;
-  const pitch = Math.atan2(rear - front, WHEELBASE)
-    + Math.max(-0.056, Math.min(0.075, -forwardAcceleration * 0.0066));
-  const roll = Math.atan2((rightFront + rightRear - leftFront - leftRear) * 0.5, HALF_TRACK * 2)
-    + Math.max(-0.085, Math.min(0.085, lateralAcceleration * 0.0125));
+  const pitch = Math.atan2(rear - front, config.wheelbase)
+    + Math.max(-0.056, Math.min(0.075, -forwardAcceleration * config.pitchResponse));
+  const roll = Math.atan2((rightFront + rightRear - leftFront - leftRear) * 0.5, config.halfTrack * 2)
+    + Math.max(-0.085, Math.min(0.085, lateralAcceleration * config.rollResponse));
   if (!ride.ready) {
     ride.heave.value = heave;
     ride.pitch.value = pitch;
@@ -207,22 +239,23 @@ export function stepSedanRide(ride, forwardAcceleration, lateralAcceleration, dt
     return;
   }
 
-  const frequency = Math.sqrt(125 - 8 * 8);
-  const decay = Math.exp(-8 * dt);
+  const {springFrequency:frequency, springDamping:damping} = config;
+  const stiffness = frequency * frequency + damping * damping;
+  const decay = Math.exp(-damping * dt);
   const cosine = Math.cos(frequency * dt);
   const sineOverFrequency = Math.sin(frequency * dt) / frequency;
-  advanceSpring(ride.heave, heave, decay, cosine, sineOverFrequency);
-  advanceSpring(ride.pitch, pitch, decay, cosine, sineOverFrequency);
-  advanceSpring(ride.roll, roll, decay, cosine, sineOverFrequency);
+  advanceSpring(ride.heave, heave, decay, damping, stiffness, cosine, sineOverFrequency);
+  advanceSpring(ride.pitch, pitch, decay, damping, stiffness, cosine, sineOverFrequency);
+  advanceSpring(ride.roll, roll, decay, damping, stiffness, cosine, sineOverFrequency);
 
   // The bump stops limit how far a tire can rise into the fender arch.
-  const sideLift = HALF_TRACK * Math.sin(ride.roll.value);
+  const sideLift = config.halfTrack * Math.sin(ride.roll.value);
   const noseDip = Math.sin(ride.pitch.value);
   const minimumHeave = Math.max(
-    leftFront + sideLift + FRONT_AXLE_Z * noseDip,
-    leftRear + sideLift + REAR_AXLE_Z * noseDip,
-    rightFront - sideLift + FRONT_AXLE_Z * noseDip,
-    rightRear - sideLift + REAR_AXLE_Z * noseDip,
+    leftFront + sideLift + config.frontAxleZ * noseDip,
+    leftRear + sideLift + config.rearAxleZ * noseDip,
+    rightFront - sideLift + config.frontAxleZ * noseDip,
+    rightRear - sideLift + config.rearAxleZ * noseDip,
   ) - 0.063;
   if (ride.heave.value < minimumHeave) {
     ride.heave.value = minimumHeave;

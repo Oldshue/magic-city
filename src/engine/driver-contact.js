@@ -1,6 +1,7 @@
 import { MathUtils, Quaternion, Vector3 } from '../../vendor/three.module.min.js';
 import { constrainLimb } from './limb-constraint.js';
 import { contactWeight } from './vehicle-access.js';
+import { DRIVER_MARK } from './vehicle-motion.mjs';
 
 const UP = new Vector3(0, 1, 0);
 const groundRotation = new Quaternion();
@@ -102,6 +103,7 @@ export function createDriverContacts(asset, actor) {
       rememberPose();
       const side = motion.side;
       const hardware = car.accessDoors[side];
+      const landing = car.configuration.driverMark;
       const correctSide = leg => side > 0 ? leg : leg === 'l' ? 'r' : 'l';
       for (const leg of Object.values(legs)) leg.weight = 0;
       let rise = 0;
@@ -113,12 +115,13 @@ export function createDriverContacts(asset, actor) {
         leg.weight = weight;
         leg.floor = surface === 'street';
         if (leg.floor) {
-          car.group.localToWorld(leg.anchor.set(side * x, 0, z));
+          car.group.localToWorld(leg.anchor.set(side*(x+landing.x-DRIVER_MARK.x),0,z+landing.z-DRIVER_MARK.z));
           leg.anchor.y = heightAt(leg.anchor.x, leg.anchor.z) + leg.sole;
           rise += (leg.anchor.y - leg.end.getWorldPosition(posePoint).y) * weight;
           supporting += weight;
         } else {
-          car.chassis.localToWorld(leg.anchor.set(side * x, hardware.step.position.y + leg.sole, z));
+          const step = hardware.step.position;
+          car.chassis.localToWorld(leg.anchor.set(step.x+side*(x-.99),step.y+leg.sole,step.z+z-.02));
         }
       }
       const blend = motion.clip === 'Board' ? 1 - MathUtils.smoothstep(frame, 0, 7) : 0;

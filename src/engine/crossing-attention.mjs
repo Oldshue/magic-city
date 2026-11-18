@@ -1,4 +1,4 @@
-import { HALF_LENGTH, HALF_WIDTH } from './vehicle-motion.mjs';
+import { LARGE_SEDAN } from './vehicle-motion.mjs';
 
 const SIGHT_RANGE = 25;
 const NOD_DURATION = .69;
@@ -18,16 +18,17 @@ export function crossingVehicleScore(crossing, person, car) {
 
   const distance = (crossing[forward] - car[forward]) / approach;
   const halfStripe = crossing.depth * .5 / Math.abs(approach);
-  if (distance < -halfStripe - HALF_LENGTH || distance > SIGHT_RANGE) return Infinity;
+  const {halfWidth,halfLength} = car.configuration ?? LARGE_SEDAN;
+  if (distance < -halfStripe - halfLength || distance > SIGHT_RANGE) return Infinity;
 
   const lane = car[lateral] + distance * (lateral === 'x' ? dx : dz);
-  if (Math.abs(lane - crossing[lateral]) > crossing.halfSpan + HALF_WIDTH * .5) return Infinity;
+  if (Math.abs(lane - crossing[lateral]) > crossing.halfSpan + halfWidth * .5) return Infinity;
 
   const stride = lateral === 'x' ? person.vx : person.vz;
   const gap = lane - person[lateral];
   if (person.committed && Math.abs(stride) > .2 && gap * Math.sign(stride) < -1.6) return Infinity;
 
-  const remaining = Math.max(0, distance - HALF_LENGTH - halfStripe);
+  const remaining = Math.max(0, distance - halfLength - halfStripe);
   const speed = Math.abs(car.speed);
   if (speed < .3 && !car.yielding && remaining > 2.5) return Infinity;
 

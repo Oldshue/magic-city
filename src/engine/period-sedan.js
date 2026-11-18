@@ -1,44 +1,7 @@
 import * as THREE from '../../vendor/three.module.min.js';
-import { mergeGeometries } from './deco-shared.js';
-import { createSedanRide, FRONT_AXLE_Z, REAR_AXLE_Z, HALF_TRACK, TYRE_RADIUS, frontWheelAngle } from './vehicle-motion.mjs';
-
-const PROFILE = [
-  [-0.88, 0], [-0.98, 0.07], [-1, 0.26], [-1, 0.68], [-0.93, 0.90],
-  [-0.68, 0.99], [0, 1], [0.68, 0.99], [0.93, 0.90], [1, 0.68],
-  [1, 0.26], [0.98, 0.07], [0.88, 0],
-].reverse();
-const X = new THREE.Vector3(1, 0, 0);
-const Y = new THREE.Vector3(0, 1, 0);
-
-function loft(rings) {
-  const positions = [];
-  const indices = [];
-  const stride = PROFILE.length;
-  for (const [z, width, bottom, top] of rings) {
-    for (const [x, y] of PROFILE) positions.push(x * width, bottom + (top - bottom) * y, z);
-  }
-  for (let ring = 0; ring < rings.length - 1; ring++) {
-    for (let i = 0; i < stride; i++) {
-      const a = ring * stride + i;
-      const b = ring * stride + (i + 1) % stride;
-      indices.push(a, b, a + stride, b, b + stride, a + stride);
-    }
-  }
-  for (let i = 1; i < stride - 1; i++) {
-    const far = (rings.length - 1) * stride;
-    indices.push(0, i + 1, i, far, far + i, far + i + 1);
-  }
-  return surface(positions, indices);
-}
-
-function surface(positions, indices) {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3 * 2), 2));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
+import { bar, batch, box, headlightBeam, loft, pane, panel, seatFabric, surface } from './vehicle-geometry.js';
+import { buildFordTudorBody } from './ford-tudor.js';
+import { createSedanRide, FORD_TUDOR, LARGE_SEDAN, FRONT_AXLE_Z, REAR_AXLE_Z, HALF_TRACK, TYRE_RADIUS, frontWheelAngle } from './vehicle-motion.mjs';
 
 function fender(x, centerZ) {
   const positions = [];
@@ -59,47 +22,16 @@ function fender(x, centerZ) {
   return surface(positions, indices);
 }
 
-function bar(from, to, radius, sides = 7) {
-  const a = new THREE.Vector3(...from);
-  const b = new THREE.Vector3(...to);
-  const direction = b.clone().sub(a);
-  const geometry = new THREE.CylinderGeometry(radius, radius, direction.length(), sides);
-  geometry.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(Y, direction.normalize()));
-  a.lerp(b, 0.5);
-  return geometry.translate(a.x, a.y, a.z);
-}
-
-function box(x, y, z, width, height, depth) {
-  return new THREE.BoxGeometry(width, height, depth).translate(x, y, z);
-}
-
-function panel(corners) {
-  return surface(corners.flat(), [0, 1, 2, 0, 2, 3]);
-}
-
-function pane(target, trim, corners) {
-  target.push(panel(corners));
-  for (let i = 0; i < corners.length; i++) {
-    trim.push(bar(corners[i], corners[(i + 1) % corners.length], 0.026));
-  }
-}
-
-function batch(parent, pieces, material, castsShadow = true) {
-  if (!pieces.length) return;
-  const mesh = new THREE.Mesh(mergeGeometries(pieces), material);
-  for (const geometry of pieces) geometry.dispose();
-  mesh.castShadow = castsShadow;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-}
-
-function buildWheel(side, z, materials, whitewall) {
+function buildWheel(side, z, materials, whitewall, configuration) {
   const holder = new THREE.Group();
-  const x = side * HALF_TRACK;
+  const x = side * configuration.halfTrack;
+  const tudor = configuration === FORD_TUDOR;
   holder.name = (z > 0 ? 'Front' : 'Rear') + (side < 0 ? ' left wheel' : ' right wheel');
-  holder.position.set(x, TYRE_RADIUS, z);
+  holder.position.set(x, configuration.tyreRadius, z);
   const roll = new THREE.Group();
   holder.add(roll);
+  const radiusScale = configuration.tyreRadius / TYRE_RADIUS;
+  roll.scale.set(tudor ? .79 : 1,radiusScale,radiusScale);
   const tyreSection = [
     [0.268, -0.103], [0.322, -0.115], [0.363, -0.098], [0.382, -0.067],
     [TYRE_RADIUS, -0.046], [TYRE_RADIUS, -0.032], [0.381, -0.029], [0.381, -0.024],
@@ -122,25 +54,32 @@ function buildWheel(side, z, materials, whitewall) {
     ring.rotateY(side * Math.PI / 2);
     batch(roll, [ring.translate(side * 0.114, 0, 0)], materials.whitewall, false);
   }
-  for (let i = 0; i < 14; i++) {
-    const angle = i * Math.PI * 2 / 14;
+  const spokes = tudor ? 24 : 14;
+  for (let i = 0; i < spokes; i++) {
+    const angle = i * Math.PI * 2 / spokes;
     const lip = [side * 0.098, Math.cos(angle) * 0.255, Math.sin(angle) * 0.255];
     const next = angle + (i % 2 ? 0.55 : -0.55);
-    trim.push(bar([side * (i % 2 ? 0.138 : 0.106), Math.cos(next) * 0.06, Math.sin(next) * 0.06], lip, 0.009, 5));
+    trim.push(bar([side * (i % 2 ? 0.138 : 0.106), Math.cos(next) * 0.06, Math.sin(next) * 0.06], lip, tudor ? .005 : .009, 5));
   }
   const center = new THREE.SphereGeometry(0.075, 14, 8);
   center.scale(0.44, 1, 1);
   hub.push(center.translate(side * 0.124, 0, 0));
-  batch(roll, trim.concat(hub), materials.metal);
+  if (tudor) {
+    batch(roll,trim,materials.wireWheel);
+    batch(roll,hub,materials.metal);
+  } else {
+    batch(roll,trim.concat(hub),materials.metal);
+  }
   return { holder, roll, x, z };
 }
 
 
-function buildAxle(z, material) {
+function buildAxle(z, material, configuration) {
   const axle = new THREE.Group();
   const rear = z < 0;
   axle.name = rear ? 'Rear axle and differential' : 'Front beam axle';
-  axle.position.set(0, TYRE_RADIUS, z);
+  axle.position.set(0, configuration.tyreRadius, z);
+  axle.scale.x = configuration.halfTrack / HALF_TRACK;
   const ends = HALF_TRACK - 0.024;
   const parts = rear ? [
     bar([-ends, 0, 0], [ends, 0, 0], 0.032),
@@ -153,47 +92,34 @@ function buildAxle(z, material) {
     bar([-0.76, 0.005, -0.12], [0.76, 0.005, -0.12], 0.012),
   ];
 
-  // The semi-elliptic packs sit under the frame rails on the beam.
-  const length = rear ? 1.08 : 0.87;
-  for (const x of [-0.53, 0.53]) {
-    for (let leaf = 0; leaf < 4; leaf++) {
-      const reach = length * (0.5 - 0.075 * leaf);
-      for (const side of [-1, 1]) {
-        parts.push(
-          bar([x, -leaf * 0.012, 0], [x, 0.033 - leaf * 0.012, side * reach * 0.57], 0.014, 6),
-          bar([x, 0.033 - leaf * 0.012, side * reach * 0.57], [x, 0.087 - leaf * 0.012, side * reach], 0.014, 6),
-        );
+  if (configuration === FORD_TUDOR) {
+    // The A chassis carries its spring across the beam.
+    for (let leaf=0;leaf<5;leaf++) {
+      const reach = .73 - leaf*.061;
+      for (const side of [-1,1]) {
+        parts.push(bar([0,.17-leaf*.012,.014],[side*reach*.53,.152-leaf*.012,.014],.013,6),
+          bar([side*reach*.53,.152-leaf*.012,.014],[side*reach,.055-leaf*.012,.014],.013,6));
       }
     }
-    parts.push(box(x, 0.01, 0, 0.065, 0.09, 0.106));
+    parts.push(box(0,.125,.014,.115,.112,.078));
+  } else {
+    // The semi-elliptic packs sit under the frame rails on the beam.
+    const length = rear ? 1.08 : 0.87;
+    for (const x of [-0.53, 0.53]) {
+      for (let leaf = 0; leaf < 4; leaf++) {
+        const reach = length * (0.5 - 0.075 * leaf);
+        for (const side of [-1, 1]) {
+          parts.push(
+            bar([x, -leaf * 0.012, 0], [x, 0.033 - leaf * 0.012, side * reach * 0.57], 0.014, 6),
+            bar([x, 0.033 - leaf * 0.012, side * reach * 0.57], [x, 0.087 - leaf * 0.012, side * reach], 0.014, 6),
+          );
+        }
+      }
+      parts.push(box(x, 0.01, 0, 0.065, 0.09, 0.106));
+    }
   }
   batch(axle, parts, material);
   return axle;
-}
-
-let clothGrain;
-function seatFabric() {
-  if (!clothGrain) {
-    const size = 48, pixels = new Uint8Array(size * size * 4);
-    for (let y=0;y<size;y++) {
-      for (let x=0;x<size;x++) {
-        const ridge = Math.cos(x*Math.PI/2)*6 + Math.cos(y*Math.PI/2)*6;
-        const tone = 173 + ridge + ((x*73+y*37+x*y*13)%19);
-        const i = (y*size+x)*4;
-        pixels.set([tone,tone,tone,255],i);
-      }
-    }
-    clothGrain = new THREE.DataTexture(pixels,size,size);
-    clothGrain.wrapS = clothGrain.wrapT = THREE.RepeatWrapping;
-    clothGrain.magFilter = THREE.LinearFilter;
-    clothGrain.minFilter = THREE.LinearMipmapLinearFilter;
-    clothGrain.generateMipmaps = true;
-    clothGrain.anisotropy = 4;
-    clothGrain.needsUpdate = true;
-  }
-  return new THREE.MeshStandardMaterial({
-    color:0x846953, bumpMap:clothGrain, bumpScale:.009, roughness:.92,
-  });
 }
 
 function upholsteredBenches() {
@@ -221,7 +147,7 @@ function upholsteredBenches() {
   return {broadcloth,welt};
 }
 
-export function buildPeriodSedan(bodyColor, environment, {whitewall = false, powered = true} = {}) {
+export function buildPeriodSedan(bodyColor, environment, {whitewall = false, powered = true, configuration = LARGE_SEDAN} = {}) {
   const group = new THREE.Group();
   group.name = 'Period sedan';
   const chassis = new THREE.Group();
@@ -245,6 +171,43 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
   });
   const headlightMat = new THREE.MeshStandardMaterial({color:0xe3d3b4, emissive:0xffdb9f, roughness:0.36, emissiveIntensity:0.22});
   const stopLightMat = new THREE.MeshStandardMaterial({color:0x681511, emissive:0xd83618, roughness:0.31, emissiveIntensity:0});
+  const tudor = configuration === FORD_TUDOR;
+  const wireWheel = tudor ? new THREE.MeshStandardMaterial({
+    color:0xae9670, roughness:.39, metalness:.55, envMap:environment,
+  }) : null;
+  const wheelMaterials = {rubber, metal, whitewall:whitewallMaterial, wireWheel};
+  const materials = {paint, enamel, metal, roofMaterial, glassMaterial, headlightMat, stopLightMat};
+  const body = tudor ? buildFordTudorBody(chassis, materials, powered)
+    : buildLargeSedanBody(chassis, materials, powered, environment);
+  const axleMaterial = new THREE.MeshStandardMaterial({color:0x474540, metalness:0.52, roughness:0.69});
+  const axlePositions = [configuration.frontAxleZ,configuration.rearAxleZ];
+  const axles = axlePositions.map(z=>buildAxle(z,axleMaterial,configuration));
+  group.add(...axles);
+  const wheels = [];
+  for (const side of [-1,1]) {
+    for (const z of axlePositions) {
+      const wheel = buildWheel(side,z,wheelMaterials,whitewall,configuration);
+      wheels.push(wheel);
+      group.add(wheel.holder);
+    }
+  }
+  if (tudor) {
+    const spare = buildWheel(1,0,wheelMaterials,false,configuration).roll;
+    spare.name = 'Rear wire spare';
+    spare.position.set(0,.875,-1.875);
+    spare.rotation.y = Math.PI / 2;
+    chassis.add(spare);
+  }
+  group.userData.model = tudor ? 'Ford Tudor' : 'Long sedan';
+  return {
+    ...body, group, chassis, axles, wheels, configuration,
+    ride:createSedanRide(configuration), steeringAngle:0,
+    headlightMat, stopLightMat, reflective:[paint,enamel,metal,glassMaterial],
+  };
+}
+
+function buildLargeSedanBody(chassis, materials, powered, environment) {
+  const {paint,enamel,metal,roofMaterial,glassMaterial,headlightMat,stopLightMat} = materials;
   // Separate the rear quarter, footwell and cowl so the front doors open
   // into a real cabin. The rocker stays below the doorway.
   const body = [
@@ -406,15 +369,7 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
     trim.push(ring.translate(x,.774,2.121));
     front.push(new THREE.SphereGeometry(.132,18,10).scale(1,1,.24).translate(x,.774,2.124));
     rear.push(new THREE.SphereGeometry(.064,14,8).scale(1,1,.45).translate(x,.684,-2.24));
-    if (powered) {
-      const light = new THREE.SpotLight(0xffddb0, 0, 38, Math.PI / 7.5, 0.49, 1.7);
-      light.position.set(x,.774,2.19);
-      const aim = new THREE.Object3D();
-      aim.position.set(x,.12,14);
-      light.target = aim;
-      chassis.add(light, aim);
-      spotLights.push(light);
-    }
+    if (powered) spotLights.push(headlightBeam(chassis,x,.774,2.19));
   }
   batch(chassis, body, paint);
   batch(chassis, [vinylRoof], roofMaterial);
@@ -423,33 +378,19 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
   batch(chassis, glass, glassMaterial, false);
   batch(chassis, front, headlightMat, false);
   batch(chassis, rear, stopLightMat, false);
-  const axleMaterial = new THREE.MeshStandardMaterial({color:0x474540, metalness:0.52, roughness:0.69});
-  const axles = [buildAxle(FRONT_AXLE_Z, axleMaterial), buildAxle(REAR_AXLE_Z, axleMaterial)];
-  group.add(...axles);
-  const wheels = [];
-  for (const side of [-1,1]) {
-    for (const z of [FRONT_AXLE_Z, REAR_AXLE_Z]) {
-      const wheel = buildWheel(side, z, {rubber, metal, whitewall:whitewallMaterial}, whitewall);
-      wheels.push(wheel);
-      group.add(wheel.holder);
-    }
-  }
-  return {
-    group, chassis, axles, wheels, ride: createSedanRide(), steeringAngle: 0,
-    driverDoor: accessDoors[1].door, accessDoors, steeringWheel, speedNeedle, dialInk, headlightMat, stopLightMat, spotLights,
-    reflective: [paint, enamel, metal, glassMaterial],
-  };
+  return { driverDoor:accessDoors[1].door, accessDoors, steeringWheel, speedNeedle, dialInk, spotLights };
 }
 
 export function updateSedanWheels(car, distance, sideDistance = 0, yawTravel = 0) {
+  const {tyreRadius,wheelbase} = car.configuration;
   car.steeringWheel.rotation.z = THREE.MathUtils.clamp(-car.steeringAngle * 1.45, -0.693, 0.693);
   for (const wheel of car.wheels) {
-    const steer = wheel.z > 0 ? frontWheelAngle(car.steeringAngle, wheel.x) : 0;
+    const steer = wheel.z > 0 ? frontWheelAngle(car.steeringAngle,wheel.x,wheelbase) : 0;
     wheel.holder.rotation.y = steer;
     const forward = distance - wheel.x * yawTravel;
     const lateral = sideDistance + wheel.z * yawTravel;
     const travel = forward * Math.cos(steer) + lateral * Math.sin(steer);
-    wheel.roll.rotation.x = (wheel.roll.rotation.x + travel / TYRE_RADIUS) % (Math.PI * 2);
+    wheel.roll.rotation.x = (wheel.roll.rotation.x + travel / tyreRadius) % (Math.PI * 2);
   }
 }
 
@@ -457,16 +398,16 @@ const rollCenter = new THREE.Vector3();
 const ROLL_CENTER_HEIGHT = 0.49;
 
 export function applySedanRide(car) {
-  const { chassis, axles, wheels, ride } = car;
+  const { chassis, axles, wheels, ride, configuration } = car;
   chassis.rotation.set(ride.pitch.value, 0, ride.roll.value, 'ZXY');
   rollCenter.set(0, ROLL_CENTER_HEIGHT, 0).applyEuler(chassis.rotation);
   chassis.position.set(-rollCenter.x, ROLL_CENTER_HEIGHT + ride.heave.value - rollCenter.y, -rollCenter.z);
-  for (let i = 0; i < wheels.length; i++) wheels[i].holder.position.y = TYRE_RADIUS + ride.support[i];
+  for (let i = 0; i < wheels.length; i++) wheels[i].holder.position.y = configuration.tyreRadius + ride.support[i];
 
   for (let i = 0; i < axles.length; i++) {
     const left = wheels[i].holder.position.y;
     const right = wheels[i + 2].holder.position.y;
     axles[i].position.y = (left + right) * 0.5;
-    axles[i].rotation.z = Math.atan2(right - left, HALF_TRACK * 2);
+    axles[i].rotation.z = Math.atan2(right - left, configuration.halfTrack * 2);
   }
 }

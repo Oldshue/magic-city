@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { carFootprintBlocked, clearCameraFraction, driverApproach, carWorldPoint, hitsMovingObstacle, setCarBounds, stepSedanControls, sedanYawRate, frontWheelAngle, createSedanRide, stepSedanRide, HALF_TRACK, FRONT_AXLE_Z } from '../src/engine/vehicle-motion.mjs';
+import {
+  carFootprintBlocked, clearCameraFraction, driverApproach, carWorldPoint, hitsMovingObstacle,
+  setCarBounds, stepSedanControls, sedanYawRate, frontWheelAngle, createSedanRide,
+  stepSedanRide, HALF_TRACK, FRONT_AXLE_Z, FORD_TUDOR, LARGE_SEDAN,
+} from '../src/engine/vehicle-motion.mjs';
 
 const storefront = {minX:18,maxX:42,minZ:14,maxZ:38};
 
@@ -77,4 +81,40 @@ test('body leans under load and a raised tire reaches the bump stop without clip
   assert.ok(ride.support[0] - frontLeftBody <= 0.064, 'the corner clears the tire at full compression');
   for (let frame=0; frame<78; frame++) stepSedanRide(ride, 0, 0, 1/60);
   assert.ok(ride.pitch.value < 0 && ride.roll.value < 0, 'the body settles on the raised left front');
+});
+
+test('the Tudor clears a shorter parking space and its walking collider follows its body', () => {
+  assert.ok(Math.abs(FORD_TUDOR.wheelbase/0.0254 - 103.5)<.01);
+  const parkingEdge = {minX:-1.2,maxX:1.2,minZ:2.06,maxZ:2.21};
+  assert.equal(carFootprintBlocked([parkingEdge],0,0,0,FORD_TUDOR),false);
+  assert.equal(carFootprintBlocked([parkingEdge],0,0,0),true);
+
+  const heading = Math.PI/3;
+  const ford = setCarBounds({},2,3,heading,{configuration:FORD_TUDOR});
+  const sedan = setCarBounds({},2,3,heading);
+  const step = carWorldPoint(2,3,heading,1.18,.2);
+  assert.equal(hitsMovingObstacle(ford,...step,.25),false);
+  assert.equal(hitsMovingObstacle(sedan,...step,.25),true);
+  assert.deepEqual(driverApproach([],0,0,0,1.6,.2,FORD_TUDOR).at(-1),
+    [FORD_TUDOR.driverMark.x,FORD_TUDOR.driverMark.z]);
+});
+
+test('the Tudor builds speed more slowly and turns tighter at the same parking speed', () => {
+  const ford = {speed:0,steeringAngle:0,configuration:FORD_TUDOR};
+  const sedan = {speed:0,steeringAngle:0,configuration:LARGE_SEDAN};
+  for (let frame=0;frame<60;frame++) {
+    stepSedanControls(ford,1,0,false,1/60);
+    stepSedanControls(sedan,1,0,false,1/60);
+  }
+  assert.ok(ford.speed>5 && sedan.speed-ford.speed>2);
+  for (const car of [ford,sedan]) {
+    for (let frame=0;frame<45;frame++) {
+      car.speed=2.5;
+      stepSedanControls(car,0,1,false,1/60);
+    }
+  }
+  assert.ok(sedanYawRate(2.5,ford.steeringAngle,FORD_TUDOR.wheelbase)>
+    1.2*sedanYawRate(2.5,sedan.steeringAngle,LARGE_SEDAN.wheelbase));
+  assert.ok(frontWheelAngle(ford.steeringAngle,FORD_TUDOR.halfTrack,FORD_TUDOR.wheelbase)>
+    frontWheelAngle(ford.steeringAngle,-FORD_TUDOR.halfTrack,FORD_TUDOR.wheelbase));
 });

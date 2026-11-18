@@ -3,6 +3,7 @@ import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 import { prepareCharacter } from './street-characters.js';
 import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
 import { createDriverContacts } from './driver-contact.js';
+import { DRIVER_MARK } from './vehicle-motion.mjs';
 import { pocketSquare } from '../gameplay/shop-state.mjs';
 
 const SCALE = .94;
@@ -113,8 +114,18 @@ export function createDriverPerformer(scene,{motoristColor,wardrobe}={}) {
       if (align) contacts.hipPosition(arrival);
       mount(car);
       if (!play(motion.clip, phase, 0)) return;
-      if (align) contacts.alignFrom(arrival);
       const frame = phase * motion.frames - motion.slide;
+      // Fit the authored seated pose and street mark before grounding
+      // the feet and reaching the handles.
+      const {driverMark,seatOffset:[x,y,z]} = car.configuration;
+      const seated = motion.clip === 'Board' ? THREE.MathUtils.smoothstep(frame,26,49)
+        : 1-THREE.MathUtils.smoothstep(frame,-motion.slide,36);
+      group.position.set(
+        THREE.MathUtils.lerp(motion.side*(driverMark.x-DRIVER_MARK.x),x,seated),
+        y*seated,
+        THREE.MathUtils.lerp(driverMark.z-DRIVER_MARK.z,z,seated),
+      );
+      if (align) contacts.alignFrom(arrival);
       group.userData.accessFrame = frame;
       contacts?.access(car, motion, frame, heightAt);
     },
@@ -122,6 +133,7 @@ export function createDriverPerformer(scene,{motoristColor,wardrobe}={}) {
       mount(car);
       const grip = THREE.MathUtils.clamp(.5 + car.steeringWheel.rotation.z/(2*.693),0,1);
       play('Steer',grip,0);
+      group.position.set(...car.configuration.seatOffset);
     },
     hide() {
       group.visible = false;

@@ -1,6 +1,6 @@
 /** Period traffic with lane spacing, and right-of-way at First and 20th. */
 import { applySedanRide, buildPeriodSedan, updateSedanWheels } from '../engine/period-sedan.js';
-import { HALF_LENGTH, hitsMovingObstacle, setCarBounds, stepSedanRide, TYRE_RADIUS } from '../engine/vehicle-motion.mjs';
+import { FORD_TUDOR, hitsMovingObstacle, LARGE_SEDAN, setCarBounds, stepSedanRide } from '../engine/vehicle-motion.mjs';
 import { createDriverPerformer } from '../engine/driver-performer.js';
 import { ROAD_HEIGHT } from '../engine/street-layout.js';
 import { crossingVehicleScore } from '../engine/crossing-attention.mjs';
@@ -10,19 +10,6 @@ export function startTraffic(ctx) {
   const { THREE, scene, plan, getDayPhase, streetReflection } = ctx;
   const avenues = (plan.streets || []).filter((s) => s.class === 'avenue');
   const has20thStreet = avenues.some(street => street.name === '20th Street North');
-  if (has20thStreet) {
-    const parked = buildPeriodSedan(0x2b4540, ctx.environment, {powered:false});
-    if (streetReflection) {
-      streetReflection.exclude(parked.group);
-      for (const material of parked.reflective) streetReflection.reflect(material);
-    }
-    parked.group.name = 'Parked green sedan';
-    parked.group.position.set(9.3, ROAD_HEIGHT, 40);
-    parked.group.rotation.y = Math.PI;
-    scene.add(parked.group);
-    ctx.controls?.addColliders([{minX:8.20,maxX:10.40,minZ:37.74,maxZ:42.26}]);
-  }
-
   const routes = [];
   for (const st of avenues) {
     const pts = st.path.map(([x, z]) => new THREE.Vector3(x, 0, z));
@@ -54,8 +41,10 @@ export function startTraffic(ctx) {
         : Math.random()*20;
       for (let i=0;i<count;i++) {
         const cruise = 6.5 + Math.random()*2.5;
+        const configuration = route.junction && (i+routes.indexOf(route)+(dir>0?1:0))%3===1
+          ? FORD_TUDOR : LARGE_SEDAN;
         const car = {
-          route,dir,laneOffset,cruise,speed:cruise,
+          route,dir,laneOffset,cruise,speed:cruise,configuration,
           dist:wrapDistance(start + route.total/count*i,route.total),
           x:0,z:0,heading:0,bodyBox:{},
         };
@@ -168,7 +157,7 @@ export function startTraffic(ctx) {
   detailedTraffic.name = 'Detailed downtown traffic';
   streetReflection?.exclude(detailedTraffic);
   scene.add(detailedTraffic);
-  const detailedPools = lacquer.map(()=>[]);
+  const detailedPools = new Map([LARGE_SEDAN,FORD_TUDOR].map(config=>[config,lacquer.map(()=>[])]));
   const colliders = [];
   const playerCrossingBox = {};
   ctx.controls?.addMovingColliders?.(colliders);
@@ -176,8 +165,8 @@ export function startTraffic(ctx) {
   const approachingPedestrians = [];
   let playerPosition;
 
-  function makeDetail(color) {
-    const sedan = buildPeriodSedan(lacquer[color],ctx.environment,{powered:false});
+  function makeDetail(color,configuration) {
+    const sedan = buildPeriodSedan(lacquer[color],ctx.environment,{powered:false,configuration});
     if (streetReflection) {
       for (const material of sedan.reflective) streetReflection.reflect(material);
     }
@@ -189,24 +178,29 @@ export function startTraffic(ctx) {
     return sedan;
   }
 
-  if (junction) detailedPools.forEach((pool,i)=>pool.push(makeDetail(i)));
+  if (junction) {
+    for (const [config,pools] of detailedPools) {
+      pools.forEach((pool,i)=>pool.push(makeDetail(i,config)));
+    }
+  }
 
   function showDetail(car,i,night,dt) {
+    const color = i%lacquer.length;
+    const pool = detailedPools.get(car.configuration)[color];
     const camera = ctx.camera?.position;
     const nearby = camera && Math.abs(camera.y) < 10
       && (camera.x-car.x)**2 + (camera.z-car.z)**2 < 39**2;
     if (!nearby || !car.route.junction || !isOnFirstBlock(car)) {
       if (car.detail) {
         car.detail.group.visible = false;
-        detailedPools[i%lacquer.length].push(car.detail);
+        pool.push(car.detail);
         car.detail = null;
       }
       return false;
     }
     if (!car.detail) {
-      const color = i%lacquer.length;
-      car.detail = detailedPools[color].pop() ?? makeDetail(color);
-      const wheelAngle = (car.dist / TYRE_RADIUS) % (Math.PI * 2);
+      car.detail = pool.pop() ?? makeDetail(color,car.configuration);
+      const wheelAngle = (car.dist / car.configuration.tyreRadius) % (Math.PI * 2);
       for (const wheel of car.detail.wheels) wheel.roll.rotation.x = wheelAngle;
       car.detail.previousSpeed = car.speed;
       car.detail.ride.ready = false;
@@ -348,7 +342,7 @@ export function startTraffic(ctx) {
         playerRoom = Math.min(playerRoom, blockerGap(car, person, clearingJunction));
       }
       const leadRoom = car.leader
-        ? wrapDistance((car.leader.dist-car.dist)*car.dir,car.route.total)-HALF_LENGTH*2
+        ? wrapDistance((car.leader.dist-car.dist)*car.dir,car.route.total)-car.configuration.halfLength-car.leader.configuration.halfLength
         : Infinity;
       const room = Math.min(crossing,playerRoom,leadRoom-.75);
       const target = Math.min(car.cruise,speedBefore(crossing),speedBefore(playerRoom),
@@ -369,7 +363,7 @@ export function startTraffic(ctx) {
   function crossingVehicles() {
     const obstacles=ctx.controls?.getMovingColliderBoxes?.() ?? colliders;
     if (!playerPosition?.mounted) return obstacles;
-    const player=setCarBounds(playerCrossingBox,playerPosition.x,playerPosition.z,playerPosition.heading);
+    const player=setCarBounds(playerCrossingBox,playerPosition.x,playerPosition.z,playerPosition.heading,playerPosition);
     return [player,...obstacles];
   }
 
@@ -400,9 +394,13 @@ export function startTraffic(ctx) {
       stepTraffic(dt);
       for (let i = 0; i < instances.length; i++) {
         const car = instances[i];
-        const {heading,x:ox,z:oz} = car;
-        const fwdX = Math.sin(heading), fwdZ = Math.cos(heading);
-        const latX = Math.cos(heading), latZ = -Math.sin(heading);
+        const {heading,x:ox,z:oz,configuration} = car;
+        // Carry the shorter silhouette into the cheap distance meshes.
+        const width = configuration.halfWidth / LARGE_SEDAN.halfWidth;
+        const length = configuration.halfLength / LARGE_SEDAN.halfLength;
+        s.set(width,1,length);
+        const fwdX = Math.sin(heading)*length, fwdZ = Math.cos(heading)*length;
+        const latX = Math.cos(heading)*width, latZ = -Math.sin(heading)*width;
         q.setFromAxisAngle(up,heading);
         tmpPos.set(ox + fwdX*4.4,.04,oz + fwdZ*4.4);
         qGlow.copy(q).multiply(glowTilt);
