@@ -260,7 +260,7 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
       }
       if (dining) {
         slot.diner ??= createCrownGuestPose(slot.instance);
-        slot.diner?.apply(dining);
+        slot.diner?.apply(dining,person.actor?.entrancePress);
       }
       slot.instance.userData.seated=dining?.seat ?? 0;
       slot.instance.userData.sip=dining?.mode==='at the table' ? dining.amount : 0;

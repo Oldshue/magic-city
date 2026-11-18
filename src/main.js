@@ -236,7 +236,7 @@ async function boot() {
     materials, deco, registerInteractive, controls, streetSegments, crossings,
     getDayPhase: sky.getDayPhase,
     wardrobe: {pocketSquare:null},
-    interactives, characters: [], shopCounters: [], newsstands: [], crossingVisitors: [], storefrontShelters: [],
+    interactives, characters: [], shopCounters: [], shopEntrances: [], newsstands: [], crossingVisitors: [], storefrontShelters: [],
     interactions: createInteractions(),
   };
 

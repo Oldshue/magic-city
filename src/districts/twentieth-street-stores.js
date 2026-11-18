@@ -2,6 +2,7 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { mergeGeometries } from '../engine/deco-shared.js';
 import { SIDEWALK_HEIGHT } from '../engine/street-layout.js';
 import { mapShopUV } from '../engine/shop-surfaces.js';
+import { buildShopEntrance } from '../engine/shop-entrance.js';
 import { SHOP_MENUS } from '../gameplay/shop-state.mjs';
 import { buildCounterFixture, STAFF_Z } from './counter-fixtures.js';
 import { buildWalkerFixture, loadWalkerWindows } from './walker-tailoring.js';
@@ -187,15 +188,8 @@ function makeShop(spec, width, ctx, M, garments) {
     box(M.brass,0,.016,.02,1.65,.015,.059);
     box(M.walnut,0,2.932,-.271,1.70,.067,.758);
   }
-  if (spec.open) {
-    // A glazed wood leaf folded back against the jamb leaves a usable doorway.
-    box(paint,-.765,.505,recess-.742,.069,.997,1.398);
-    box(M.walnut,-.728,.516,recess-.742,.012,.80,1.210);
-    for (const z of [-.071,-1.417]) box(paint,-.765,1.871,recess+z,.071,1.81,.093);
-    for (const y of [1.017,1.75,2.763]) box(paint,-.765,y,recess-.742,.071,.081,1.387);
-    put(M.glass,new THREE.PlaneGeometry(1.271,1.66).rotateY(Math.PI/2).translate(-.759,1.875,recess-.742));
-    box(M.brass,-.709,1.071,recess-1.33,.088,.175,.043);
-  } else {
+  const entrance = spec.open ? buildShopEntrance(THREE,shop,paint,M,doorHalf,recess,head) : null;
+  if (!entrance) {
     box(paint,0,.50,.056,1.42,1.0,.11);
     panel(M.glass,0,1.88,.074,1.41,1.76);
     box(paint,0,1.67,.131,.076,2.08,.055);
@@ -267,7 +261,7 @@ function makeShop(spec, width, ctx, M, garments) {
     ...furniture,
   ];
   if (!spec.open) collision.push([-doorHalf,doorHalf,-.13,.20]);
-  return {shop, collision, service, displays};
+  return {shop, collision, service, displays, entrance};
 }
 
 function orientedBox(x, z, side, [u0,u1,v0,v1]) {
@@ -316,10 +310,11 @@ export async function add20thStreetStores(ctx, parent, surfaces) {
     const side = x < 0 ? 1 : -1;
     const frontX = x + side * width / 2;
     const frontZ = z + spec.bay * depth / 4;
-    const {shop, collision, service, displays} = makeShop(spec,depth/2,ctx,M,garments);
+    const {shop, collision, service, displays, entrance} = makeShop(spec,depth/2,ctx,M,garments);
     shop.position.set(frontX,SIDEWALK_HEIGHT,frontZ);
     shop.rotation.y = side * Math.PI/2;
     parent.add(shop);
+    if (entrance) ctx.shopEntrances.push(entrance);
     if (displays.length) {
       registerWindowDisplay(ctx,shop,spec,displays);
       const shelter=addStorefrontAwning(shop,spec.kind,depth/2,SHOP_DEPTH,M.brass);
@@ -339,7 +334,7 @@ export async function add20thStreetStores(ctx, parent, surfaces) {
           point:shop.localToWorld(new THREE.Vector3(target[0],0,1.36)),
           target:shop.localToWorld(new THREE.Vector3(...target)),
         } : null;
-        ctx.shopCounters.push({kind:spec.kind,name:spec.name,shop,actor,service,window});
+        ctx.shopCounters.push({kind:spec.kind,name:spec.name,shop,actor,service,window,entrance});
       }
     }
   }

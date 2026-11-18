@@ -19,7 +19,7 @@ export function startCrownPatrons(ctx) {
   const counter=ctx.shopCounters?.find(shop=>shop.kind==='lunch');
   const server=ctx.counterService;
   if (!server || !counter?.service.booths?.length) return null;
-  const {shop,service}=counter;
+  const {shop,service,entrance}=counter;
   const {damp,lerp,smoothstep,radToDeg}=THREE.MathUtils;
   const eye=new THREE.Vector3(), world=new THREE.Vector3();
   const facing=shop.getWorldQuaternion(new THREE.Quaternion());
@@ -42,6 +42,7 @@ export function startCrownPatrons(ctx) {
     const actor={...config,position:[world.x,world.z],yawDeg:radToDeg(roomYaw),
       groundY:floor,activity:'outside the Crown',dining,moving:false,speed:0};
     ctx.characters.push(actor);
+    entrance?.guests.push(actor);
     const pose={point:at,heading:0,speed:.85};
     return {index,booth,actor,pose,drink,walk:createStorefrontWalk(pose),time:0,
       facing:0,next:null,pace:1.13+index*.07,carrying:0,body:{}};
@@ -76,12 +77,18 @@ export function startCrownPatrons(ctx) {
     activity(patron,'waiting in line');
   }
 
+  function approachDoor(patron) {
+    activity(patron,'opening the Crown door');
+    entrance.requested = true;
+  }
+
   function arrive(patron) {
     const lateral=patron.pose.point.x;
+    const doorstep=entrance ? [-.035,entrance.hingeZ+.374] : [0,-.82];
     const points=Math.abs(lateral)>5
-      ? [[lateral*.49,3.65],[lateral*.09,1.71],[0,.63],[0,-.82]]
-      : [[lateral*.46,1.41],[-.055,.62],[0,-.82]].filter(([x,z])=>z<patron.pose.point.z-.12);
-    move(patron,'entering the Crown',points,admit);
+      ? [[lateral*.49,3.65],[lateral*.09,1.71],[0,.63],doorstep]
+      : [[lateral*.46,1.41],[-.055,.62],doorstep].filter(([x,z])=>z<patron.pose.point.z-.12);
+    move(patron,entrance ? 'approaching the Crown' : 'entering the Crown',points,entrance ? approachDoor : admit);
   }
 
   function goToCounter(patron) {
@@ -142,6 +149,10 @@ export function startCrownPatrons(ctx) {
   function atRest(patron) {
     const actor=patron.actor, dining=actor.dining;
     switch (actor.activity) {
+      case 'opening the Crown door':
+        entrance.requested = true;
+        if (entrance.motion.angle>1.05) move(patron,'entering the Crown',[[0,-.82]],admit);
+        break;
       case 'waiting in line':
         patron.pose.heading=-2.76;
         if (!atRegister && queue[0]===patron && server.canServePatron(counter)) goToCounter(patron);
@@ -182,6 +193,12 @@ export function startCrownPatrons(ctx) {
   }
 
   function blocked(patron,x,z) {
+    if (entrance?.blocks(x,z,.28)) {
+      // The walker brakes for a point ahead of its feet. Let that encounter
+      // request the door, including once the guest has slowed to a stop.
+      if (Math.abs(patron.pose.point.z-entrance.hingeZ)<.87) entrance.requested = true;
+      return true;
+    }
     const indoors=z<-.32;
     const reach=indoors ? .58 : .66;
     if (eye.y>.4 && eye.y<2.3 && Math.hypot(eye.x-x,eye.z-z)<reach) return true;

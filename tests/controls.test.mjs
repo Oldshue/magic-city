@@ -93,3 +93,31 @@ test('holding forward rounds a solid sedan bumper at the west crosswalk', () => 
     else globalThis.document = previous;
   }
 });
+
+test('a long sprint step cannot jump across a closed moving leaf', () => {
+  const previous = globalThis.document;
+  const events = new EventTarget();
+  globalThis.document = events;
+  const canvas = new EventTarget();
+  canvas.getRootNode = () => events;
+  const camera = new PerspectiveCamera();
+  const input = createControls(camera,canvas,{minX:-100,maxX:100,minZ:-100,maxZ:100});
+  const owner = {configuration:{halfWidth:.035,halfLength:.705}};
+  const leaf = setCarBounds({},0,0,Math.PI/2,owner);
+  input.addMovingColliders([leaf]);
+  try {
+    input.setSpawn([0,.52],0);
+    for (const code of ['KeyW','ShiftLeft']) {
+      events.dispatchEvent(Object.assign(new Event('keydown'),{code}));
+    }
+    input.update(.1);
+    assert.ok(camera.position.z>=PLAYER_RADIUS);
+    setCarBounds(leaf,-.72,-.705,0,owner);
+    input.update(.1);
+    assert.ok(camera.position.z<-.9);
+  } finally {
+    input.dispose();
+    if (previous===undefined) delete globalThis.document;
+    else globalThis.document=previous;
+  }
+});

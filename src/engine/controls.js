@@ -220,26 +220,32 @@ export function createControls(camera, domElement, bounds) {
       dx = dx / len * speed * dt;
       dz = dz / len * speed * dt;
 
-      // Axis-separated AABB rejection: try X, then Z, so we slide along walls.
-      const { x, z } = camera.position;
-      const px = x + dx;
-      if (!hitsBox(px, camera.position.z)) {
-        camera.position.x = THREE.MathUtils.clamp(px, bounds.minX, bounds.maxX);
-      }
-      const pz = z + dz;
-      if (!hitsBox(camera.position.x, pz)) {
-        camera.position.z = THREE.MathUtils.clamp(pz, bounds.minZ, bounds.maxZ);
-      }
-      if (camera.position.x === x && camera.position.z === z) {
-        // Axis separation can pin the player at a rounded bumper corner.
-        const obstacle = movingObstacleAt(px, pz);
-        const slide = obstacle?.heading !== undefined ? slideAlongCar(obstacle, x, z, dx, dz) : null;
-        if (slide) {
-          const nextX = THREE.MathUtils.clamp(x + slide[0], bounds.minX, bounds.maxX);
-          const nextZ = THREE.MathUtils.clamp(z + slide[1], bounds.minZ, bounds.maxZ);
-          if (!hitsBox(nextX, nextZ)) {
-            camera.position.x = nextX;
-            camera.position.z = nextZ;
+      // Keep a sprint from jumping completely across a thin obstacle on a slow frame.
+      const steps = Math.max(1,Math.ceil(speed*dt/PLAYER_RADIUS));
+      dx /= steps;
+      dz /= steps;
+      for (let step=0; step<steps; step++) {
+        // Axis-separated AABB rejection: try X, then Z, so we slide along walls.
+        const { x, z } = camera.position;
+        const px = x + dx;
+        if (!hitsBox(px, camera.position.z)) {
+          camera.position.x = THREE.MathUtils.clamp(px, bounds.minX, bounds.maxX);
+        }
+        const pz = z + dz;
+        if (!hitsBox(camera.position.x, pz)) {
+          camera.position.z = THREE.MathUtils.clamp(pz, bounds.minZ, bounds.maxZ);
+        }
+        if (camera.position.x === x && camera.position.z === z) {
+          // Axis separation can pin the player at a rounded bumper corner.
+          const obstacle = movingObstacleAt(px, pz);
+          const slide = obstacle?.heading !== undefined ? slideAlongCar(obstacle, x, z, dx, dz) : null;
+          if (slide) {
+            const nextX = THREE.MathUtils.clamp(x + slide[0], bounds.minX, bounds.maxX);
+            const nextZ = THREE.MathUtils.clamp(z + slide[1], bounds.minZ, bounds.maxZ);
+            if (!hitsBox(nextX, nextZ)) {
+              camera.position.x = nextX;
+              camera.position.z = nextZ;
+            }
           }
         }
       }

@@ -27,7 +27,7 @@ export function createCrownGuestPose(body) {
   const worldRotation=new Quaternion(), roomInverse=new Quaternion();
   const cupRotation=new Quaternion(), carryRotation=new Quaternion();
   const palmRotation=new Quaternion(), handTurn=new Quaternion(), neutralCup=new Quaternion();
-  const fingerGoal=new Vector3();
+  const fingerGoal=new Vector3(), shoulder=new Vector3();
   let posed=false;
 
   function restore() {
@@ -120,12 +120,31 @@ export function createCrownGuestPose(body) {
     cup.quaternion.copy(roomInverse.multiply(cupRotation));
   }
 
-  return {restore,apply(pose) {
-    if (!pose || (!pose.seat && !pose.mode)) return;
+  function pushDoor(press) {
+    const [upper,lower,wrist]=arms[1];
+    press.target.getWorldPosition(target);
+    upper.getWorldPosition(shoulder);
+    const amount=press.amount*(1-smoothstep(shoulder.distanceTo(target),.51,.77));
+    if (amount<.001) return;
+    chest.rotateX(.12*amount);
+    wrist.getWorldPosition(palmPoint);
+    finger.getWorldPosition(fingerPoint);
+    handDelta.subVectors(fingerPoint,palmPoint);
+    fingerGoal.set(0,.86,.48).transformDirection(body.matrixWorld);
+    handTurn.setFromUnitVectors(offset.copy(handDelta).normalize(),fingerGoal);
+    palmRotation.identity().slerp(handTurn,amount);
+    target.sub(handDelta.applyQuaternion(palmRotation).multiplyScalar(.56)).lerp(palmPoint,1-amount);
+    wrist.getWorldQuaternion(worldRotation).premultiply(palmRotation);
+    constrainLimb(upper,lower,wrist,target,worldRotation);
+  }
+
+  return {restore,apply(pose,press) {
+    if (!pose || (!pose.seat && !pose.mode && !(press?.amount>.001))) return;
     for (let i=0;i<bones.length;i++) original[i].copy(bones[i].quaternion);
     baseHip.copy(pelvis.position);
     posed=true;
     if (pose.seat) setSeat(pose);
     if (pose.mode) holdCup(pose);
+    else if (!pose.seat && press?.amount>.001) pushDoor(press);
   }};
 }
