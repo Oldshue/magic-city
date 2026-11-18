@@ -8,20 +8,16 @@
  * across sessions and never loops within one.
  *
  * Rain: ~1500 instanced streak particles recycled inside a camera-relative
- * volume (never runs dry no matter how far the player walks, now drawn as
- * longer, thinner streaks for a more atmospheric downpour), a filtered-
- * noise rain bed in WebAudio that swells with intensity, occasional distant
+ * volume, a filtered-noise rain bed in WebAudio that swells with intensity, occasional distant
  * thunder — a slow-attack low-passed rumble paired with a dim point-light
  * sky-flash — and a faint camera-following vignette quad that desaturates
  * and darkens the whole view while rain is active (a plain transparent
  * quad repositioned every frame to fill the camera's frustum; not a
  * post-processing pass, not a new light).
  *
- * Wet streets: gently darkens/glosses the shared materials.asphalt in place
- * (never cloned) while it rains and for a while after — roughness drops and
- * metalness/envMapIntensity rise so the road picks up whatever specular
- * light is on it (streetlamps, marquees, headlamp glow quads) — restored
- * as it dries.
+ * Wet streets: cools and darkens the shared asphalt and lowers its roughness
+ * while damp. The 20th Street renderer uses the same wetness and rainfall
+ * for pooled standing water and ripples.
  *
  * Overcast: reports an overcast amount to engine/sky.js's setWeatherDim()
  * hook, which pulls the sky's keyframe colors toward grey and softens sun
@@ -37,6 +33,7 @@
  */
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 import { setWeatherDim } from '../engine/sky.js';
+import { VIEW_EFFECTS_LAYER } from '../engine/renderer.js';
 
 const RAIN_COUNT = 1500;
 const RAIN_RADIUS = 42;   // horizontal half-extent of the streak volume around the camera
@@ -104,15 +101,11 @@ export function startWeather(ctx) {
   const asphalt = materials && materials.asphalt;
   const dryColor = asphalt ? asphalt.color.clone() : null;
   const dryRoughness = asphalt ? asphalt.roughness : 0;
-  const dryMetalness = asphalt ? asphalt.metalness : 0;
-  const dryEnvIntensity = asphalt && asphalt.envMapIntensity != null ? asphalt.envMapIntensity : 1;
-  const _wetColor = new THREE.Color(0x14161a);
+  const wetColor = new THREE.Color(0x8396ac);
 
   // --- rain streaks: instanced, camera-relative, recycled ---------------
-  // Longer + thinner than a plain drip so the streaks read as motion blur
-  // rather than static needles; falls faster-looking without changing
-  // RAIN_FALL_SPEED (the actual recycle/physics rate is untouched).
-  const streakGeo = new THREE.BoxGeometry(0.018, 1.05, 0.018);
+  // Narrow streaks keep the street and immediate field of view readable in rain.
+  const streakGeo = new THREE.BoxGeometry(.012, .90, .012);
   const streakMat = new THREE.MeshBasicMaterial({
     color: 0xb7c6d6, transparent: true, opacity: 0, depthWrite: false,
   });
@@ -120,6 +113,7 @@ export function startWeather(ctx) {
   streaks.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   streaks.frustumCulled = false;
   streaks.count = 0;
+  streaks.layers.set(VIEW_EFFECTS_LAYER);
   scene.add(streaks);
 
   const offX = new Float32Array(RAIN_COUNT);
@@ -151,6 +145,7 @@ export function startWeather(ctx) {
     depthTest: false, depthWrite: false, toneMapped: false,
   });
   const vignette = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), vignetteMat);
+  vignette.layers.set(VIEW_EFFECTS_LAYER);
   vignette.renderOrder = 999;
   vignette.frustumCulled = false;
   scene.add(vignette);
@@ -240,14 +235,12 @@ export function startWeather(ctx) {
 
       // --- wet streets: mutate the shared asphalt material in place -------
       if (asphalt && dryColor) {
-        asphalt.color.copy(dryColor).lerp(_wetColor, wetness * 0.8);
-        asphalt.roughness = dryRoughness + (0.06 - dryRoughness) * wetness;
-        asphalt.metalness = dryMetalness + 0.28 * wetness;
-        asphalt.envMapIntensity = dryEnvIntensity + 1.6 * wetness;
+        asphalt.color.copy(dryColor).lerp(wetColor, wetness * .44);
+        asphalt.roughness = dryRoughness + (.37 - dryRoughness) * wetness;
       }
 
       // --- rain streak particles -------------------------------------------
-      streakMat.opacity = rainAmt * 0.6;
+      streakMat.opacity = rainAmt * .48;
       if (rainAmt > 0.01) {
         streaks.count = RAIN_COUNT;
         const camX = camera.position.x;
@@ -279,7 +272,7 @@ export function startWeather(ctx) {
         const h = 2 * Math.tan(vFov / 2) * VIGNETTE_DIST * 1.04;
         const w = h * (camera.aspect || 1);
         vignette.scale.set(w, h, 1);
-        vignetteMat.opacity = rainAmt * 0.5;
+        vignetteMat.opacity = rainAmt * .29;
       } else {
         vignetteMat.opacity = 0;
       }
@@ -309,6 +302,8 @@ export function startWeather(ctx) {
       }
     },
     setState,
+    get wetness() { return wetness; },
+    get rainfall() { return rainAmt; },
   };
 }
 

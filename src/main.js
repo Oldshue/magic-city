@@ -32,6 +32,7 @@ import { createRenderer, createVignette } from './engine/renderer.js';
 import { createControls, EYE_HEIGHT } from './engine/controls.js';
 import { createSky } from './engine/sky.js';
 import { createStreetReflection } from './engine/street-reflections.js';
+import { createWetStreet } from './engine/wet-street.js';
 import { cornerCrosswalks } from './engine/traffic-motion.mjs';
 import { addStreetSurfaces, getStreetSegments, inRoad, ROAD_HEIGHT } from './engine/street-layout.js';
 import { materials } from './engine/materials.js';
@@ -68,6 +69,7 @@ async function boot() {
   const { renderer, scene, camera } = createRenderer();
   const vignette = createVignette(renderer);
   const streetReflection = createStreetReflection(renderer);
+  const wetStreet = createWetStreet(renderer, materials.asphalt);
   const environment = streetReflection?.environment ?? null;
   const plan = await fetch('data/city-plan.json').then((r) => r.json());
 
@@ -381,8 +383,10 @@ async function boot() {
     deco.setLampsNight(nightGlow);
     deco.updateLampPool(camera.position, nightGlow);
     if (systemsUpdate) systemsUpdate(dt, elapsed);
+    wetStreet.capture(scene, camera, weatherSystem?.wetness ?? 0, weatherSystem?.rainfall ?? 0, dt);
     renderer.render(scene, camera);
     worldDrawCalls = renderer.info.render.calls;
+    wetStreet.finish();
     // Gentle vignette: one extra fullscreen-quad draw call, multiplied over
     // the frame just rendered above (see renderer.js's createVignette).
     vignette.render();

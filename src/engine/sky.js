@@ -348,8 +348,10 @@ export function createSky(scene, fog, renderer) {
     fog.far = KEYS[i][6] + (KEYS[i + 1][6] - KEYS[i][6]) * t;
 
     if (_weatherDim > 0) {
-      sun.intensity *= (1 - _weatherDim * 0.75);
-      hemi.intensity *= (1 - _weatherDim * 0.35);
+      // Overcast trades direct daylight for broad fill on shaded facades and the road.
+      const daylight = THREE.MathUtils.smoothstep(sun.intensity, .08, 1.2);
+      sun.intensity *= 1 - _weatherDim * .75;
+      hemi.intensity *= 1 + _weatherDim * (.94 * daylight - .22);
       uniforms.topColor.value.lerp(_greyTop, _weatherDim * 0.85);
       uniforms.bottomColor.value.lerp(_greyBottom, _weatherDim * 0.85);
       fog.color.copy(uniforms.bottomColor.value);

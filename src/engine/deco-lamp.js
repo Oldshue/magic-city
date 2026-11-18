@@ -86,7 +86,6 @@ export function initLampPool(scene) {
   lampPool = [];
   for (let i = 0; i < LAMP_POOL_SIZE; i++) {
     const light = new THREE.PointLight(0xffba76, 0, LIGHT_RANGE, 2);
-    light.visible = false;
     scene.add(light);
     lampPool.push(light);
   }
@@ -121,12 +120,14 @@ export function updateLampPool(cameraPosition, nightFactor) {
   for (let i = 0; i < LAMP_POOL_SIZE; i++) {
     const light = lampPool[i];
     const source = nearest[i];
-    light.visible = Boolean(source);
-    if (source) {
-      light.position.copy(source.position);
-      light.color.setHex(source.color);
-      light.distance = source.reach;
-      light.intensity = source.daytime + (source.nighttime - source.daytime)*night;
+    // Keep the shader light count stable as the player moves in and out of range.
+    if (!source) {
+      light.intensity = 0;
+      continue;
     }
+    light.position.copy(source.position);
+    light.color.setHex(source.color);
+    light.distance = source.reach;
+    light.intensity = source.daytime + (source.nighttime - source.daytime)*night;
   }
 }

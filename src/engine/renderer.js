@@ -31,6 +31,8 @@
  */
 import * as THREE from '../../vendor/three.module.min.js';
 
+export const VIEW_EFFECTS_LAYER = 1;
+
 // The vendored shader still evaluates the BRDF for point and spot lights
 // whose range function returned zero. Keep their shadows and attenuation,
 // and skip shading for those lights when they cannot contribute.
@@ -72,6 +74,7 @@ export function createRenderer(container = document.body) {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 6000);
+  camera.layers.enable(VIEW_EFFECTS_LAYER);
 
   const fogColor = new THREE.Color(0x9fb4c8); // updated by sky each frame
   scene.fog = new THREE.Fog(fogColor.getHex(), 60, 900);
