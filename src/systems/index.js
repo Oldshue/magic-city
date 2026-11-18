@@ -16,6 +16,7 @@ import { startAmbience } from './ambience.js';
 import { startJazz } from './jazz.js';
 import { startDriving } from './driving.js';
 import { startWeather } from './weather.js';
+import { startTireWater } from './tire-water.js';
 import { startPolice } from './police.js';
 
 export function startSystems(ctx) {
@@ -32,6 +33,8 @@ export function startSystems(ctx) {
   const crownPatrons = safeStart(startCrownPatrons,ctx,'Crown patrons');
   const pedestrians = safeStart((c) => startPedestrians({ ...c, traffic }), ctx, 'pedestrians');
   const weather = safeStart(startWeather, ctx, 'weather');
+  const tireWater = weather && ctx.puddles
+    ? safeStart(c=>startTireWater(c, driving, traffic), ctx, 'tire water') : null;
 
   const carPositions = streetcars && streetcars.getCarPositions ? streetcars.getCarPositions() : [];
   const ambienceExtra = { carPositions };
@@ -50,6 +53,7 @@ export function startSystems(ctx) {
       crownPatrons?.update(dt);
       for (const stand of ctx.newsstands ?? []) stand.update(dt,traffic);
       if (weather) weather.update(dt, elapsed);
+      tireWater?.update(dt, weather.wetness);
       if (pedestrians) pedestrians.update(dt, elapsed, weather?.rainfall ?? 0);
     },
     // Additive beyond the documented { update } contract, same pattern as

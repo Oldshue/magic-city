@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { VIEW_EFFECTS_LAYER } from './renderer.js';
 import { ROAD_HEIGHT } from './street-layout.js';
+import { createPuddleField, PUDDLE_BOUNDS, puddleShader } from './puddle-field.mjs';
 
 const reflectionShader = `
 uniform sampler2D wetStreetImage;
@@ -9,6 +10,7 @@ uniform float wetStreetAmount;
 uniform float wetStreetVisibility;
 uniform float wetStreetRain;
 uniform float wetStreetTime;
+${puddleShader}
 
 float wetStreetHash(vec2 cell) {
   vec3 p = fract(vec3(cell.xyx) * .1031);
@@ -24,11 +26,6 @@ float wetStreetNoise(vec2 p) {
              mix(wetStreetHash(cell + vec2(0,1)), wetStreetHash(cell + vec2(1)), weight.x), weight.y);
 }
 
-float wetStreetHollow(vec2 p, vec2 center, vec2 radius) {
-  vec2 q = (p - center) / radius;
-  return 1.0 - smoothstep(.08, 1.0, dot(q, q));
-}
-
 vec2 wetStreetRipple(vec2 p) {
   vec2 cell = floor(p);
   vec2 seed = vec2(wetStreetHash(cell + 4.2), wetStreetHash(cell - 3.7));
@@ -42,8 +39,7 @@ vec2 wetStreetRipple(vec2 p) {
 
 vec3 wetStreetRadiance(vec3 base, vec3 world) {
   vec2 p = world.xz;
-  float block = (1.0 - smoothstep(10.55, 11.0, abs(p.x)))
-    * smoothstep(1.0, 10.5, p.y) * (1.0 - smoothstep(53.0, 64.0, p.y));
+  float block = wetStreetBlock(p);
   if (block < .004) return base;
   vec4 project = wetStreetProjection * vec4(world, 1.0);
   if (project.w <= 0.0) return base;
@@ -54,16 +50,7 @@ vec3 wetStreetRadiance(vec3 base, vec3 world) {
 
   float grain = wetStreetNoise(p * vec2(3.1, 1.9));
   float coarse = wetStreetNoise(p * vec2(.76, .45));
-  float gutter = (1.0 - smoothstep(.12, 1.65, abs(abs(p.x) - 9.74))) * (.22 + coarse * .53);
-  float hollow = max(gutter, wetStreetHollow(p, vec2(9.2, 40.5), vec2(1.55, 6.1)));
-  hollow = max(hollow, wetStreetHollow(p, vec2(6.8, 33.4), vec2(2.3, 5.8)));
-  hollow = max(hollow, wetStreetHollow(p, vec2(-7.8, 30.2), vec2(2.4, 8.0)));
-  hollow = max(hollow, wetStreetHollow(p, vec2(-6.5, 47.5), vec2(2.0, 6.1)));
-  hollow = max(hollow, wetStreetHollow(p, vec2(9.3, 17.8), vec2(1.5, 5.0)));
-  hollow = max(hollow, wetStreetHollow(p, vec2(-1.1, 18.6), vec2(1.8, 3.8)));
-  hollow = max(hollow, wetStreetHollow(p, vec2(3.3, 46.8), vec2(2.7, 4.6)));
-  float waterline = mix(1.08, .40, wetStreetAmount);
-  float pool = smoothstep(waterline - .09, waterline + .09, hollow + .32 * (coarse - .5) + .14 * (grain - .5));
+  float pool = wetStreetPool(p, wetStreetAmount);
 
   vec3 towardEye = cameraPosition - world;
   float distanceToEye = length(towardEye);
@@ -90,6 +77,10 @@ export function createWetStreet(renderer, asphalt) {
     minFilter: THREE.LinearMipmapLinearFilter,
     generateMipmaps: true,
   });
+  const field = createPuddleField();
+  const texture = new THREE.DataTexture(field.pixels, field.width, field.height, THREE.RedFormat);
+  texture.magFilter = texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
   const image = {value: null};
   const projection = {value: new THREE.Matrix4()};
   const amount = {value: 0};
@@ -101,7 +92,7 @@ export function createWetStreet(renderer, asphalt) {
   asphalt.onBeforeCompile = function(shader, renderer) {
     mapAsphalt.call(this, shader, renderer);
     Object.assign(shader.uniforms, {
-      wetStreetImage: image, wetStreetProjection: projection,
+      wetStreetImage: image, wetStreetProjection: projection, wetStreetField: {value:texture},
       wetStreetAmount: amount, wetStreetVisibility: visibility,
       wetStreetRain: rain, wetStreetTime: time,
     });
@@ -121,8 +112,9 @@ export function createWetStreet(renderer, asphalt) {
   const viewport = new THREE.Vector2();
   const mainProjection = new THREE.Matrix4();
   const frustum = new THREE.Frustum();
-  const span = new THREE.Box3(new THREE.Vector3(-11, ROAD_HEIGHT - .01, 1),
-    new THREE.Vector3(11, ROAD_HEIGHT + .01, 64));
+  const {minX, maxX, minZ, maxZ} = PUDDLE_BOUNDS;
+  const span = new THREE.Box3(new THREE.Vector3(minX, ROAD_HEIGHT - .01, minZ),
+    new THREE.Vector3(maxX, ROAD_HEIGHT + .01, maxZ));
   const up = new THREE.Vector3(0, 1, 0);
   const clipPoint = new THREE.Vector3(0, ROAD_HEIGHT + .003, 0);
   const clipPlane = new THREE.Plane();
@@ -228,5 +220,5 @@ export function createWetStreet(renderer, asphalt) {
     image.value = null;
   }
 
-  return {capture, finish};
+  return {capture, finish, puddles:{texture, sample:field.sample}};
 }

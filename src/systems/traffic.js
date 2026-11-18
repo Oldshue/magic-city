@@ -368,6 +368,11 @@ export function startTraffic(ctx) {
   }
 
   return {
+    emitTireWater(emit) {
+      for (const car of junctionTraffic) {
+        if (car.detail) emit(car,car.detail);
+      }
+    },
     canCross(person) {
       return canEnterCrosswalk(junction,person,crossingVehicles());
     },

@@ -232,7 +232,7 @@ async function boot() {
   // hand off camera control (driving, streetcar riding) call controls.setEnabled(false/true)
   // and read controls.getColliderBoxes() for their own collision checks.
   const ctx = {
-    THREE, scene, camera, renderer, plan, environment, streetReflection,
+    THREE, scene, camera, renderer, plan, environment, streetReflection, puddles:wetStreet.puddles,
     materials, deco, registerInteractive, controls, streetSegments, crossings,
     getDayPhase: sky.getDayPhase,
     wardrobe: {pocketSquare:null},

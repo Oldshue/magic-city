@@ -836,6 +836,9 @@ export function startDriving(ctx) {
         updateProximityPrompt();
       }
     },
+    emitTireWater(emit) {
+      if (isDriving && !access && !controls.isInputBlocked()) emit(activeCar,activeCar,cabinView);
+    },
     getState(out = {}) {
       out.driving = isDriving; out.riding = isRiding;
       out.x = activeCar ? activeCar.x : camera.position.x;
