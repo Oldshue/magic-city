@@ -266,11 +266,13 @@ function buildLargeSedanBody(chassis, materials, powered, environment) {
   const steeringColumn = new THREE.Group();
   steeringColumn.position.set(0.35,1.23,0.13);
   steeringColumn.rotation.x = -0.38;
+  const rimRadius = .152;
   const steeringWheel = new THREE.Group();
   steeringWheel.name = 'Steering wheel';
+  steeringWheel.userData.rimRadius = rimRadius;
   steeringColumn.add(steeringWheel);
   chassis.add(steeringColumn);
-  const rim = new THREE.TorusGeometry(0.152,0.013,10,36);
+  const rim = new THREE.TorusGeometry(rimRadius,0.013,10,36);
   const spokes = [new THREE.CylinderGeometry(.031,.031,.037,12).rotateX(Math.PI/2)];
   for (const angle of [Math.PI/6, Math.PI*5/6, -Math.PI/2]) {
     spokes.push(bar([0,0,.011],[Math.cos(angle)*.144,Math.sin(angle)*.144,0],.010));

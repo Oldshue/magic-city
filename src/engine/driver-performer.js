@@ -3,6 +3,7 @@ import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 import { prepareCharacter } from './street-characters.js';
 import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
 import { createDriverContacts } from './driver-contact.js';
+import { addDetectiveCuffs } from './detective-cuffs.js';
 import { DRIVER_MARK } from './vehicle-motion.mjs';
 import { pocketSquare } from '../gameplay/shop-state.mjs';
 
@@ -27,9 +28,11 @@ export function createDriverPerformer(scene,{motoristColor,wardrobe}={}) {
   scene.add(group);
   const actions = new Map();
   let mixer, active, waiting, contacts, silk, worn;
+  let gripWeight = 0, gripFitted = false;
   const arrival = new THREE.Vector3();
   loadDriver().then(({scene:source,animations})=>{
     const asset = clone(source);
+    if (motoristColor === undefined) addDetectiveCuffs(asset);
     asset.traverse(object=>{
       if (!object.isMesh || object.material.name!=='Pocket square silk') return;
       object.visible=false;
@@ -101,6 +104,7 @@ export function createDriverPerformer(scene,{motoristColor,wardrobe}={}) {
 
   return {
     approach(x, z, heading, speed, dt, heightAt) {
+      gripWeight = 0;
       if (group.parent !== scene) scene.add(group);
       group.position.set(x, heightAt(x, z), z);
       group.rotation.y = heading;
@@ -110,6 +114,7 @@ export function createDriverPerformer(scene,{motoristColor,wardrobe}={}) {
       if (play(speed > 0.02 ? 'Walk' : 'Idle', null, dt)) contacts?.groundWalk(heightAt);
     },
     access(car, motion, phase, heightAt) {
+      gripWeight = 0;
       const align = contacts && motion.clip === 'Board' && group.visible && group.parent !== car.chassis;
       if (align) contacts.hipPosition(arrival);
       mount(car);
@@ -129,14 +134,23 @@ export function createDriverPerformer(scene,{motoristColor,wardrobe}={}) {
       group.userData.accessFrame = frame;
       contacts?.access(car, motion, frame, heightAt);
     },
-    drive(car) {
+    drive(car, dt = 0) {
       mount(car);
       const grip = THREE.MathUtils.clamp(.5 + car.steeringWheel.rotation.z/(2*.693),0,1);
-      play('Steer',grip,0);
       group.position.set(...car.configuration.seatOffset);
+      if (contacts && !gripFitted && play('Steer',.5,0)) {
+        contacts.fitWheelGrip(car.steeringWheel);
+        gripFitted = true;
+      }
+      const posed = play('Steer',grip,0);
+      if (posed && contacts) {
+        gripWeight = Math.min(1,gripWeight + dt * 6);
+        contacts.gripWheel(car.steeringWheel,gripWeight);
+      }
     },
     hide() {
       group.visible = false;
+      gripWeight = 0;
       contacts?.restore();
       waiting = null;
       active?.stop();

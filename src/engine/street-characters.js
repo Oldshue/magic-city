@@ -4,6 +4,7 @@ import { findCounterFace, updateCounterFace } from './counter-face.js';
 import { createWalkFootContacts } from './walk-foot-contacts.js';
 import { createUmbrellas } from './rain-umbrella.js';
 import { createCrownGuestPose } from './crown-guest-pose.js';
+import { shadeCharacterMaterial } from './character-surfaces.js';
 
 const MODELS = ['bank-clerk','shopkeeper','street-worker','pharmacist','crown-proprietor','ledger-vendor','walker-tailor'];
 const TINTS = [0xb09774,0x977655,0x919592,0x9d714f,0x767a64,0xa77878,0x737f9e,0x817451];
@@ -15,6 +16,7 @@ export function prepareCharacter(asset) {
     object.castShadow = true;
     object.receiveShadow = true;
     const material = object.material;
+    shadeCharacterMaterial(material);
     if (/hair|eyebrow|eyelash|short01/i.test(material.name) && material.transparent) {
       material.alphaTest = 0.44;
       material.transparent = false;
@@ -45,6 +47,7 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
   const tinted = new WeakMap();
   const hand = new THREE.Vector3();
   const knuckle = new THREE.Vector3();
+  const eyes = new THREE.Vector3();
   function loadModel(name) {
     if (models.has(name) || !MODELS.includes(name)) return models.get(name);
     models.set(name,null);
@@ -106,7 +109,7 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
         if (mesh.isMesh && /suit|fedora|felt/i.test(mesh.material.name)) wardrobe.push([mesh,mesh.material]);
       });
       slot = {instance,mixer,clips,wardrobe,face:findCounterFace(instance),
-        headRotation:new THREE.Quaternion(), head:instance.getObjectByName('head'),
+        headRotation:new THREE.Quaternion(), head:instance.getObjectByName('head'), gazeYaw:0, gazePitch:0,
         torsoRotation:new THREE.Quaternion(), torso:instance.getObjectByName('spine_03'),
         hand:instance.getObjectByName('hand_r'),finger:instance.getObjectByName('middle_01_r')};
       model.slots.push(slot);
@@ -118,6 +121,7 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
     slot.instance.userData.person = person.actor?.id ?? person.id ?? name;
     wear(slot,person.actor ? person.actor.palette : person.paletteIdx);
     slot.personIndex = personIndex;
+    slot.gazeYaw = slot.gazePitch = 0;
     slot.active = null;
     return slot;
   }
@@ -190,8 +194,20 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
       const watching = attention && (Math.abs(attention.yaw) + Math.abs(attention.pitch) > .005);
       slot.instance.userData.crossingAttention = attention?.mode ?? '';
       const bracing=weather?.phase && (weather.hunch>.01 || weather.lookUp>.01);
+      const facingVisitor=Boolean(person.actor?.attending || metVisitor || passedVisitor);
+      let turn=0, tilt=0;
+      if (facingVisitor && slot.head) {
+        slot.head.getWorldPosition(eyes);
+        const ox=camera.position.x-eyes.x, oz=camera.position.z-eyes.z;
+        const angle=THREE.MathUtils.euclideanModulo(Math.atan2(ox,oz)-facing+Math.PI,Math.PI*2)-Math.PI;
+        const height=Math.atan2(eyes.y+.072*person.scale-camera.position.y,Math.max(.15,Math.hypot(ox,oz)));
+        turn=THREE.MathUtils.clamp(angle*.68,-.55,.55);
+        tilt=THREE.MathUtils.clamp(height,-.19,.20);
+      }
+      slot.gazeYaw=THREE.MathUtils.damp(slot.gazeYaw,turn,9,dt);
+      slot.gazePitch=THREE.MathUtils.damp(slot.gazePitch,tilt,7,dt);
       slot.headAdjusted=Boolean(slot.head &&
-        (lookAtWindow || watching || bracing || person.actor?.attending || metVisitor || passedVisitor));
+        (lookAtWindow || watching || bracing || Math.abs(slot.gazeYaw)+Math.abs(slot.gazePitch)>.002));
       if (slot.headAdjusted) {
         slot.headRotation.copy(slot.head.quaternion);
         if (lookAtWindow) {
@@ -220,8 +236,8 @@ export function createStreetCharacters({THREE, scene, camera, environment}) {
           }
           slot.head.rotateX(weather.hunch*.10-weather.lookUp);
         } else {
-          const angle=THREE.MathUtils.euclideanModulo(Math.atan2(dx,dz)-facing+Math.PI,Math.PI*2)-Math.PI;
-          slot.head.rotateY(THREE.MathUtils.clamp(angle*.65,-.53,.53));
+          slot.head.rotateY(slot.gazeYaw);
+          slot.head.rotateX(slot.gazePitch);
         }
       }
       if (person.umbrella && !slot.umbrella) {

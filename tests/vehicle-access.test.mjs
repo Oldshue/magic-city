@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Bone, Group, Quaternion, Vector3 } from '../vendor/three.module.min.js';
 import { constrainLimb } from '../src/engine/limb-constraint.js';
+import { createDriverContacts } from '../src/engine/driver-contact.js';
 import { contactWeight, DOOR_OPEN_ANGLE, doorAngle, ENTRY, exitMotion } from '../src/engine/vehicle-access.js';
 
 test('a planted joint reaches a world point on a tilted chassis at its original bone lengths', () => {
@@ -50,5 +51,60 @@ test('the shipped detective rig contains each timed entry or exit action', () =>
     assert.ok(clip, motion.clip);
     const seconds = Math.max(...clip.samplers.map(sampler => gltf.accessors[sampler.input].max[0]));
     assert.ok(Math.abs(seconds - motion.frames / 30) < 1e-4, motion.clip);
+  }
+});
+
+test('a rotating rim keeps the palm and wrist orientation locked through both turns', () => {
+  function joint(parent,name,x,y,z) {
+    const bone = new Bone();
+    bone.name = name;
+    bone.position.set(x,y,z);
+    parent.add(bone);
+    return bone;
+  }
+
+  const cabin = new Group();
+  cabin.position.set(9.3,.02,36);
+  cabin.rotation.set(.04,Math.PI,-.05);
+  const actor = new Group(), wheel = new Group();
+  actor.scale.setScalar(.94);
+  wheel.rotation.x = -.38;
+  wheel.userData.rimRadius = .152;
+  cabin.add(actor,wheel);
+  joint(actor,'pelvis',0,-.2,-.25);
+  const hands = [];
+  for (const [side,sign] of [['l',1],['r',-1]]) {
+    const thigh = joint(actor,'thigh_'+side,.14*sign,-.25,-.24);
+    const calf = joint(thigh,'calf_'+side,0,-.14,.32);
+    joint(calf,'foot_'+side,0,-.34,-.08);
+    const shoulder = joint(actor,'upperarm_'+side,.23*sign,-.07,-.20);
+    const elbow = joint(shoulder,'lowerarm_'+side,-.065*sign,.19,.10);
+    const wrist = joint(elbow,'hand_'+side,-.055*sign,.047,.19);
+    const palm = joint(wrist,'middle_01_'+side,-.056*sign,.022,.081);
+    hands.push({wrist,palm});
+  }
+
+  const contacts = createDriverContacts(actor,actor);
+  contacts.fitWheelGrip(wheel);
+  function measure(hand) {
+    const palm = hand.wrist.getWorldPosition(new Vector3()).lerp(hand.palm.getWorldPosition(new Vector3()),.53);
+    const rotation = wheel.getWorldQuaternion(new Quaternion()).invert()
+      .multiply(hand.wrist.getWorldQuaternion(new Quaternion()));
+    return {palm:wheel.worldToLocal(palm),rotation,curl:hand.palm.quaternion.clone()};
+  }
+  contacts.gripWheel(wheel,1);
+  const straight = hands.map(measure);
+  for (const angle of [-.68, .68, 0]) {
+    contacts.restore();
+    wheel.rotation.z = angle;
+    contacts.gripWheel(wheel,1);
+    for (let i=0; i<hands.length; i++) {
+      const pose = measure(hands[i]);
+      assert.ok(Math.abs(Math.hypot(pose.palm.x,pose.palm.y)-wheel.userData.rimRadius) < 1e-6);
+      assert.ok(Math.abs(pose.palm.z) < 1e-6);
+      assert.ok(pose.palm.distanceTo(straight[i].palm) < 1e-6);
+      assert.ok(pose.rotation.angleTo(straight[i].rotation) < 1e-6);
+      assert.ok(pose.curl.angleTo(straight[i].curl) < 1e-6);
+    }
   }
 });

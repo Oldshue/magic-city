@@ -16,6 +16,17 @@ const wristSwing = new Quaternion();
 const wanted = new Vector3();
 const worldOrientation = new Quaternion();
 const levelOrientation = new Quaternion();
+const WHEEL_GRIP_ANGLE = .70;
+const CLIP_GRIP_ANGLE = .45;
+const PALM_CONTACT = .53;
+const FINGER_CURL = [.24,.36,.20];
+const SIDES = ['l','r'];
+const FORWARD = new Vector3(0,0,1);
+const wheelRotation = new Quaternion();
+const restWheelInverse = new Quaternion();
+const palmRotation = new Quaternion();
+const gripRotation = new Quaternion();
+const wheelTangent = new Vector3();
 
 function limb(asset, side, names) {
   const [upper, lower, end] = names.map(name => asset.getObjectByName(name + '_' + side));
@@ -32,14 +43,24 @@ export function createDriverContacts(asset, actor) {
     l: limb(asset, 'l', ['upperarm', 'lowerarm', 'hand']),
     r: limb(asset, 'r', ['upperarm', 'lowerarm', 'hand']),
   };
-  for (const side of ['l', 'r']) {
-    arms[side].knuckle = asset.getObjectByName('middle_01_' + side);
+  for (const side of SIDES) {
+    const arm = arms[side];
+    arm.wheelOrientation = new Quaternion();
+    arm.knuckle = asset.getObjectByName('middle_01_' + side);
+    arm.fingers = ['index','middle','ring','pinky'].flatMap(finger=>FINGER_CURL.map((curl,i)=>({
+      bone:asset.getObjectByName(finger + '_0' + (i+1) + '_' + side), curl,
+    })));
+    arm.thumb = [1,2].map(i=>asset.getObjectByName('thumb_0' + i + '_' + side));
     // The idle pose was fitted to the bottom of these shoes in Blender.
     legs[side].end.getWorldPosition(posePoint);
     legs[side].sole = actor.worldToLocal(posePoint).y * actor.scale.y;
   }
   const chains = [...Object.values(legs), ...Object.values(arms)];
   const changed = [hips, ...chains.flatMap(chain => [chain.upper, chain.lower, chain.end])];
+  for (const arm of Object.values(arms)) {
+    for (const joint of arm.fingers) if (joint.bone) changed.push(joint.bone);
+    for (const joint of arm.thumb) if (joint) changed.push(joint);
+  }
   const pose = changed.map(bone => ({ bone, position: new Vector3(), rotation: new Quaternion() }));
   const arrivalOffset = new Vector3();
   let constrained = false;
@@ -97,6 +118,47 @@ export function createDriverContacts(asset, actor) {
         leg.weight = 1;
         leg.floor = false;
         plantFoot(leg);
+      }
+    },
+    fitWheelGrip(wheel) {
+      // The neutral clip gives the orientation of each wrist around the rim.
+      // Express it in wheel space so the hand and finger curl turn together.
+      wheel.getWorldQuaternion(wheelRotation);
+      palmRotation.setFromAxisAngle(FORWARD,-wheel.rotation.z);
+      restWheelInverse.copy(wheelRotation).multiply(palmRotation).invert();
+      for (const side of SIDES) {
+        const arm = arms[side];
+        const sign = side === 'l' ? 1 : -1;
+        palmRotation.setFromAxisAngle(FORWARD,sign * (WHEEL_GRIP_ANGLE - CLIP_GRIP_ANGLE));
+        arm.end.getWorldQuaternion(arm.wheelOrientation)
+          .premultiply(restWheelInverse).premultiply(palmRotation);
+        wheelTangent.set(-Math.sin(WHEEL_GRIP_ANGLE),sign * Math.cos(WHEEL_GRIP_ANGLE),0);
+        gripRotation.setFromAxisAngle(wheelTangent,.24);
+        arm.wheelOrientation.premultiply(gripRotation);
+      }
+    },
+    gripWheel(wheel, weight) {
+      const radius = wheel.userData.rimRadius;
+      if (!Number.isFinite(radius) || weight <= 0) return;
+      rememberPose();
+      wheel.getWorldQuaternion(wheelRotation);
+      for (const side of SIDES) {
+        const arm = arms[side];
+        const sign = side === 'l' ? 1 : -1;
+        arm.end.getWorldPosition(wrist);
+        arm.end.getWorldQuaternion(palmRotation);
+        gripRotation.copy(wheelRotation).multiply(arm.wheelOrientation);
+        worldOrientation.copy(palmRotation).slerp(gripRotation,weight);
+        // Rotate the offset from the wrist to the palm before solving the arm.
+        palmOffset.copy(arm.knuckle.getWorldPosition(posePoint)).sub(wrist).multiplyScalar(PALM_CONTACT)
+          .applyQuaternion(palmRotation.invert()).applyQuaternion(worldOrientation);
+        wheel.localToWorld(wanted.set(sign * radius * Math.cos(WHEEL_GRIP_ANGLE),
+          radius * Math.sin(WHEEL_GRIP_ANGLE),0));
+        wanted.lerp(posePoint.lerp(wrist,1-PALM_CONTACT),1-weight).sub(palmOffset);
+        constrainLimb(arm.upper,arm.lower,arm.end,wanted,worldOrientation);
+        for (const joint of arm.fingers) joint.bone?.rotateX(joint.curl * weight);
+        arm.thumb[0]?.rotateX(.13 * weight);
+        arm.thumb[1]?.rotateX(.15 * weight);
       }
     },
     access(car, motion, frame, heightAt) {

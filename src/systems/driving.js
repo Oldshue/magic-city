@@ -823,7 +823,7 @@ export function startDriving(ctx) {
         updateVehicleAccess(dt);
       } else if (isDriving) {
         updateDrivingPhysics(dt);
-        player.drive(activeCar);
+        player.drive(activeCar,dt);
         if (cabinView) positionCabinCamera(activeCar);
         else positionChaseCamera(dt);
         showSpeedometer(activeCar);

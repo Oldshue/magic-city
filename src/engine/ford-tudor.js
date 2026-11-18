@@ -140,11 +140,13 @@ function tudorDashboard(chassis, materials, powered) {
   column.position.set(x,y,z);
   column.rotation.x = -.38;
   chassis.add(column);
+  const rimRadius = .152;
   const steeringWheel = new THREE.Group();
   steeringWheel.name = 'Steering wheel';
+  steeringWheel.userData.rimRadius = rimRadius;
   column.add(steeringWheel);
   const spoke = bar([-.143,0,.009],[.143,0,.009],.008,9);
-  batch(steeringWheel,[new THREE.TorusGeometry(.152,.011,10,40),spoke,spoke.clone().rotateZ(Math.PI/2)],enamel);
+  batch(steeringWheel,[new THREE.TorusGeometry(rimRadius,.011,10,40),spoke,spoke.clone().rotateZ(Math.PI/2)],enamel);
   batch(steeringWheel,[new THREE.CylinderGeometry(.033,.033,.030,18).rotateX(Math.PI/2).translate(0,0,-.010)],roofMaterial);
   batch(chassis,[
     bar([x,y,z+.019],[x,1.026,.513],.019,12),
