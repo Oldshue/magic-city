@@ -59,3 +59,20 @@ test('a walker waits on pavement, completes a granted crossing, and releases onc
   assert.equal(permits.length,checked);
   assert.ok(walker.pose.point.z<-east.halfSpan);
 });
+
+test('a crossing pedestrian keeps the reservation and continues after a car clears its path',()=>{
+  const walker=createSidewalkWalker(sidewalkCircuit(crossings,1),1.18,{before:'east'});
+  let blocked=false;
+  const traffic={canCross(){return true;},canStepInCrossing(){return !blocked;}};
+  const dt=1/60;
+  for (let frame=0;frame<240 && !walker.request.committed;frame++)walker.step(dt,traffic);
+  assert.ok(walker.request.committed);
+  const before=walker.pose.point.clone();
+  blocked=true;
+  for (let frame=0;frame<60;frame++)walker.step(dt,traffic);
+  assert.equal(walker.pose.point.distanceTo(before),0);
+  assert.ok(walker.request.active);
+  blocked=false;
+  for (let frame=0;frame<180;frame++)walker.step(dt,traffic);
+  assert.ok(walker.pose.point.distanceTo(before)>2.5);
+});

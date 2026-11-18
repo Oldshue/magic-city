@@ -400,7 +400,10 @@ export function startPedestrians(ctx) {
           const turn = THREE.MathUtils.euclideanModulo(heading - p.facing + Math.PI, Math.PI*2) - Math.PI;
           p.facing += turn * (1 - Math.exp(-dt * 9));
           heading = p.facing;
-          p.strideSpeed=dt>0 ? Math.hypot(ox-p.x,oz-p.z)/dt : p.speed;
+          const vx=dt>0 ? (ox-p.x)/dt : 0, vz=dt>0 ? (oz-p.z)/dt : 0;
+          const request=journey.request;
+          request.x=ox;request.z=oz;request.vx=vx;request.vz=vz;
+          p.strideSpeed=dt>0 ? Math.hypot(vx,vz) : p.speed;
           p.floor=THREE.MathUtils.damp(p.floor,p.streetHeight(ox,oz),15,dt);
           p.x=ox;p.z=oz;
         } else {

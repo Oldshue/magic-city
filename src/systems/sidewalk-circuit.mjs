@@ -93,7 +93,6 @@ export function createSidewalkWalker(circuit,cruise,{z,before}={}) {
       }
       request.committed=true;
     }
-    pose.wait=0;
     pose.activity=crosswalk ? 'crossing' : leg.turning ? 'rounding the corner' : 'walking';
     const remaining=length-distance;
     let target=crosswalk ? cruise*1.10 : cruise;
@@ -104,8 +103,18 @@ export function createSidewalkWalker(circuit,cruise,{z,before}={}) {
     }
     const change=MathUtils.clamp(target-pose.speed,-ACCELERATION*dt,ACCELERATION*dt);
     const travel=(pose.speed+change*.5)*dt;
+    const nextDistance=Math.min(length,distance+travel);
+    if (crosswalk && traffic?.canStepInCrossing) {
+      curve.getPointAt(nextDistance/length,ahead);
+      if (!traffic.canStepInCrossing(ahead.x,ahead.z)) {
+        pose.speed=0;
+        pose.wait+=dt;
+        return pose;
+      }
+    }
+    pose.wait=0;
     pose.speed+=change;
-    distance=Math.min(length,distance+travel);
+    distance=nextDistance;
     locate();
     if (remaining>travel) return pose;
 

@@ -132,6 +132,13 @@ function advanceCustomer(customer,traffic,dt) {
   const dx=step.to[0]-oldX, dz=step.to[1]-oldZ;
   const distance=Math.hypot(dx,dz);
   const travel=actor.speed*dt;
+  if (step.crossing && traffic?.canStepInCrossing && distance>1e-6) {
+    const stepFraction=Math.min(1,travel/distance);
+    if (!traffic.canStepInCrossing(oldX+dx*stepFraction,oldZ+dz*stepFraction)) {
+      pedestrian.vx=0;pedestrian.vz=0;actor.moving=false;
+      return;
+    }
+  }
   if (distance<=travel) {
     actor.position[0]=step.to[0];
     actor.position[1]=step.to[1];
@@ -155,6 +162,8 @@ function advanceCustomer(customer,traffic,dt) {
     actor.moving=true;
   }
   [pedestrian.x,pedestrian.z]=actor.position;
+  pedestrian.vx=dt>0 ? (pedestrian.x-oldX)/dt : 0;
+  pedestrian.vz=dt>0 ? (pedestrian.z-oldZ)/dt : 0;
 }
 
 export function addCornerNewsstand(ctx, district, surfaces) {

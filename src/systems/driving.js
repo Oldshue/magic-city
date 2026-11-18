@@ -8,6 +8,9 @@ import {
   HALF_WIDTH, hitsMovingObstacle, setCarBounds, TYRE_RADIUS, MAX_SPEED, REAR_AXLE_Z,
   frontWheelAngle, sedanYawRate, stepSedanControls, stepSedanRide,
 } from '../engine/vehicle-motion.mjs';
+import {
+  crossingBodyBlocked, pedestrianBrakeRoom, pedestrianTravelFraction, speedAtPedestrian,
+} from '../engine/pedestrian-clearance.mjs';
 import { createDriverPerformer } from '../engine/driver-performer.js';
 import { DOOR_OPEN_ANGLE, doorAngle, ENTRY, exitMotion } from '../engine/vehicle-access.js';
 import { createStreetContact, ROAD_HEIGHT, SIDEWALK_HEIGHT } from '../engine/street-layout.js';
@@ -16,11 +19,13 @@ const PHYSICS_STEP = 0.025;
 const CURB_MID_HEIGHT = (SIDEWALK_HEIGHT - ROAD_HEIGHT) * 0.5;
 const CHASE_DIST = 5.7;
 const CHASE_HEIGHT = 2.48;
+const CABIN_NEAR = .31;
 const EXIT_OFFSET = 1.8;
 const DRIVER_EXIT_X = HALF_WIDTH + PLAYER_RADIUS + .105;
 const APPROACH_SPEED = 2.0;
 const ANIMATION_FPS = 30;
-const ACCESS_SOUNDS = {
+const VEHICLE_SOUNDS = {
+  brake: [695, 0.14, 0.175],
   release: [1520, 0.10, 0.15],
   latch: [860, 0.22, 0.17],
   board: [410, 0.13, 0.11],
@@ -71,6 +76,7 @@ export function startDriving(ctx) {
   const { THREE, scene, getDayPhase, camera, plan, streetcars, environment, streetReflection } = ctx;
   const controls = ctx.controls || { setEnabled() {}, getColliderBoxes() { return EMPTY_BOXES; } };
   const bounds = plan.bounds;
+  const exteriorNear = camera.near;
   const streetContact = createStreetContact(scene, TYRE_RADIUS, 0.042);
   const streetHeight = createStreetContact(scene, 0);
   const player = createDriverPerformer(scene,{wardrobe:ctx.wardrobe});
@@ -129,26 +135,37 @@ export function startDriving(ctx) {
   }
 
   // A period dashboard readout makes the witnessed speed rule legible.
-  let speedometer = null, speedValue = null, lastSpeedShown = NaN;
+  let speedometer = null, speedValue = null, yieldLine = null, viewButton = null, lastSpeedShown = NaN;
   function showSpeedometer(car) {
     if (!speedometer) {
       speedometer = document.createElement('aside'); speedometer.id = 'mc-speedometer';
       speedometer.setAttribute('aria-label', 'Vehicle speed and controls');
       speedometer.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);z-index:7;padding:10px 18px;border:1px solid #8d754d;background:#121a18e8;color:#ebdfbf;font-family:Georgia,serif;text-align:center;pointer-events:none;display:none";
-      speedometer.innerHTML = '<strong id="mc-driving-speed"></strong><small style="display:block;font-size:10px;letter-spacing:1px;margin-top:5px">E · PARK / H · HORN</small>';
+      speedometer.innerHTML = '<strong id="mc-driving-speed"></strong><small id="mc-crossing-yield" role="status" hidden>PEDESTRIAN CROSSING</small><small class="mc-driving-controls">E · PARK / H · HORN</small><button type="button" id="mc-driving-view" aria-keyshortcuts="C"></button>';
       const dashboardStyle = document.createElement('style');
-      dashboardStyle.textContent = '#mc-speedometer{bottom:24px}@media(max-width:600px){#mc-speedometer{bottom:130px}}';
+      dashboardStyle.textContent = '#mc-speedometer{bottom:24px}'
+        +'#mc-crossing-yield:not([hidden]),.mc-driving-controls{display:block;font-size:10px;letter-spacing:1px;margin-top:5px}'
+        +'#mc-crossing-yield{color:#ffd68c}'
+        +'#mc-driving-view{pointer-events:auto;min-height:28px;padding:3px 8px;margin-top:6px;cursor:pointer;border:1px solid #8d754d;color:inherit;background:#1d2521;font:12px Georgia,serif}'
+        +'#mc-driving-view:focus-visible{outline:2px solid #ffd68c;outline-offset:2px}'
+        +'@media(max-width:600px){#mc-speedometer{bottom:130px}#mc-driving-view{min-height:40px}}';
       document.head.appendChild(dashboardStyle);
       document.body.appendChild(speedometer); speedValue = speedometer.querySelector('strong');
+      yieldLine=speedometer.querySelector('#mc-crossing-yield');
+      viewButton=speedometer.querySelector('#mc-driving-view');
+      viewButton.addEventListener('click',toggleDrivingView);
     }
     speedometer.style.display = 'block';
+    yieldLine.hidden=!car.crossingYield;
+    const viewLabel=cabinView ? 'Chase view · C' : 'Cabin view · C';
+    if (viewButton.textContent!==viewLabel) viewButton.textContent=viewLabel;
     const mph = Math.round(car.speed * 2.23694);
     if (mph !== lastSpeedShown) { lastSpeedShown = mph; speedValue.textContent = (mph < 0 ? 'REVERSE · ' : '') + Math.abs(mph) + ' MPH'; }
   }
   function hideSpeedometer() { if (speedometer) speedometer.style.display = 'none'; }
 
   // --- State ----------------------------------------------------------
-  let isDriving = false;
+  let isDriving = false, cabinView = false;
   let activeCar = null;
   let access = null;
   let exitRequested = false;
@@ -165,10 +182,16 @@ export function startDriving(ctx) {
   const chaseTarget = new THREE.Vector3();
   const chasePosition = new THREE.Vector3();
   const chaseAim = new THREE.Vector3();
+  const cabinAim = new THREE.Vector3();
   const accessView = new THREE.Vector3(), accessTarget = new THREE.Vector3();
   const exitView = new THREE.Vector3(), exitTarget = new THREE.Vector3();
   const doorSweepPoint = new THREE.Vector3();
   let chaseReady = false;
+  function toggleDrivingView() {
+    if (!isDriving || access || exitRequested || controls.isInputBlocked?.()) return;
+    cabinView=!cabinView;
+    chaseReady=false;
+  }
   function onKeyDown(e) {
     if (controls.isInputBlocked?.()) return;
     if (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD'
@@ -176,9 +199,8 @@ export function startDriving(ctx) {
       driveKeys[e.code] = true;
     }
     if (e.repeat) return;
-    if (e.code === 'KeyH') {
-      if (isDriving) playHorn();
-    }
+    if (e.code === 'KeyH' && isDriving) playHorn();
+    if (e.code === 'KeyC') toggleDrivingView();
   }
   function onKeyUp(e) {
     driveKeys[e.code] = false;
@@ -196,7 +218,7 @@ export function startDriving(ctx) {
       return;
     }
     activeCar = car;
-    car.speed = 0; car.vx = 0; car.vz = 0;
+    car.speed = 0; car.vx = 0; car.vz = 0; car.crossingYield = false;
     controls.setEnabled(false);
     chaseReady = false;
     startVehicleAccess(ENTRY, path);
@@ -204,6 +226,7 @@ export function startDriving(ctx) {
   }
 
   function startVehicleAccess(motion, path = [], landing = null) {
+    setCameraNear(exteriorNear);
     const entering = motion === ENTRY;
     access = {
       entering, motion, path, index:0, time:0, cameraTime:0, lastFrame:-motion.slide,
@@ -244,13 +267,15 @@ export function startDriving(ctx) {
   }
 
   function finishExit(x,z) {
+    setCameraNear(exteriorNear);
     const car = activeCar;
     car.accessDoors[1].door.rotation.y = 0;
     car.accessDoors[-1].door.rotation.y = 0;
     player.hide();
     camera.position.set(x,EYE_HEIGHT,z);
     camera.rotation.set(0,car.heading + Math.PI,0,'YXZ');
-    car.speed = 0; car.vx = 0; car.vz = 0; car.braking = false;
+    car.speed = 0; car.vx = 0; car.vz = 0; car.braking = false; car.crossingYield = false;
+    if (car.speedNeedle) car.speedNeedle.rotation.z=Math.PI*.16;
     car.ride.ready = false;
     updateRide(car, 0, 0, 0);
     controls.setEnabled(true);
@@ -360,10 +385,10 @@ export function startDriving(ctx) {
     const door = car.accessDoors[motion.side].door;
     door.rotation.y = doorAngle(motion, frame);
     const passed = cue => access.lastFrame < cue && frame >= cue;
-    if (passed(motion.open[0])) playAccessSound('release');
-    if (passed(motion.latch)) playAccessSound('latch');
+    if (passed(motion.open[0])) playVehicleSound('release');
+    if (passed(motion.latch)) playVehicleSound('latch');
     for (const [cue, kind] of motion.footsteps) {
-      if (passed(cue)) playAccessSound(kind);
+      if (passed(cue)) playVehicleSound(kind);
     }
     access.lastFrame = frame;
     player.access(car, motion, t, streetHeight);
@@ -449,8 +474,8 @@ export function startDriving(ctx) {
     o.connect(filt); filt.connect(g); g.connect(dest);
     o.start(t); o.stop(t + dur + 0.05);
   }
-  function playAccessSound(kind) {
-    const [frequency, gain, duration] = ACCESS_SOUNDS[kind];
+  function playVehicleSound(kind) {
+    const [frequency, gain, duration] = VEHICLE_SOUNDS[kind];
     const audio = getAudio();
     if (!audio || !engine) return;
     const {ac, doorNoise} = engine;
@@ -525,15 +550,26 @@ export function startDriving(ctx) {
     applySedanRide(car);
   }
 
-  function stepDriving(car, throttle, steer, dt, boxes, vehicles) {
+  function stepDriving(car, throttle, steer, dt, boxes, vehicles, pedestrians) {
     const startX = car.x, startZ = car.z;
     const startSpeed = car.speed;
     const startHeading = car.heading;
     stepSedanControls(car, throttle, steer, exitRequested, dt);
+    const direction=Math.sign(car.speed || startSpeed || throttle);
+    if (direction) {
+      const room=pedestrianBrakeRoom(pedestrians,car.x,car.z,car.heading,direction,startSpeed);
+      const safeSpeed=speedAtPedestrian(startSpeed,car.speed,room,dt);
+      if (Math.abs(car.speed-safeSpeed)>1e-6) {
+        car.speed=safeSpeed;
+        car.braking=true;
+        car.crossingYield=true;
+      }
+    }
 
     const heading = car.heading + sedanYawRate(car.speed, car.steeringAngle) * dt;
     if (!carFootprintBlocked(boxes, car.x, car.z, heading)
-        && !carFootprintBlocked(vehicles, car.x, car.z, heading)) car.heading = heading;
+        && !carFootprintBlocked(vehicles, car.x, car.z, heading)
+        && !crossingBodyBlocked(pedestrians,car.x,car.z,heading)) car.heading = heading;
     const yawTravel = car.heading - startHeading;
     const middle = startHeading + yawTravel / 2;
     const fx = Math.sin(middle), fz = Math.cos(middle);
@@ -546,17 +582,26 @@ export function startDriving(ctx) {
 
     const impactSpeed = Math.abs(car.speed);
     let collided = false;
-    const nx = car.x + car.vx * dt;
-    const nz = car.z + car.vz * dt;
+    const travelX=car.vx*dt;
+    const clearX=pedestrianTravelFraction(pedestrians,car.x,car.z,car.heading,travelX,0);
+    const nx=car.x+travelX*clearX;
     if (!carFootprintBlocked(boxes, nx, car.z, car.heading) && !carFootprintBlocked(vehicles, nx, car.z, car.heading)) {
       car.x = clamp(nx, bounds.minX, bounds.maxX);
     } else {
       collided = true; car.vx = 0; car.speed *= 0.25;
     }
+    const travelZ=car.vz*dt;
+    const clearZ=pedestrianTravelFraction(pedestrians,car.x,car.z,car.heading,0,travelZ);
+    const nz=car.z+travelZ*clearZ;
     if (!carFootprintBlocked(boxes, car.x, nz, car.heading) && !carFootprintBlocked(vehicles, car.x, nz, car.heading)) {
       car.z = clamp(nz, bounds.minZ, bounds.maxZ);
     } else {
       collided = true; car.vz = 0; car.speed *= 0.25;
+    }
+    if (clearX<1 || clearZ<1) {
+      car.speed=0;car.vx=0;car.vz=0;
+      car.braking=true;
+      car.crossingYield=true;
     }
     if (collided && impactSpeed >= 6 && impactCooldown <= 0) { impactSequence++; impactCooldown = 1; }
 
@@ -572,10 +617,21 @@ export function startDriving(ctx) {
     const input = readVehicleInput(driveKeys, controls.getVirtualMove?.(), vehicleInput);
     const boxes = controls.getColliderBoxes();
     const vehicles = controls.getMovingColliderBoxes?.(car) ?? EMPTY_BOXES;
+    const pedestrians=ctx.crossingVisitors ?? EMPTY_BOXES;
+    const speedBefore=Math.abs(car.speed), wasYielding=car.crossingYield;
+    car.crossingYield=false;
     const steps = Math.ceil(dt / PHYSICS_STEP);
     for (let i = 0; i < steps; i++) {
-      stepDriving(car, input.throttle, exitRequested ? 0 : input.steer, dt / steps, boxes, vehicles);
+      stepDriving(car, input.throttle, exitRequested ? 0 : input.steer, dt / steps, boxes, vehicles,pedestrians);
     }
+    if (car.crossingYield) {
+      car.braking=true;
+      if (!wasYielding && speedBefore>2) playVehicleSound('brake');
+    }
+    car.stopLightMat.emissiveIntensity=car.braking ? 3.2 : isNight(getDayPhase()) ? .75 : 0;
+    car.group.userData.crossingYield=car.crossingYield;
+    car.group.userData.speed=car.speed;
+    if (car.speedNeedle) car.speedNeedle.rotation.z=Math.PI*(.16+1.68*clamp(Math.abs(car.speed)*2.23694/50,0,1));
     car.group.position.set(car.x, ROAD_HEIGHT, car.z);
     car.group.rotation.y = car.heading;
     applySedanRide(car);
@@ -591,7 +647,24 @@ export function startDriving(ctx) {
     chaseTarget.set(car.x + fx * 2.4 + fz * lookIntoTurn, 1.12 + lift, car.z + fz * 2.4 - fx * lookIntoTurn);
   }
 
+  function setCameraNear(near) {
+    if (camera.near === near) return;
+    camera.near = near;
+    camera.updateProjectionMatrix();
+  }
+
+  function positionCabinCamera(car) {
+    // The seated detective fills the space between the seat and the lens.
+    setCameraNear(CABIN_NEAR);
+    camera.position.set(.35,1.46,-.33);
+    car.chassis.localToWorld(camera.position);
+    cabinAim.set(.35+Math.sin(car.steeringAngle)*.74,.71,5.1);
+    car.chassis.localToWorld(cabinAim);
+    camera.lookAt(cabinAim);
+  }
+
   function positionChaseCamera(dt) {
+    setCameraNear(exteriorNear);
     const car = activeCar;
     setChaseView(car);
     const follow = 1 - Math.exp(-dt * 10);
@@ -702,6 +775,7 @@ export function startDriving(ctx) {
           light.intensity = on ? 390 : 0;
         }
         c.headlightMat.emissiveIntensity = on ? 2.0 : 0.18;
+        c.dialInk.emissiveIntensity = on ? .45 : .045;
         c.stopLightMat.emissiveIntensity = c.braking ? 3.2 : on ? 0.75 : 0;
         for (const material of c.reflective) material.envMapIntensity = night ? 0.22 : 0.75;
       }
@@ -712,8 +786,9 @@ export function startDriving(ctx) {
         updateVehicleAccess(dt);
       } else if (isDriving) {
         updateDrivingPhysics(dt);
-        positionChaseCamera(dt);
         player.drive(activeCar);
+        if (cabinView) positionCabinCamera(activeCar);
+        else positionChaseCamera(dt);
         showSpeedometer(activeCar);
         showPrompt('Press E to park');
         if (exitRequested) leaveWhenStopped();
@@ -740,6 +815,7 @@ export function startDriving(ctx) {
       else if (isRiding) exitTram();
     },
     dispose() {
+      setCameraNear(exteriorNear);
       removeParkedVehicles?.();
       unregisterInteraction();
       document.removeEventListener('keydown', onKeyDown);

@@ -1,6 +1,6 @@
 /** Period traffic with lane spacing, and right-of-way at First and 20th. */
 import { applySedanRide, buildPeriodSedan, updateSedanWheels } from '../engine/period-sedan.js';
-import { HALF_LENGTH, setCarBounds, stepSedanRide, TYRE_RADIUS } from '../engine/vehicle-motion.mjs';
+import { HALF_LENGTH, hitsMovingObstacle, setCarBounds, stepSedanRide, TYRE_RADIUS } from '../engine/vehicle-motion.mjs';
 import { createDriverPerformer } from '../engine/driver-performer.js';
 import { ROAD_HEIGHT } from '../engine/street-layout.js';
 import { advanceTraffic, blockerGap, canEnterCrosswalk, HEAVIEST_CORNER_CROSSWALK, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore, wrapDistance } from '../engine/traffic-motion.mjs';
@@ -364,12 +364,19 @@ export function startTraffic(ctx) {
     }
   }
 
+  function crossingVehicles() {
+    const obstacles=ctx.controls?.getMovingColliderBoxes?.() ?? colliders;
+    if (!playerPosition?.mounted) return obstacles;
+    const player=setCarBounds(playerCrossingBox,playerPosition.x,playerPosition.z,playerPosition.heading);
+    return [player,...obstacles];
+  }
+
   return {
     canCross(person) {
-      const obstacles=ctx.controls?.getMovingColliderBoxes?.() ?? colliders;
-      const player=playerPosition?.mounted
-        ? setCarBounds(playerCrossingBox,playerPosition.x,playerPosition.z,playerPosition.heading) : null;
-      return canEnterCrosswalk(junction,person,player ? [player,...obstacles] : obstacles);
+      return canEnterCrosswalk(junction,person,crossingVehicles());
+    },
+    canStepInCrossing(x,z) {
+      return !crossingVehicles().some(box=>hitsMovingObstacle(box,x,z,.32));
     },
     update(dt) {
       const phase = getDayPhase();

@@ -268,8 +268,9 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
   });
   const {broadcloth,welt} = upholsteredBenches();
   const instruments = [], bezels = [], markings = [];
+  let speedNeedle=null;
   for (const [gx,radius] of [[.17,.029],[.35,.053],[.53,.029]]) {
-    const y = 1.097, z = .265;
+    const y = 1.112, z = .192;
     instruments.push(new THREE.CylinderGeometry(radius,radius,.011,22).rotateX(Math.PI/2).translate(gx,y,z));
     bezels.push(new THREE.TorusGeometry(radius,.005,7,28).translate(gx,y,z-.008));
     for (let tick=0;tick<=8;tick++) {
@@ -277,13 +278,22 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
       markings.push(bar([gx+Math.cos(angle)*radius*.69,y+Math.sin(angle)*radius*.69,z-.010],
         [gx+Math.cos(angle)*radius*.87,y+Math.sin(angle)*radius*.87,z-.010],.0017,5));
     }
-    markings.push(bar([gx,y,z-.012],[gx-radius*.57,y+radius*.42,z-.012],.0023,6));
+    if (powered && gx===.35) {
+      speedNeedle=new THREE.Group();
+      speedNeedle.name='Speedometer needle';
+      speedNeedle.position.set(gx,y,z-.013);
+      speedNeedle.rotation.z=Math.PI*.16;
+      batch(speedNeedle,[bar([-.008,0,0],[radius*.73,0,0],.0018,6)],dialInk,false);
+      chassis.add(speedNeedle);
+    } else {
+      markings.push(bar([gx,y,z-.012],[gx-radius*.57,y+radius*.42,z-.012],.0023,6));
+    }
   }
   batch(chassis,broadcloth,seatFabric());
   batch(chassis,welt,new THREE.MeshStandardMaterial({color:0x6a5141,roughness:.94}));
   batch(chassis,[
-    box(0,1.068,.325,1.39,.154,.113),
-    box(0,1.153,.329,1.27,.029,.117),
+    box(0,1.073,.247,1.39,.181,.104),
+    box(0,1.174,.247,1.27,.024,.114),
   ],panelWood);
   batch(chassis,[box(0,.575,-.10,1.35,.036,.90),box(0,.583,-1.10,1.31,.049,.48)],felt);
   batch(chassis,instruments,dialFace);
@@ -426,7 +436,7 @@ export function buildPeriodSedan(bodyColor, environment, {whitewall = false, pow
   }
   return {
     group, chassis, axles, wheels, ride: createSedanRide(), steeringAngle: 0,
-    driverDoor: accessDoors[1].door, accessDoors, steeringWheel, headlightMat, stopLightMat, spotLights,
+    driverDoor: accessDoors[1].door, accessDoors, steeringWheel, speedNeedle, dialInk, headlightMat, stopLightMat, spotLights,
     reflective: [paint, enamel, metal, glassMaterial],
   };
 }
