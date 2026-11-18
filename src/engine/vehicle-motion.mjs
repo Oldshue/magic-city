@@ -171,7 +171,7 @@ export const LARGE_SEDAN = sedanConfiguration({
 export const FORD_TUDOR = sedanConfiguration({
   halfWidth:.89, halfLength:1.99, halfTrack:.707, tyreRadius:.368,
   frontAxleZ:1.315, rearAxleZ:-1.3139, driverMark:{x:1.315,z:-.16},
-  seatOffset:[-.054,.018,.040], steeringLock:.576, grip:4.9, steeringResponse:11,
+  seatOffset:[-.054,.018,-.010], steeringLock:.576, grip:4.9, steeringResponse:11,
   maxSpeed:18.5, reverseLimit:4.8, acceleration:5.7, powerFade:3, reversePower:3.4,
   serviceBrake:7.7, parkingBrake:9, coastDrag:3.05, crossingBrake:6.2, emergencyBrake:8.4,
   springDamping:7.25, springFrequency:7.8, pitchResponse:.009, rollResponse:.0158,
