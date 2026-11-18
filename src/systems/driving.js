@@ -140,15 +140,17 @@ export function startDriving(ctx) {
     if (!speedometer) {
       speedometer = document.createElement('aside'); speedometer.id = 'mc-speedometer';
       speedometer.setAttribute('aria-label', 'Vehicle speed and controls');
-      speedometer.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);z-index:7;padding:10px 18px;border:1px solid #8d754d;background:#121a18e8;color:#ebdfbf;font-family:Georgia,serif;text-align:center;pointer-events:none;display:none";
+      speedometer.style.cssText = "position:fixed;z-index:7;border:1px solid #8d754d;background:#121a18e8;color:#ebdfbf;font-family:Georgia,serif;text-align:center;pointer-events:none;display:none";
       speedometer.innerHTML = '<strong id="mc-driving-speed"></strong><small id="mc-crossing-yield" role="status" hidden>PEDESTRIAN CROSSING</small><small class="mc-driving-controls">E · PARK / H · HORN</small><button type="button" id="mc-driving-view" aria-keyshortcuts="C"></button>';
       const dashboardStyle = document.createElement('style');
-      dashboardStyle.textContent = '#mc-speedometer{bottom:24px}'
+      dashboardStyle.textContent = '#mc-speedometer{left:50%;bottom:24px;transform:translateX(-50%);padding:10px 18px}'
         +'#mc-crossing-yield:not([hidden]),.mc-driving-controls{display:block;font-size:10px;letter-spacing:1px;margin-top:5px}'
         +'#mc-crossing-yield{color:#ffd68c}'
         +'#mc-driving-view{pointer-events:auto;min-height:28px;padding:3px 8px;margin-top:6px;cursor:pointer;border:1px solid #8d754d;color:inherit;background:#1d2521;font:12px Georgia,serif}'
         +'#mc-driving-view:focus-visible{outline:2px solid #ffd68c;outline-offset:2px}'
-        +'@media(max-width:600px){#mc-speedometer{bottom:130px}#mc-driving-view{min-height:40px}}';
+        +'@media(max-width:600px){'
+        +'#mc-speedometer{left:14px;bottom:130px;transform:none;max-width:calc(100vw - 210px);box-sizing:border-box;padding:8px 10px}'
+        +'#mc-driving-view{min-height:40px;max-width:100%}}';
       document.head.appendChild(dashboardStyle);
       document.body.appendChild(speedometer); speedValue = speedometer.querySelector('strong');
       yieldLine=speedometer.querySelector('#mc-crossing-yield');
