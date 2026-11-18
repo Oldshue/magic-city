@@ -43,7 +43,7 @@ export function startSystems(ctx) {
       if (steelLife) steelLife.update(dt, elapsed, ctx.camera);
       if (ambience) ambience.update(dt, elapsed, ambienceExtra);
       if (jazz) jazz.update(dt, elapsed);
-      if (driving) driving.update(dt, elapsed);
+      if (driving) driving.update(dt, elapsed, weather?.rainfall ?? 0);
       if (traffic) traffic.update(dt, elapsed);
       if (police) police.update(dt, elapsed);
       ctx.counterService?.update(dt);

@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { FORD_TUDOR } from './vehicle-motion.mjs';
+import { buildWindshield } from './windshield.js';
 import { bar, batch, box, headlightBeam, loft, pane, panel, seatFabric, surface } from './vehicle-geometry.js';
 
 const {frontAxleZ, rearAxleZ, halfTrack, seatOffset} = FORD_TUDOR;
@@ -217,13 +218,19 @@ export function buildFordTudorBody(chassis, materials, powered) {
     if (powered) spotLights.push(headlightBeam(chassis,lightX,lightY,lightZ+.139));
   }
 
-  pane(glazing,seal,[[.583,1.148,.216],[-.583,1.148,.216],
-    [-.520,1.695,.130],[.520,1.695,.130]],.025);
+  const windshieldCorners = [[.583,1.148,.216],[-.583,1.148,.216],
+    [-.520,1.695,.130],[.520,1.695,.130]];
+  pane(glazing,seal,windshieldCorners,.025);
   const visor = loft([[.135,.514,1.692,1.740],[.206,.518,1.702,1.733],[.289,.489,1.675,1.712]]);
   black.push(visor);
   bright.push(bar([-.494,1.679,.287],[.494,1.679,.287],.0059));
-  seal.push(bar([-.256,1.695,.169],[-.153,1.353,.195],.0053,7),
-    bar([-.241,1.509,.186],[-.121,1.354,.198],.0058,6));
+  const windshield = powered ? buildWindshield(chassis,windshieldCorners,{
+    pivots:[.314], inner:.235, outer:.475, park:-1.46, far:.51, strokeSeconds:.94,
+  },materials) : null;
+  if (!powered) {
+    seal.push(bar([.314,1.678,.150],[.074,1.648,.155],.004,6),
+      bar([.074,1.648,.155],[-.158,1.624,.155],.0055,6));
+  }
 
   const rearBottom = [[-.551,1.098,-1.738],[-.521,1.324,-1.736],[.521,1.324,-1.736],[.551,1.098,-1.738]];
   const rearTop = [[-.493,1.570,-1.687],[-.466,1.677,-1.654],[.466,1.677,-1.654],[.493,1.570,-1.687]];
@@ -273,5 +280,5 @@ export function buildFordTudorBody(chassis, materials, powered) {
   batch(chassis,rear,stopLightMat,false);
   batch(chassis,cloth,seatFabric(0x776d60));
   batch(chassis,[box(0,.550,-.567,1.155,.048,1.60),box(0,.563,.117,1.085,.038,.448),...seams],roofMaterial);
-  return {...tudorDashboard(chassis,materials,powered),accessDoors,driverDoor:accessDoors[1].door,spotLights};
+  return {...tudorDashboard(chassis,materials,powered),accessDoors,driverDoor:accessDoors[1].door,spotLights,windshield};
 }

@@ -28,6 +28,7 @@ const VEHICLE_SOUNDS = {
   latch: [860, 0.22, 0.17],
   board: [410, 0.13, 0.11],
   street: [280, 0.09, 0.085],
+  wiper: [910, 0.047, 0.1],
 };
 
 // --- Boarding tuning ------------------------------------------------------
@@ -99,7 +100,7 @@ export function startDriving(ctx) {
       ...built,
       name: spec.name, tyreContact: tyreContacts.get(built.configuration),
       x: spec.x, z: spec.z, heading, collider:{},
-      speed: 0, vx: 0, vz: 0, braking: false, curbCooldown: 0,
+      speed: 0, vx: 0, vz: 0, braking: false, curbCooldown: 0, wipersOn: false,
     };
     updateWheelContact(car, 0);
     updateRide(car, 0, 0, 0);
@@ -137,32 +138,42 @@ export function startDriving(ctx) {
   }
 
   // A period dashboard readout makes the witnessed speed rule legible.
-  let speedometer = null, speedValue = null, yieldLine = null, viewButton = null, lastSpeedShown = NaN;
+  let speedometer = null, speedValue = null, yieldLine = null, viewButton = null, wiperButton = null, lastSpeedShown = NaN;
   function showSpeedometer(car) {
     if (!speedometer) {
       speedometer = document.createElement('aside'); speedometer.id = 'mc-speedometer';
       speedometer.setAttribute('aria-label', 'Vehicle speed and controls');
       speedometer.style.cssText = "position:fixed;z-index:7;border:1px solid #8d754d;background:#121a18e8;color:#ebdfbf;font-family:Georgia,serif;text-align:center;pointer-events:none;display:none";
-      speedometer.innerHTML = '<strong id="mc-driving-speed"></strong><small id="mc-crossing-yield" role="status" hidden>PEDESTRIAN CROSSING</small><small class="mc-driving-controls">E · PARK / H · HORN</small><button type="button" id="mc-driving-view" aria-keyshortcuts="C"></button>';
+      speedometer.innerHTML = '<strong id="mc-driving-speed"></strong>'
+        +'<small id="mc-crossing-yield" role="status" hidden>PEDESTRIAN CROSSING</small>'
+        +'<small class="mc-driving-controls">E · PARK / H · HORN</small>'
+        +'<div class="mc-driving-buttons"><button type="button" id="mc-driving-view" aria-keyshortcuts="C"></button>'
+        +'<button type="button" id="mc-driving-wipers" aria-keyshortcuts="V" aria-pressed="false">Wipers · V</button></div>';
       const dashboardStyle = document.createElement('style');
       dashboardStyle.textContent = '#mc-speedometer{left:50%;bottom:24px;transform:translateX(-50%);padding:10px 18px}'
         +'#mc-crossing-yield:not([hidden]),.mc-driving-controls{display:block;font-size:10px;letter-spacing:1px;margin-top:5px}'
         +'#mc-crossing-yield{color:#ffd68c}'
-        +'#mc-driving-view{pointer-events:auto;min-height:28px;padding:3px 8px;margin-top:6px;cursor:pointer;border:1px solid #8d754d;color:inherit;background:#1d2521;font:12px Georgia,serif}'
-        +'#mc-driving-view:focus-visible{outline:2px solid #ffd68c;outline-offset:2px}'
+        +'.mc-driving-buttons{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;margin-top:6px}'
+        +'.mc-driving-buttons button{pointer-events:auto;min-height:28px;padding:3px 8px;cursor:pointer;border:1px solid #8d754d;color:inherit;background:#1d2521;font:12px Georgia,serif}'
+        +'.mc-driving-buttons button:focus-visible{outline:2px solid #ffd68c;outline-offset:2px}'
+        +'#mc-driving-wipers[aria-pressed="true"]{background:#d1b475;color:#171d19;border-color:#efd48b}'
         +'@media(max-width:600px){'
         +'#mc-speedometer{left:14px;bottom:130px;transform:none;max-width:calc(100vw - 210px);box-sizing:border-box;padding:8px 10px}'
-        +'#mc-driving-view{min-height:40px;max-width:100%}}';
+        +'.mc-driving-buttons button{min-height:40px;max-width:100%}}';
       document.head.appendChild(dashboardStyle);
       document.body.appendChild(speedometer); speedValue = speedometer.querySelector('strong');
       yieldLine=speedometer.querySelector('#mc-crossing-yield');
       viewButton=speedometer.querySelector('#mc-driving-view');
       viewButton.addEventListener('click',toggleDrivingView);
+      wiperButton=speedometer.querySelector('#mc-driving-wipers');
+      wiperButton.addEventListener('click',toggleWipers);
     }
     speedometer.style.display = 'block';
     yieldLine.hidden=!car.crossingYield;
     const viewLabel=cabinView ? 'Chase view · C' : 'Cabin view · C';
     if (viewButton.textContent!==viewLabel) viewButton.textContent=viewLabel;
+    const wipersPressed=String(car.wipersOn);
+    if (wiperButton.getAttribute('aria-pressed')!==wipersPressed) wiperButton.setAttribute('aria-pressed',wipersPressed);
     const mph = Math.round(car.speed * 2.23694);
     if (mph !== lastSpeedShown) { lastSpeedShown = mph; speedValue.textContent = (mph < 0 ? 'REVERSE · ' : '') + Math.abs(mph) + ' MPH'; }
   }
@@ -196,6 +207,10 @@ export function startDriving(ctx) {
     cabinView=!cabinView;
     chaseReady=false;
   }
+  function toggleWipers() {
+    if (!isDriving || access || exitRequested || controls.isInputBlocked?.()) return;
+    activeCar.wipersOn = !activeCar.wipersOn;
+  }
   function onKeyDown(e) {
     if (controls.isInputBlocked?.()) return;
     if (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD'
@@ -205,6 +220,7 @@ export function startDriving(ctx) {
     if (e.repeat) return;
     if (e.code === 'KeyH' && isDriving) playHorn();
     if (e.code === 'KeyC') toggleDrivingView();
+    if (e.code === 'KeyV') toggleWipers();
   }
   function onKeyUp(e) {
     driveKeys[e.code] = false;
@@ -282,7 +298,7 @@ export function startDriving(ctx) {
     player.hide();
     camera.position.set(x,EYE_HEIGHT,z);
     camera.rotation.set(0,car.heading + Math.PI,0,'YXZ');
-    car.speed = 0; car.vx = 0; car.vz = 0; car.braking = false; car.crossingYield = false;
+    car.speed = 0; car.vx = 0; car.vz = 0; car.braking = false; car.crossingYield = false; car.wipersOn = false;
     if (car.speedNeedle) car.speedNeedle.rotation.z=Math.PI*.16;
     car.ride.ready = false;
     updateRide(car, 0, 0, 0);
@@ -771,8 +787,15 @@ export function startDriving(ctx) {
   });
 
   return {
-    update(dt) {
-      if (ctx.controls.isInputBlocked()) {
+    update(dt, elapsed, rainfall = 0) {
+      const inputBlocked = ctx.controls.isInputBlocked();
+      for (const car of cars) {
+        const occupied = car === activeCar && isDriving && !access;
+        const cabin = occupied && cabinView;
+        const reversed = car.windshield.update(dt,rainfall,cabin,occupied && car.wipersOn && !exitRequested);
+        if (reversed && cabin && !inputBlocked) playVehicleSound('wiper');
+      }
+      if (inputBlocked) {
         hideSpeedometer();
         for (const key in driveKeys) driveKeys[key] = false;
         if (engine) engine.bus.gain.setTargetAtTime(0, engine.ac.currentTime, 0.1);

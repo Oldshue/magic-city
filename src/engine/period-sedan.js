@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { bar, batch, box, headlightBeam, loft, pane, panel, seatFabric, surface } from './vehicle-geometry.js';
 import { buildFordTudorBody } from './ford-tudor.js';
+import { buildWindshield } from './windshield.js';
 import { createSedanRide, FORD_TUDOR, LARGE_SEDAN, FRONT_AXLE_Z, REAR_AXLE_Z, HALF_TRACK, TYRE_RADIUS, frontWheelAngle } from './vehicle-motion.mjs';
 
 function fender(x, centerZ) {
@@ -347,7 +348,11 @@ function buildLargeSedanBody(chassis, materials, powered, environment) {
     }
     trim.push(bar([x*.25,.635,1.95], [x*.63,.76,2.11], .025));
   }
-  pane(glass, body, [[-.75,1.106,.35],[.75,1.106,.35],[.615,1.664,.075],[-.615,1.664,.075]]);
+  const windshieldCorners = [[-.75,1.106,.35],[.75,1.106,.35],[.615,1.664,.075],[-.615,1.664,.075]];
+  pane(glass, body, windshieldCorners);
+  const windshield = powered ? buildWindshield(chassis,windshieldCorners,{
+    pivots:[.337,-.337], inner:.208, outer:.475, park:-.715, far:.715, strokeSeconds:.84,
+  },materials) : null;
   pane(glass, body, [[.77,1.10,-1.90],[-.77,1.10,-1.90],[-.64,1.67,-1.80],[.64,1.67,-1.80]]);
   trim.push(bar([0,1.105,.354],[0,1.664,.081],.019));
   const radiator = [[-.455,.59,2.112],[.455,.59,2.112],[.44,1.04,2.112],[.33,1.109,2.112],[-.33,1.109,2.112],[-.44,1.04,2.112]];
@@ -378,7 +383,7 @@ function buildLargeSedanBody(chassis, materials, powered, environment) {
   batch(chassis, glass, glassMaterial, false);
   batch(chassis, front, headlightMat, false);
   batch(chassis, rear, stopLightMat, false);
-  return { driverDoor:accessDoors[1].door, accessDoors, steeringWheel, speedNeedle, dialInk, spotLights };
+  return { driverDoor:accessDoors[1].door, accessDoors, steeringWheel, speedNeedle, dialInk, spotLights, windshield };
 }
 
 export function updateSedanWheels(car, distance, sideDistance = 0, yawTravel = 0) {
