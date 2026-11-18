@@ -6,6 +6,7 @@ import { SHOP_MENUS } from '../gameplay/shop-state.mjs';
 import { buildCounterFixture, STAFF_Z } from './counter-fixtures.js';
 import { buildWalkerFixture, loadWalkerWindows } from './walker-tailoring.js';
 import { buildStorefrontDisplay, makeDisplayMaterials } from './storefront-windows.js';
+import { addStorefrontAwning } from './storefront-awnings.js';
 
 export const SHOP_HEIGHT = 4.56;
 export const SHOP_DEPTH = 4.72;
@@ -319,7 +320,11 @@ export async function add20thStreetStores(ctx, parent, surfaces) {
     shop.position.set(frontX,SIDEWALK_HEIGHT,frontZ);
     shop.rotation.y = side * Math.PI/2;
     parent.add(shop);
-    if (displays.length) registerWindowDisplay(ctx,shop,spec,displays);
+    if (displays.length) {
+      registerWindowDisplay(ctx,shop,spec,displays);
+      const shelter=addStorefrontAwning(shop,spec.kind,depth/2,SHOP_DEPTH,M.brass);
+      ctx.storefrontShelters?.push(shelter);
+    }
     for (const box of collision) footprintBoxes.push(orientedBox(frontX,frontZ,side,box));
     if (spec.open) {
       const staffZ = service ? STAFF_Z : -SHOP_DEPTH+.28;

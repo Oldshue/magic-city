@@ -34,6 +34,7 @@
 import { getAudio, onReady, makeNoiseBuffer, makeRng } from './audioBus.js';
 import { setWeatherDim } from '../engine/sky.js';
 import { VIEW_EFFECTS_LAYER } from '../engine/renderer.js';
+import { underStoreCover } from './rain-shelter.mjs';
 
 const RAIN_COUNT = 1500;
 const RAIN_RADIUS = 42;   // horizontal half-extent of the streak volume around the camera
@@ -47,7 +48,7 @@ const RAIN = 'rain';
 const CLEARING = 'clearing';
 
 export function startWeather(ctx) {
-  const { THREE, scene, camera, materials } = ctx;
+  const { THREE, scene, camera, materials, storefrontShelters=[] } = ctx;
 
   // --- seeded state machine, never repeats exactly ----------------------
   // Free-running by default; setState() (the dev api's real hook behind
@@ -96,6 +97,8 @@ export function startWeather(ctx) {
   let overcastAmt = 0; // sky dimming: active through overcast/rain/clearing
   let rainAmt = 0;     // rain streaks + rain-bed audio swell + screen vignette
   let wetness = 0;     // street wetness: rises fast, dries slowly
+  let cover = 0;
+  let runoffTime = 0;
 
   // --- wet streets: mutate the shared asphalt material in place ---------
   const asphalt = materials && materials.asphalt;
@@ -114,7 +117,21 @@ export function startWeather(ctx) {
   streaks.frustumCulled = false;
   streaks.count = 0;
   streaks.layers.set(VIEW_EFFECTS_LAYER);
+  streaks.name='Street rain';
   scene.add(streaks);
+  const dropsPerAwning = 13;
+  const runoff = storefrontShelters.length ? new THREE.InstancedMesh(
+    new THREE.BoxGeometry(.010,.26,.010),streakMat,storefrontShelters.length*dropsPerAwning,
+  ) : null;
+  if (runoff) {
+    runoff.name='Awning runoff';
+    runoff.layers.set(VIEW_EFFECTS_LAYER);
+    runoff.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    runoff.frustumCulled=false;
+    runoff.count=0;
+    scene.add(runoff);
+  }
+  const hiddenStreak=new THREE.Matrix4().makeScale(0,0,0);
 
   const offX = new Float32Array(RAIN_COUNT);
   const offY = new Float32Array(RAIN_COUNT);
@@ -145,6 +162,7 @@ export function startWeather(ctx) {
     depthTest: false, depthWrite: false, toneMapped: false,
   });
   const vignette = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), vignetteMat);
+  vignette.name='Rain veil';
   vignette.layers.set(VIEW_EFFECTS_LAYER);
   vignette.renderOrder = 999;
   vignette.frustumCulled = false;
@@ -194,7 +212,7 @@ export function startWeather(ctx) {
     thunderFilter.connect(thunderGain);
     thunderGain.connect(bus);
 
-    nodes = { ac, bus, rainGain, thunderFilter, thunderGain };
+    nodes = { ac, bus, rainGain, rainFilter, thunderFilter, thunderGain };
   }
   onReady(init);
 
@@ -240,6 +258,8 @@ export function startWeather(ctx) {
       }
 
       // --- rain streak particles -------------------------------------------
+      const sheltered=underStoreCover(storefrontShelters,camera.position.x,camera.position.y,camera.position.z);
+      cover=THREE.MathUtils.damp(cover,sheltered ? 1 : 0,5,dt);
       streakMat.opacity = rainAmt * .48;
       if (rainAmt > 0.01) {
         streaks.count = RAIN_COUNT;
@@ -255,12 +275,34 @@ export function startWeather(ctx) {
             offZ[i] = (rng() * 2 - 1) * RAIN_RADIUS;
           }
           _pos.set(camX + offX[i], camY + offY[i], camZ + offZ[i]);
-          _m.compose(_pos, _q, _s);
-          streaks.setMatrixAt(i, _m);
+          if (underStoreCover(storefrontShelters,_pos.x,_pos.y-.42,_pos.z)) {
+            streaks.setMatrixAt(i,hiddenStreak);
+          } else {
+            _m.compose(_pos, _q, _s);
+            streaks.setMatrixAt(i, _m);
+          }
         }
         streaks.instanceMatrix.needsUpdate = true;
       } else {
         streaks.count = 0;
+      }
+
+      if (runoff) {
+        runoff.count=rainAmt>.09 ? storefrontShelters.length*dropsPerAwning : 0;
+        if (runoff.count) {
+          runoffTime+=dt;
+          for (let i=0; i<runoff.count; i++) {
+            const awning=storefrontShelters[Math.floor(i/dropsPerAwning)];
+            const location=(i%dropsPerAwning+.53)/dropsPerAwning-.5;
+            const fall=runoffTime*(1.22+.17*(i%4))+i*.381966;
+            const age=fall-Math.floor(fall);
+            const z=awning.z+location*(2*awning.halfWidth-.12);
+            const y=awning.eaveY-.13-(awning.eaveY-.45)*age*age;
+            _m.makeTranslation(awning.eaveX-awning.side*(.042+age*.045),y,z);
+            runoff.setMatrixAt(i,_m);
+          }
+          runoff.instanceMatrix.needsUpdate=true;
+        }
       }
 
       // --- scene-wide rain vignette: reposition + rescale to fill frustum --
@@ -272,14 +314,16 @@ export function startWeather(ctx) {
         const h = 2 * Math.tan(vFov / 2) * VIGNETTE_DIST * 1.04;
         const w = h * (camera.aspect || 1);
         vignette.scale.set(w, h, 1);
-        vignetteMat.opacity = rainAmt * .29;
+        vignetteMat.opacity = rainAmt * .29 * (1 - .65*cover);
       } else {
         vignetteMat.opacity = 0;
       }
 
       // --- audio: rain bed swell + occasional distant thunder --------------
       if (nodes) {
-        nodes.rainGain.gain.setTargetAtTime(rainAmt > 0.02 ? 0.03 + rainAmt * 0.33 : 0, nodes.ac.currentTime, 0.7);
+        const gain=rainAmt>.02 ? (.03+rainAmt*.33)*(1-.67*cover) : 0;
+        nodes.rainGain.gain.setTargetAtTime(gain,nodes.ac.currentTime,.34);
+        nodes.rainFilter.frequency.setTargetAtTime(1400-470*cover,nodes.ac.currentTime,.46);
       }
       if (state === RAIN || state === CLEARING) {
         nextThunder -= dt;

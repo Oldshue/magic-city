@@ -46,8 +46,8 @@ export function startSystems(ctx) {
       if (police) police.update(dt, elapsed);
       ctx.counterService?.update(dt);
       for (const stand of ctx.newsstands ?? []) stand.update(dt,traffic);
-      if (pedestrians) pedestrians.update(dt, elapsed);
       if (weather) weather.update(dt, elapsed);
+      if (pedestrians) pedestrians.update(dt, elapsed, weather?.rainfall ?? 0);
     },
     // Additive beyond the documented { update } contract, same pattern as
     // ctx's own additive `controls` field — src/main.js's dev api hook

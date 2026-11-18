@@ -16,6 +16,7 @@ import { createStreetCharacters, in20thStreetBlock, inHeaviestCorner } from '../
 import { createWindowVisit } from './window-visit.mjs';
 import { createCrossingAttention, updateCrossingAttention } from '../engine/crossing-attention.mjs';
 import { createSidewalkWalker, sidewalkCircuit } from './sidewalk-circuit.mjs';
+import { createRainShelter, SEEK_SHELTER_RAIN } from './rain-shelter.mjs';
 
 export function startPedestrians(ctx) {
   const { THREE, scene, plan, getDayPhase } = ctx;
@@ -228,22 +229,26 @@ export function startPedestrians(ctx) {
   const blockWalkers = [];
   if (streetHeight) {
     const circuits=new Map([-1,1].map(side=>[side,sidewalkCircuit(ctx.crossings,side)]));
-    for (const [id,side,start,scale,speed,model,paletteIdx,shop,linger] of [
-      ['west-street-worker',-1,{z:24.85},1.04,1.24,'street-worker',1],
+    for (const [id,side,start,scale,speed,model,paletteIdx,shop,linger,umbrella] of [
+      ['west-street-worker',-1,{z:24.85},1.04,1.24,'street-worker',1,null,null,0x353846],
       ['crown-window-shopper',-1,{z:42},.99,1.01,'bank-clerk',5,'lunch',2.76],
       ['drugstore-window-shopper',1,{z:42.8},.98,1.08,'shopkeeper',2,'chemist',2.94],
       ['walker-window-shopper',1,{z:30},.95,1.08,'shopkeeper',4,'tailor',3.42],
-      ['east-street-clerk',1,{before:'south'},1.01,1.18,'bank-clerk',6],
+      ['east-street-clerk',1,{before:'south'},1.01,1.18,'bank-clerk',6,null,null,0x29444b],
+      ['office-messenger',1,{z:48.2},1.02,1.14,'bank-clerk',3,null,null,0x613530],
     ]) {
       const circuit=circuits.get(side);
       if (!circuit) continue;
       const journey=createSidewalkWalker(circuit,speed,start);
       const {x,z}=journey.pose.point;
       const window=ctx.shopCounters?.find(counter=>counter.kind===shop)?.window;
+      const shelter=ctx.storefrontShelters?.find(awning=>awning.kind===shop);
       const person={
         id,journey,scale,speed,walkingBlock:true,model,paletteIdx,streetHeight,
         crossingRequest:journey.request, crossingAttention:createCrossingAttention(),
         visit:window && createWindowVisit(window,circuit.laneX,speed,linger),
+        shelter:shelter && createRainShelter(shelter,circuit.laneX,speed),
+        umbrella:umbrella && {color:umbrella,amount:0,threshold:.36+.04*(paletteIdx%3)},
         sidestep:0,bob:rand()*Math.PI*2,hatStyle:model==='shopkeeper' ? 1 : 0,
         hatDark:true,standing:false,prop:false,x,z,floor:streetHeight(x,z),
       };
@@ -365,7 +370,7 @@ export function startPedestrians(ctx) {
   void getDayPhase;
 
   return {
-    update(dt, elapsed) {
+    update(dt, elapsed, rain=0) {
       highDetail?.beginFrame();
       for (let i = 0; i < people.length; i++) {
         const p = people[i];
@@ -382,18 +387,30 @@ export function startPedestrians(ctx) {
           }
         } else if (p.journey) {
           const journey=p.journey;
-          if (!p.visit?.pose.phase) {
+          if (p.umbrella) {
+            const open=rain>p.umbrella.threshold ? 1 : 0;
+            p.umbrella.amount=THREE.MathUtils.damp(p.umbrella.amount,open,open ? 2.7 : 2.0,dt);
+          }
+          const seekingShelter=rain>SEEK_SHELTER_RAIN && journey.onShopfront && !journey.request.active;
+          if (seekingShelter && p.shelter?.enter(p.x,p.z,p.facing ?? journey.pose.heading,
+            p.strideSpeed ?? p.speed,p.blocked)) {
+            p.visit?.cancel();
+            p.sidestep=0;
+          }
+          if (!p.visit?.pose.phase && !p.shelter?.pose.phase) {
             const previousZ=journey.pose.point.z;
             journey.step(dt,ctx.traffic,p.following);
-            if (journey.onShopfront && Math.abs(p.sidestep)<.13) {
+            if (journey.onShopfront && Math.abs(p.sidestep)<.13 && !(seekingShelter && p.shelter)) {
               p.visit?.enter(previousZ,journey.pose.point.z,p.blocked);
             }
           }
+          const shelter=p.shelter?.pose.phase && p.shelter.step(dt,rain,p.blocked);
           const visit=p.visit?.pose.phase && p.visit.step(dt,p.blocked);
-          const step=visit || journey.pose;
+          const detour=shelter || visit;
+          const step=detour || journey.pose;
           ox=step.point.x;oz=step.point.z;heading=step.heading;
-          if (visit && !visit.phase) journey.resumeShopfront(oz);
-          if (!visit) {
+          if (detour && !detour.phase) journey.resumeShopfront(oz);
+          if (!detour) {
             const eye=ctx.camera.position;
             const sx=Math.sin(heading), cz=Math.cos(heading);
             const dx=eye.x-ox, dz=eye.z-oz;

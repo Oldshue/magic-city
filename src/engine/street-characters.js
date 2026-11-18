@@ -2,6 +2,7 @@ import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 import { clone } from '../../vendor/addons/utils/SkeletonUtils.js';
 import { findCounterFace, updateCounterFace } from './counter-face.js';
 import { createWalkFootContacts } from './walk-foot-contacts.js';
+import { createUmbrellas } from './rain-umbrella.js';
 
 const MODELS = ['bank-clerk','shopkeeper','street-worker','pharmacist','crown-proprietor','ledger-vendor','walker-tailor'];
 const TINTS = [0xb09774,0x977655,0x919592,0x9d714f,0x767a64,0xa77878,0x737f9e,0x817451];
@@ -34,7 +35,7 @@ export function inHeaviestCorner(x,z) {
  * Reuse the living city's positions and behaviours with a detailed rig near
  * the camera. The existing instanced crowd still covers the rest of the city.
  */
-export function createStreetCharacters({THREE, scene, camera}) {
+export function createStreetCharacters({THREE, scene, camera, environment}) {
   const loader = new GLTFLoader();
   const root = new THREE.Group();
   root.name = '20th Street characters';
@@ -78,8 +79,10 @@ export function createStreetCharacters({THREE, scene, camera}) {
     }
   }
   let frame = 0;
+  let mountUmbrella;
 
   function restoreAdditivePose(slot) {
+    slot.umbrella?.restore();
     if (slot.headAdjusted) slot.head.quaternion.copy(slot.headRotation);
     if (slot.torsoAdjusted) slot.torso.quaternion.copy(slot.torsoRotation);
     slot.headAdjusted = false;
@@ -124,7 +127,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
       if (person.prop || (!person.actor?.model && !in20thStreetBlock(x,z) && !inHeaviestCorner(x,z))) return false;
       const authored = person.actor?.model ?? person.model;
       if (!authored && person.actor) return false;
-      const range = authored ? 32 : 22;
+      const range = person.umbrella?.amount>.7 && in20thStreetBlock(x,z) ? 38 : authored ? 32 : 22;
       const dx = camera.position.x - x, dz = camera.position.z - z;
       if (dx * dx + dz * dz > range * range || Math.abs(camera.position.y - floor) > 6) return false;
       const name = authored ?? (person.hatStyle===1 ? 'shopkeeper' : person.paletteIdx%3===0 ? 'street-worker' : 'bank-clerk');
@@ -133,6 +136,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
       const slot = useSlot(model,name,index,person);
       const cue = person.actor?.performance;
       const visit = person.visit?.pose;
+      const weather = person.shelter?.pose;
       const browsing = visit?.inspection;
       const controlled = cue ? slot.clips.get(cue.clip)
         : browsing!=null ? slot.clips.get('Browse') : null;
@@ -167,7 +171,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
         } else {
           slot.feet?.clear();
         }
-        slot.instance.userData.activity = visit?.phase ?? person.journey?.pose.activity
+        slot.instance.userData.activity = weather?.phase ?? visit?.phase ?? person.journey?.pose.activity
           ?? (person.crossingRequest.active ? (person.crossingRequest.committed ? 'crossing' : 'waiting to cross') : 'walking');
         slot.instance.userData.crosswalk = person.journey?.pose.crosswalk
           ?? (person.crossingRequest.active ? person.crossingRequest.crosswalk : null);
@@ -182,7 +186,9 @@ export function createStreetCharacters({THREE, scene, camera}) {
       const attention = person.crossingAttention;
       const watching = attention && (Math.abs(attention.yaw) + Math.abs(attention.pitch) > .005);
       slot.instance.userData.crossingAttention = attention?.mode ?? '';
-      slot.headAdjusted=Boolean(slot.head && (lookAtWindow || watching || person.actor?.attending || metVisitor || passedVisitor));
+      const bracing=weather?.phase && (weather.hunch>.01 || weather.lookUp>.01);
+      slot.headAdjusted=Boolean(slot.head &&
+        (lookAtWindow || watching || bracing || person.actor?.attending || metVisitor || passedVisitor));
       if (slot.headAdjusted) {
         slot.headRotation.copy(slot.head.quaternion);
         if (lookAtWindow) {
@@ -203,11 +209,23 @@ export function createStreetCharacters({THREE, scene, camera}) {
           }
           slot.head.rotateY(attention.yaw - shoulderTurn);
           slot.head.rotateX(attention.pitch - shoulderDip);
+        } else if (bracing) {
+          if (slot.torso) {
+            slot.torsoRotation.copy(slot.torso.quaternion);
+            slot.torso.rotateX(weather.hunch*.21);
+            slot.torsoAdjusted=true;
+          }
+          slot.head.rotateX(weather.hunch*.10-weather.lookUp);
         } else {
           const angle=THREE.MathUtils.euclideanModulo(Math.atan2(dx,dz)-facing+Math.PI,Math.PI*2)-Math.PI;
           slot.head.rotateY(THREE.MathUtils.clamp(angle*.65,-.53,.53));
         }
       }
+      if (person.umbrella && !slot.umbrella) {
+        mountUmbrella ??= createUmbrellas(environment);
+        slot.umbrella=mountUmbrella(slot.instance);
+      }
+      slot.umbrella?.update(person.umbrella,dt);
       const fabric = person.actor?.fabricContact;
       if (fabric && slot.hand && slot.finger) {
         slot.hand.getWorldPosition(hand);

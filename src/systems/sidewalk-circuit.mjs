@@ -134,3 +134,35 @@ export function createSidewalkWalker(circuit,cruise,{z,before}={}) {
 
   return {pose, request, step, resumeShopfront, get onShopfront(){return legs[index].shopfront===true;}};
 }
+
+/** Accelerate and steer along a short curbside visit, keeping its walking pose continuous. */
+export function createStorefrontWalk(pose) {
+  const ahead = new Vector3(), tangent = new Vector3();
+  const acceleration = 2.8;
+  let path, stopAtEnd, distance=0, length=0;
+
+  function begin(curve,stop) {
+    path=curve;
+    stopAtEnd=stop;
+    length=curve.getLength();
+    distance=0;
+  }
+
+  function step(dt,cruise,blocked) {
+    const remaining=length-distance;
+    path.getPointAt(Math.min(1,(distance+.68)/length),ahead);
+    const target=blocked(ahead.x,ahead.z,.82) ? 0
+      : stopAtEnd ? Math.min(cruise,Math.sqrt(2*acceleration*remaining)) : cruise;
+    const change=MathUtils.clamp(target-pose.speed,-dt*acceleration,dt*acceleration);
+    const advance=(pose.speed+change*.5)*dt;
+    pose.speed+=change;
+    distance=Math.min(length,distance+advance);
+    const t=path.getUtoTmapping(distance/length);
+    path.getPoint(t,pose.point);
+    path.getTangent(t,tangent);
+    pose.heading=Math.atan2(tangent.x,tangent.z);
+    return remaining<=advance;
+  }
+
+  return {begin,step,get distance(){return distance;}};
+}

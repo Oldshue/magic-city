@@ -1,12 +1,11 @@
 import { CubicBezierCurve3, MathUtils, Vector3 } from '../../vendor/three.module.min.js';
+import { createStorefrontWalk } from './sidewalk-circuit.mjs';
 
 const APPROACH = 'approaching';
 const BROWSE = 'browsing';
 const RETURN = 'rejoining';
 const APPROACH_LENGTH = 4.55;
 const RETURN_LENGTH = 2.25;
-const ACCELERATION = 2.8;
-const FOOTPRINT = .82;
 
 /** A south-side approach and return leave the nearby shop entrance open. */
 export function createWindowVisit(window, laneX, cruise, duration) {
@@ -19,10 +18,9 @@ export function createWindowVisit(window, laneX, cruise, duration) {
   const returnPath = new CubicBezierCurve3(point(x,z),point(x+side*.19,z-.20),
     point(laneX,z-1.25),point(laneX,z-RETURN_LENGTH));
   const approachLength = approach.getLength();
-  const returnLength = returnPath.getLength();
-  const ahead = new Vector3(), tangent = new Vector3();
   const pose = {phase:null, point:point(laneX,entryZ), heading:Math.PI, speed:cruise, glance:0, inspection:null};
-  let distance = 0, linger = 0;
+  const walk=createStorefrontWalk(pose);
+  let linger = 0;
 
   function enter(previousZ,nextZ,blocked) {
     if (pose.phase || previousZ<entryZ || nextZ>=entryZ || blocked(x,z,1.05)) return false;
@@ -31,7 +29,7 @@ export function createWindowVisit(window, laneX, cruise, duration) {
     pose.point.copy(approach.v0);
     pose.heading = Math.PI;
     pose.glance = 0;
-    distance = 0;
+    walk.begin(approach,true);
     return true;
   }
 
@@ -41,7 +39,7 @@ export function createWindowVisit(window, laneX, cruise, duration) {
       if (linger>=duration || blocked(x,z,.90)) {
         pose.phase = RETURN;
         pose.inspection = null;
-        distance = 0;
+        walk.begin(returnPath,false);
       } else {
         pose.inspection = linger/duration;
       }
@@ -50,23 +48,10 @@ export function createWindowVisit(window, laneX, cruise, duration) {
     if (!pose.phase) return pose;
 
     const arriving = pose.phase===APPROACH;
-    const curve = arriving ? approach : returnPath;
-    const length = arriving ? approachLength : returnLength;
-    const remaining = length-distance;
-    curve.getPointAt(Math.min(1,(distance + .68)/length),ahead);
-    const targetSpeed = blocked(ahead.x,ahead.z,FOOTPRINT) ? 0
-      : arriving ? Math.min(cruise,Math.sqrt(2*ACCELERATION*remaining)) : cruise;
-    const change = MathUtils.clamp(targetSpeed-pose.speed,-dt*ACCELERATION,dt*ACCELERATION);
-    const advance = (pose.speed+change*.5)*dt;
-    pose.speed += change;
-    distance = Math.min(length,distance+advance);
-    const t = curve.getUtoTmapping(distance/length);
-    curve.getPoint(t,pose.point);
-    curve.getTangent(t,tangent);
-    pose.heading = Math.atan2(tangent.x,tangent.z);
-    pose.glance = arriving ? MathUtils.smoothstep(distance, .4, approachLength)
-      : 1-MathUtils.smoothstep(distance,0,1.18);
-    if (remaining>advance) return pose;
+    const arrived=walk.step(dt,cruise,blocked);
+    pose.glance = arriving ? MathUtils.smoothstep(walk.distance,.4,approachLength)
+      : 1-MathUtils.smoothstep(walk.distance,0,1.18);
+    if (!arrived) return pose;
 
     if (arriving) {
       pose.phase = BROWSE;
@@ -80,5 +65,11 @@ export function createWindowVisit(window, laneX, cruise, duration) {
     return pose;
   }
 
-  return {pose, enter, step, target:window.target};
+  function cancel() {
+    pose.phase=null;
+    pose.inspection=null;
+    pose.glance=0;
+  }
+
+  return {pose,enter,step,cancel,target:window.target};
 }

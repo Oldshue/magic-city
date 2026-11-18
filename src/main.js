@@ -236,7 +236,8 @@ async function boot() {
     materials, deco, registerInteractive, controls, streetSegments, crossings,
     getDayPhase: sky.getDayPhase,
     wardrobe: {pocketSquare:null},
-    interactives, characters: [], shopCounters: [], newsstands: [], crossingVisitors: [], interactions: createInteractions(),
+    interactives, characters: [], shopCounters: [], newsstands: [], crossingVisitors: [], storefrontShelters: [],
+    interactions: createInteractions(),
   };
 
   // --- Districts (static registry lookup, skip missing) ----------------
