@@ -231,6 +231,7 @@ export function startPedestrians(ctx) {
     for (const [id,side,start,scale,speed,model,paletteIdx,shop,linger] of [
       ['west-street-worker',-1,{z:24.85},1.04,1.24,'street-worker',1],
       ['crown-window-shopper',-1,{z:42},.99,1.01,'bank-clerk',5,'lunch',2.76],
+      ['drugstore-window-shopper',1,{z:42.8},.98,1.08,'shopkeeper',2,'chemist',2.94],
       ['walker-window-shopper',1,{z:30},.95,1.08,'shopkeeper',4,'tailor',3.42],
       ['east-street-clerk',1,{before:'south'},1.01,1.18,'bank-clerk',6],
     ]) {

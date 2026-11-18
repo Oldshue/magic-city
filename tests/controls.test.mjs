@@ -27,19 +27,40 @@ test('named modal blockers suppress actual movement and pointer look without rel
   } finally {input.dispose();if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
 });
 
- test('UI and movement widgets retain pointer input while scene clicks may request optional capture', async()=>{
+test('UI and touch gestures leave optional pointer capture available to a mouse', async()=>{
   const {JSDOM}=await import('jsdom');
-  const dom=new JSDOM('<body><canvas></canvas><button><span>Close</span></button><div data-movement-control><span>Stick</span></div></body>');
-  const previous=globalThis.document; globalThis.document=dom.window.document;
-  let requests=0; const body=document.body; body.requestPointerLock=()=>{requests++; return Promise.resolve();};
+  const dom=new JSDOM('<body><canvas></canvas><button><span>Close</span></button><div data-movement-control><span>Stick</span></div><div id="mc-narrative-root"><p>Paper</p></div></body>');
+  const previousDocument=globalThis.document, previousMedia=globalThis.matchMedia;
+  globalThis.document=dom.window.document;
+  let requests=0;
+  const body=document.body;
+  body.requestPointerLock=()=>{requests++; return Promise.resolve();};
   const input=createControls(new PerspectiveCamera(),body,{minX:-100,maxX:100,minZ:-100,maxZ:100});
+  const scene=document.querySelector('canvas');
   try {
     document.querySelector('button span').click();
     document.querySelector('[data-movement-control] span').click();
+    document.querySelector('#mc-narrative-root p').click();
+    const tap=new dom.window.MouseEvent('click',{bubbles:true});
+    Object.defineProperty(tap,'pointerType',{value:'touch'});
+    scene.dispatchEvent(tap);
+
+    globalThis.matchMedia=query=>({matches:query==='(pointer: coarse)'});
+    input.requestPointerLock();
     assert.equal(requests,0);
-    document.querySelector('canvas').click(); assert.equal(requests,1);
-  } finally {input.dispose();dom.window.close();if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
- });
+
+    globalThis.matchMedia=()=>({matches:false});
+    scene.click();
+    assert.equal(requests,1);
+  } finally {
+    input.dispose();
+    dom.window.close();
+    if(previousDocument===undefined) delete globalThis.document;
+    else globalThis.document=previousDocument;
+    if(previousMedia===undefined) delete globalThis.matchMedia;
+    else globalThis.matchMedia=previousMedia;
+  }
+});
 
 
 test('holding forward rounds a solid sedan bumper at the west crosswalk', () => {

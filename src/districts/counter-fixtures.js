@@ -187,14 +187,7 @@ export function buildCounterFixture(spec,shop,put,box,M,collisions) {
   else crownBackWall(put,box,M);
   fountain(put,box,M,pharmacy);
   let displayTarget;
-  if (pharmacy) {
-    for (const x of [-3.95,3.85]) {
-      box(M.walnut,x,.40,-.64,1.38,.79,.52);
-      box(M.marble,x,.822,-.64,1.42,.058,.579);
-      for (let i=0;i<5;i++) bottle(put,box,M,x-.47+.22*i,.85,-.60,(i%3));
-      collisions.push([x-.70,x+.70,-.94,-.34]);
-    }
-  } else {
+  if (!pharmacy) {
     displayTarget = booth(put,box,M,-3.39,collisions);
     booth(put,box,M,3.39,collisions);
   }

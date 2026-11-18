@@ -57,13 +57,14 @@ export function createControls(camera, domElement, bounds) {
   // Never throws out to the caller: some browsers (iframes without the
   // allow-pointer-lock permission, some tablets) reject/deny this outright.
   const onClick = (event) => {
+    if (event.pointerType === 'touch' || isNarrativeUi(event.target)) return;
     if (event.target?.closest?.('button, a, input, select, textarea, [contenteditable], [role="button"], [role="slider"], [data-movement-control]')) return;
-    if (!enabled || isInputBlocked()) return;
     requestPointerLock();
   };
   function requestPointerLock() {
     if (!enabled || isInputBlocked() || controls.isLocked) return;
     try {
+      if (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) return;
       const request = domElement.requestPointerLock?.();
       request?.catch?.(() => {}); // Rejected optional capture keeps drag and touch controls usable.
     } catch (_) { /* denied/unavailable — fallbacks below take over */ }

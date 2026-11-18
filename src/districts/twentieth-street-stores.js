@@ -5,6 +5,7 @@ import { mapShopUV } from '../engine/shop-surfaces.js';
 import { SHOP_MENUS } from '../gameplay/shop-state.mjs';
 import { buildCounterFixture, STAFF_Z } from './counter-fixtures.js';
 import { buildWalkerFixture, loadWalkerWindows } from './walker-tailoring.js';
+import { buildStorefrontDisplay, makeDisplayMaterials } from './storefront-windows.js';
 
 export const SHOP_HEIGHT = 4.56;
 export const SHOP_DEPTH = 4.72;
@@ -41,6 +42,7 @@ function interiorMaterial(color, roughness = 0.75) {
 function makeShopMaterials(surfaces, reflection) {
   return {
     ...surfaces,
+    display:makeDisplayMaterials(reflection),
     oxblood:interiorMaterial(0x633634,.53),
     wood: interiorMaterial(0x4a2c20),
     plaster: interiorMaterial(0xd0b48a, 0.89),
@@ -94,7 +96,9 @@ function makeShop(spec, width, ctx, M, garments) {
   const pharmacy = spec.kind==='chemist';
   const tailor = spec.kind==='tailor';
   const recess = tailor ? -.69 : 0;
-  const parts = new Map(), furniture = [];
+  const parts = new Map(), furniture = [], displays = [];
+  const displayWindows = pharmacy || spec.kind==='lunch';
+  const plaster = pharmacy ? M.display.chemistPlaster : displayWindows ? M.display.crownPlaster : M.plaster;
   const put = (material, geometry) => {
     if (material.userData.metresPerTile) mapShopUV(geometry,material.userData.metresPerTile);
     if (!parts.has(material)) parts.set(material, []);
@@ -111,7 +115,7 @@ function makeShop(spec, width, ctx, M, garments) {
   const sill = 0.57;
   box(tailor ? M.walnut : serviceMenu ? pharmacy ? M.checker : M.lunchFloor : M.stone,
     0,-0.028,-SHOP_DEPTH/2,width,.055,SHOP_DEPTH);
-  box(M.plaster,0,2.06,-SHOP_DEPTH+.059,width,4.12,.095);
+  box(plaster,0,2.06,-SHOP_DEPTH+.059,width,4.12,.095);
   const rear = -SHOP_DEPTH + .12;
   const wainscot = serviceMenu ? pharmacy ? M.jade : M.milk : paint;
   box(wainscot,0,.72,rear,width,1.44,.026);
@@ -123,7 +127,7 @@ function makeShop(spec, width, ctx, M, garments) {
       box(paint,side*(w-.224),1.456,-SHOP_DEPTH/2,.065,.071,SHOP_DEPTH-.28);
     }
   }
-  box(M.plaster,0,4.27,-SHOP_DEPTH/2,width,.16,SHOP_DEPTH);
+  box(plaster,0,4.27,-SHOP_DEPTH/2,width,.16,SHOP_DEPTH);
   box(M.stone,0,.05,.052,width,.10,.43);
   box(M.wood,0,3.91,.012,width,.70,.26);
   box(M.brass,0,3.48,.154,width,.023,.031);
@@ -133,6 +137,13 @@ function makeShop(spec, width, ctx, M, garments) {
     box(M.brick,side*(w-.12),2.15,-SHOP_DEPTH/2,.24,4.30,SHOP_DEPTH+.13);
     const displayWidth = w - doorHalf - casing;
     const mid = side * (doorHalf + displayWidth / 2);
+    if (displayWindows) {
+      const display = buildStorefrontDisplay({kind:spec.kind,shop,put,box,materials:M,
+        paint,mid,width:displayWidth,sill,head,side});
+      displays.push(display);
+      furniture.push(display.collision);
+      continue;
+    }
     box(M.wood,mid,sill/2,.012,displayWidth,sill,.25);
     box(M.stone,mid,sill,.082,displayWidth+.05,.075,.34);
     const mullions = tailor ? 2 : 4;
@@ -199,7 +210,7 @@ function makeShop(spec, width, ctx, M, garments) {
   const service = tailor ? buildWalkerFixture(ctx,shop,put,box,M,furniture,garments)
     : serviceMenu ? buildCounterFixture(spec,shop,put,box,M,furniture) : null;
   if (!service) roomContents(put,box,M);
-  const pendant = new THREE.PointLight(0xffdfb4, 31, 6.3, 2);
+  const pendant = new THREE.PointLight(0xffdfb4, displayWindows ? 20 : 31, 6.3, 2);
   pendant.position.set(0, 3.65, -1.51);
   shop.add(pendant);
   if (service) {
@@ -255,7 +266,7 @@ function makeShop(spec, width, ctx, M, garments) {
     ...furniture,
   ];
   if (!spec.open) collision.push([-doorHalf,doorHalf,-.13,.20]);
-  return {shop, collision, service};
+  return {shop, collision, service, displays};
 }
 
 function orientedBox(x, z, side, [u0,u1,v0,v1]) {
@@ -264,10 +275,38 @@ function orientedBox(x, z, side, [u0,u1,v0,v1]) {
   return {minX:Math.min(a,b),maxX:Math.max(a,b),minZ:Math.min(c,d),maxZ:Math.max(c,d)};
 }
 
+function registerWindowDisplay(ctx, shop, spec, displays) {
+  const pharmacy = spec.kind==='chemist';
+  for (const display of displays) {
+    const bulb=display.lightMount.getWorldPosition(new THREE.Vector3());
+    ctx.deco.registerLampPosition(bulb.x,bulb.y,bulb.z,{
+      color:pharmacy ? 0xffddaa : 0xffcc94,reach:4.8,daytime:6,nighttime:25,
+    });
+  }
+
+  const mark = new THREE.Object3D();
+  mark.position.set(...displays[0].target);
+  mark.name = pharmacy ? 'Drugstore fountain card' : 'Crown window menu';
+  shop.add(mark);
+  const view = new THREE.Vector3();
+  const {price} = SHOP_MENUS[spec.kind];
+  ctx.registerInteractive(mark,{
+    title:mark.name,
+    body:pharmacy
+      ? 'Lemon phosphate '+price+'¢ at the soda fountain. On the sill sit the house syrup, tooth powder, and a white porcelain mortar.'
+      : 'House coffee '+price+'¢ at the counter. Sandwiches 10¢. The pies in the front window are kept under glass.',
+    available(position) {
+      shop.worldToLocal(view.copy(position));
+      return view.z>.27 && view.z<3.0 && Math.abs(view.x-mark.position.x)<1.5 && view.y<2.47;
+    },
+  });
+}
+
 export async function add20thStreetStores(ctx, parent, surfaces) {
   const garments = await loadWalkerWindows();
   const M = makeShopMaterials(surfaces,ctx.environment);
   ctx.streetReflection?.reflect(M.glass);
+  ctx.streetReflection?.reflect(M.display.pane);
   const footprintBoxes = [];
   for (const spec of STORES) {
     const landmark = ctx.plan.landmarks.find(building => building.id === spec.landmark);
@@ -276,10 +315,11 @@ export async function add20thStreetStores(ctx, parent, surfaces) {
     const side = x < 0 ? 1 : -1;
     const frontX = x + side * width / 2;
     const frontZ = z + spec.bay * depth / 4;
-    const {shop, collision, service} = makeShop(spec, depth / 2, ctx, M, garments);
+    const {shop, collision, service, displays} = makeShop(spec,depth/2,ctx,M,garments);
     shop.position.set(frontX,SIDEWALK_HEIGHT,frontZ);
     shop.rotation.y = side * Math.PI/2;
     parent.add(shop);
+    if (displays.length) registerWindowDisplay(ctx,shop,spec,displays);
     for (const box of collision) footprintBoxes.push(orientedBox(frontX,frontZ,side,box));
     if (spec.open) {
       const staffZ = service ? STAFF_Z : -SHOP_DEPTH+.28;
@@ -289,7 +329,7 @@ export async function add20thStreetStores(ctx, parent, surfaces) {
       };
       ctx.characters.push(actor);
       if (service) {
-        const target = service.displayTarget;
+        const target = displays[0]?.target ?? service.displayTarget;
         const window = target ? {
           point:shop.localToWorld(new THREE.Vector3(target[0],0,1.36)),
           target:shop.localToWorld(new THREE.Vector3(...target)),
