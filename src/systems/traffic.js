@@ -3,6 +3,7 @@ import { applySedanRide, buildPeriodSedan, updateSedanWheels } from '../engine/p
 import { HALF_LENGTH, hitsMovingObstacle, setCarBounds, stepSedanRide, TYRE_RADIUS } from '../engine/vehicle-motion.mjs';
 import { createDriverPerformer } from '../engine/driver-performer.js';
 import { ROAD_HEIGHT } from '../engine/street-layout.js';
+import { crossingVehicleScore } from '../engine/crossing-attention.mjs';
 import { advanceTraffic, blockerGap, canEnterCrosswalk, HEAVIEST_CORNER_CROSSWALK, junctionGap, lanePosition, makeJunction, reserveJunction, speedBefore, wrapDistance } from '../engine/traffic-motion.mjs';
 
 export function startTraffic(ctx) {
@@ -67,6 +68,7 @@ export function startTraffic(ctx) {
     }
   }
 
+  const junctionTraffic = instances.filter(car => car.route.junction);
   const COUNT = Math.max(1, instances.length);
 
   // --- Parked rows: static sedans along the curbs of the two main
@@ -374,6 +376,20 @@ export function startTraffic(ctx) {
   return {
     canCross(person) {
       return canEnterCrosswalk(junction,person,crossingVehicles());
+    },
+    carToWatch(person) {
+      if (!person.active) return null;
+      const crossing = junction?.crossings.find(marking => marking.id === person.crosswalk);
+      if (!crossing) return null;
+      const driven = playerPosition?.driving ? playerPosition : null;
+      let best = driven ? crossingVehicleScore(crossing, person, driven) : Infinity;
+      let nearest = Number.isFinite(best) ? driven : null;
+      for (const car of junctionTraffic) {
+        if (car.route !== crossing.route) continue;
+        const score = crossingVehicleScore(crossing, person, car);
+        if (score < best) { best = score; nearest = car; }
+      }
+      return nearest;
     },
     canStepInCrossing(x,z) {
       return !crossingVehicles().some(box=>hitsMovingObstacle(box,x,z,.32));

@@ -4,6 +4,7 @@ import { registerNightEmission } from '../engine/materials.js';
 import { mapShopUV } from '../engine/shop-surfaces.js';
 import { ROAD_HEIGHT, SIDEWALK_HEIGHT } from '../engine/street-layout.js';
 import { HEAVIEST_CORNER_CROSSWALK } from '../engine/traffic-motion.mjs';
+import { createCrossingAttention } from '../engine/crossing-attention.mjs';
 import { getAudio, makeNoiseBuffer } from '../systems/audioBus.js';
 
 const EDITION = 'The Birmingham Ledger — Extra Edition, October 1928';
@@ -109,6 +110,8 @@ function makeCustomers(ctx,x,z) {
       speed:i ? 1.32 : 1.45, moving:true,
     };
     const pedestrian = {x:initial[0], z:initial[1], y:1.7, crosswalk:'north', active:false, committed:false};
+    actor.crossingRequest = pedestrian;
+    actor.crossingAttention = createCrossingAttention();
     ctx.characters.push(actor);
     ctx.crossingVisitors.push(pedestrian);
     return {actor,steps,pedestrian,index:start,time:0};

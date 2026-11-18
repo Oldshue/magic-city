@@ -810,6 +810,7 @@ export function startDriving(ctx) {
       out.y = activeCar ? 0 : camera.position.y;
       out.mounted = !!activeCar;
       out.impactSequence = impactSequence;
+      out.yielding = !!activeCar?.crossingYield;
       return out;
     },
     park() {

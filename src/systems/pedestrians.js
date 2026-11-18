@@ -14,6 +14,7 @@
 import { createStreetContact, inRoad, SIDEWALK_HEIGHT } from '../engine/street-layout.js';
 import { createStreetCharacters, in20thStreetBlock, inHeaviestCorner } from '../engine/street-characters.js';
 import { createWindowVisit } from './window-visit.mjs';
+import { createCrossingAttention, updateCrossingAttention } from '../engine/crossing-attention.mjs';
 import { createSidewalkWalker, sidewalkCircuit } from './sidewalk-circuit.mjs';
 
 export function startPedestrians(ctx) {
@@ -21,6 +22,7 @@ export function startPedestrians(ctx) {
   const walkStreets = plan.streets || [];
   const highDetail = ctx.camera && walkStreets.some(street => street.name === '20th Street North')
     ? createStreetCharacters(ctx) : null;
+  const streetHeight = highDetail && ctx.crossings?.length ? createStreetContact(scene,0) : null;
 
   // --- Railroad corridor guard: walkers must never cross the corridor band
   // z 78..318 (between x -520..520) except through 20th St, 18th St, or the
@@ -167,6 +169,9 @@ export function startPedestrians(ctx) {
       scale, standing: true, prop: false,
       trimColor: Number.isInteger(appearance.trimColor) && appearance.trimColor >= 0 && appearance.trimColor <= 0xffffff ? appearance.trimColor : null,
       x, z, facing, actor: Array.isArray(appearance.position) ? appearance : null,
+      crossingRequest: appearance.crossingRequest,
+      crossingAttention: appearance.crossingAttention,
+      streetHeight: appearance.crossingRequest ? streetHeight : null,
     });
   }
   function addStandingCluster(cx, cz, count, radius) {
@@ -221,8 +226,7 @@ export function startPedestrians(ctx) {
     addStandingFigure(actor.position[0], actor.position[1], yaw, scale, actor);
   }
   const blockWalkers = [];
-  if (highDetail && ctx.crossings?.length) {
-    const streetHeight=createStreetContact(scene,0);
+  if (streetHeight) {
     const circuits=new Map([-1,1].map(side=>[side,sidewalkCircuit(ctx.crossings,side)]));
     for (const [id,side,start,scale,speed,model,paletteIdx,shop,linger] of [
       ['west-street-worker',-1,{z:24.85},1.04,1.24,'street-worker',1],
@@ -237,6 +241,7 @@ export function startPedestrians(ctx) {
       const window=ctx.shopCounters?.find(counter=>counter.kind===shop)?.window;
       const person={
         id,journey,scale,speed,walkingBlock:true,model,paletteIdx,streetHeight,
+        crossingRequest:journey.request, crossingAttention:createCrossingAttention(),
         visit:window && createWindowVisit(window,circuit.laneX,speed,linger),
         sidestep:0,bob:rand()*Math.PI*2,hatStyle:model==='shopkeeper' ? 1 : 0,
         hatDark:true,standing:false,prop:false,x,z,floor:streetHeight(x,z),
@@ -370,6 +375,10 @@ export function startPedestrians(ctx) {
           ox = valid ? declared.position[0] : p.x;
           oz = valid ? declared.position[1] : p.z;
           heading = valid && Number.isFinite(declared.yawDeg) ? declared.yawDeg * Math.PI / 180 : p.facing;
+          if (p.streetHeight) {
+            const height = p.streetHeight(ox,oz);
+            p.floor = THREE.MathUtils.damp(p.floor ?? height,height,15,dt);
+          }
         } else if (p.journey) {
           const journey=p.journey;
           if (!p.visit?.pose.phase) {
@@ -413,6 +422,10 @@ export function startPedestrians(ctx) {
           const edge=(p.route.width/2+2)*p.side*p.dir;
           ox=pos.x+segDir.z*edge;
           oz=pos.z-segDir.x*edge;
+        }
+        if (p.crossingAttention) {
+          const request = p.crossingRequest;
+          updateCrossingAttention(p.crossingAttention,request,heading,ctx.traffic?.carToWatch?.(request),dt);
         }
         const nx = Math.cos(heading);
         const nz = -Math.sin(heading);

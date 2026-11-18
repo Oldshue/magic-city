@@ -79,6 +79,13 @@ export function createStreetCharacters({THREE, scene, camera}) {
   }
   let frame = 0;
 
+  function restoreAdditivePose(slot) {
+    if (slot.headAdjusted) slot.head.quaternion.copy(slot.headRotation);
+    if (slot.torsoAdjusted) slot.torso.quaternion.copy(slot.torsoRotation);
+    slot.headAdjusted = false;
+    slot.torsoAdjusted = false;
+  }
+
   function useSlot(model, name, personIndex, person) {
     let slot = model.slots.find(candidate => candidate.personIndex === personIndex);
     if (slot) return slot;
@@ -94,13 +101,15 @@ export function createStreetCharacters({THREE, scene, camera}) {
         if (mesh.isMesh && /suit|fedora|felt/i.test(mesh.material.name)) wardrobe.push([mesh,mesh.material]);
       });
       slot = {instance,mixer,clips,wardrobe,face:findCounterFace(instance),
-        headRotation:new THREE.Quaternion(), head:instance.getObjectByName('head'),hand:instance.getObjectByName('hand_r'),finger:instance.getObjectByName('middle_01_r')};
+        headRotation:new THREE.Quaternion(), head:instance.getObjectByName('head'),
+        torsoRotation:new THREE.Quaternion(), torso:instance.getObjectByName('spine_03'),
+        hand:instance.getObjectByName('hand_r'),finger:instance.getObjectByName('middle_01_r')};
       model.slots.push(slot);
     }
     slot.feet?.restore();
     slot.feet?.clear();
+    restoreAdditivePose(slot);
     slot.mixer.stopAllAction();
-    slot.headAdjusted = false;
     slot.instance.userData.person = person.actor?.id ?? person.id ?? name;
     wear(slot,person.actor ? person.actor.palette : person.paletteIdx);
     slot.personIndex = personIndex;
@@ -130,7 +139,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
       const walk = slot.clips.get('Walk');
       const action = controlled || (moving ? walk : slot.clips.get('Idle'));
       slot.feet?.restore();
-      if (slot.headAdjusted) slot.head.quaternion.copy(slot.headRotation);
+      restoreAdditivePose(slot);
       if (slot.active !== action) {
         action.reset().play();
         action.time = (person.bob*.133)%action.getClip().duration;
@@ -149,7 +158,7 @@ export function createStreetCharacters({THREE, scene, camera}) {
       slot.instance.scale.setScalar(person.scale);
       slot.instance.visible=true;
       slot.mixer.update(dt);
-      if (person.walkingBlock) {
+      if (person.streetHeight) {
         const gait = action===walk ? walk.time/walk.getClip().duration : null;
         if (gait!=null) {
           slot.feet ??= createWalkFootContacts(slot.instance);
@@ -158,8 +167,10 @@ export function createStreetCharacters({THREE, scene, camera}) {
         } else {
           slot.feet?.clear();
         }
-        slot.instance.userData.activity = visit?.phase ?? person.journey.pose.activity;
-        slot.instance.userData.crosswalk = person.journey.pose.crosswalk;
+        slot.instance.userData.activity = visit?.phase ?? person.journey?.pose.activity
+          ?? (person.crossingRequest.active ? (person.crossingRequest.committed ? 'crossing' : 'waiting to cross') : 'walking');
+        slot.instance.userData.crosswalk = person.journey?.pose.crosswalk
+          ?? (person.crossingRequest.active ? person.crossingRequest.crosswalk : null);
         slot.instance.userData.motion = action.getClip().name;
         slot.instance.userData.gait = gait;
       }
@@ -168,8 +179,10 @@ export function createStreetCharacters({THREE, scene, camera}) {
       const passedVisitor = moving && dx*dx+dz*dz<17;
       const glance=visit?.glance ?? 0;
       const lookAtWindow=glance>.001;
-      const wait=person.journey?.pose.wait ?? 0;
-      slot.headAdjusted=Boolean(slot.head && (lookAtWindow || wait>0 || person.actor?.attending || metVisitor || passedVisitor));
+      const attention = person.crossingAttention;
+      const watching = attention && (Math.abs(attention.yaw) + Math.abs(attention.pitch) > .005);
+      slot.instance.userData.crossingAttention = attention?.mode ?? '';
+      slot.headAdjusted=Boolean(slot.head && (lookAtWindow || watching || person.actor?.attending || metVisitor || passedVisitor));
       if (slot.headAdjusted) {
         slot.headRotation.copy(slot.head.quaternion);
         if (lookAtWindow) {
@@ -179,8 +192,17 @@ export function createStreetCharacters({THREE, scene, camera}) {
           const pitch = Math.atan2(floor+1.61*person.scale-wy,Math.hypot(wx-x,wz-z));
           slot.head.rotateY(glance*THREE.MathUtils.clamp(angle,-.78,.78));
           slot.head.rotateX(glance*THREE.MathUtils.clamp(pitch,-.15,.19));
-        } else if(wait>0) {
-          slot.head.rotateY(.67*Math.sin(wait*2.75));
+        } else if (watching) {
+          const shoulderTurn = slot.torso ? attention.yaw * .22 : 0;
+          const shoulderDip = slot.torso ? attention.pitch * .16 : 0;
+          if (slot.torso) {
+            slot.torsoRotation.copy(slot.torso.quaternion);
+            slot.torso.rotateY(shoulderTurn);
+            slot.torso.rotateX(shoulderDip);
+            slot.torsoAdjusted = true;
+          }
+          slot.head.rotateY(attention.yaw - shoulderTurn);
+          slot.head.rotateX(attention.pitch - shoulderDip);
         } else {
           const angle=THREE.MathUtils.euclideanModulo(Math.atan2(dx,dz)-facing+Math.PI,Math.PI*2)-Math.PI;
           slot.head.rotateY(THREE.MathUtils.clamp(angle*.65,-.53,.53));
